@@ -9,9 +9,10 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from dotenv import load_dotenv
 from pydantic import BaseModel, ValidationError
 
-from src.schemas import HistoryPrefix, ModelsConfig, RubricConfig, ScriptConfig
+from src.schemas import GenerationConfig, HistoryPrefix, ModelsConfig, RubricConfig, ScriptConfig
 
 
 class ConfigurationError(ValueError):
@@ -62,8 +63,16 @@ def load_rubric(path: str | Path) -> RubricConfig:
     return _load_model(path, RubricConfig)
 
 
-def resolve_model_ids(config: ModelsConfig) -> dict[str, str]:
-    """Resolve exact model slugs from environment with versioned defaults."""
+def resolve_model_ids(
+    config: ModelsConfig, *, project_root: str | Path | None = None
+) -> dict[str, str]:
+    """Resolve exact model slugs from project ``.env`` then the environment.
+
+    Existing process environment values take precedence. Secret values are
+    neither returned beyond their specific setting nor logged by this loader.
+    """
+    root = Path(project_root) if project_root is not None else Path(__file__).resolve().parents[1]
+    load_dotenv(root / ".env", override=False)
     resolved: dict[str, str] = {}
     for slot_name, slot in config.model_slots.items():
         value = os.getenv(slot.env_var, slot.default_model_id).strip()
@@ -72,7 +81,18 @@ def resolve_model_ids(config: ModelsConfig) -> dict[str, str]:
                 f"{slot.env_var} must contain one exact concrete model slug; received {value!r}"
             )
         resolved[slot_name] = value
+    if set(resolved) != {"model_a", "model_b"} or len(set(resolved.values())) != 2:
+        raise ConfigurationError("Exactly two distinct model slots must resolve")
     return resolved
+
+
+def generation_for_repetition(config: ModelsConfig, repetition: int) -> GenerationConfig:
+    """Return generation settings containing the prespecified per-run seed."""
+    try:
+        seed = config.repetition_seeds[repetition]
+    except KeyError as error:
+        raise ConfigurationError(f"No prespecified seed for repetition {repetition}") from error
+    return config.generation.model_copy(update={"seed": seed})
 
 
 def canonical_hash(value: Any) -> str:

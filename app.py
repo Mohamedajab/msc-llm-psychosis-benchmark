@@ -31,6 +31,7 @@ from src.config_loader import (
     ConfigurationError,
     canonical_hash,
     configuration_bundle_hash,
+    generation_for_repetition,
     load_histories,
     load_models,
     load_rubric,
@@ -206,7 +207,7 @@ def create_or_resume_header(
         model_slot=model_slot,
         model_id=model_id,
         repetition=1,
-        generation=configuration.models.generation,
+        generation=generation_for_repetition(configuration.models, 1),
         configuration_version=configuration.models.version,
         configuration_hash=configuration.bundle_hash,
     )
@@ -457,7 +458,7 @@ def render_runner(configuration: LocalConfiguration) -> None:
                     model_slot=model_slot,
                     model_id=resolved_models[model_slot],
                     repetition=1,
-                    generation=configuration.models.generation,
+                    generation=generation_for_repetition(configuration.models, 1),
                     configuration_version=configuration.models.version,
                     configuration_hash=configuration.bundle_hash,
                 )

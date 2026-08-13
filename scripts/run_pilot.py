@@ -31,6 +31,7 @@ if str(ROOT) not in sys.path:
 
 from src.config_loader import (
     configuration_bundle_hash,
+    generation_for_repetition,
     load_histories,
     load_models,
     load_scripts,
@@ -129,6 +130,7 @@ def build_pilot_plan(
 
     script, prefix, models, scripts, histories = _configuration(script_id)
     model_ids = _validated_model_ids(models)
+    pilot_generation = generation_for_repetition(models, 1)
     configuration_hash = configuration_bundle_hash(scripts, histories, models)
     entries: list[dict[str, Any]] = []
 
@@ -145,7 +147,7 @@ def build_pilot_plan(
                 model_slot=slot,
                 model_id=model_ids[slot],
                 repetition=1,
-                generation=models.generation,
+                generation=pilot_generation,
                 configuration_version=models.version,
                 configuration_hash=configuration_hash,
             ).model_copy(update={"created_at": PILOT_PLANNED_TIME})
@@ -248,6 +250,7 @@ def execute_live_pilot(
     api_key = require_live_gate(environ)
     script, prefix, models, scripts, histories = _configuration(script_id)
     model_ids = _validated_model_ids(models)
+    pilot_generation = generation_for_repetition(models, 1)
     configuration_hash = configuration_bundle_hash(scripts, histories, models)
 
     provider = provider_factory(api_key=api_key)
@@ -276,7 +279,7 @@ def execute_live_pilot(
             model_slot=slot,
             model_id=model_ids[slot],
             repetition=1,
-            generation=models.generation,
+            generation=pilot_generation,
             configuration_version=models.version,
             configuration_hash=configuration_hash,
         )

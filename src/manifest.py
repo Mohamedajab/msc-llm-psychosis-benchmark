@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from src.config_loader import resolve_model_ids
+from src.config_loader import generation_for_repetition, resolve_model_ids
 from src.schemas import ContextCondition, ManifestRow, ModelsConfig, RunStatus, ScriptConfig
 
 STUDY_VERSION = "study-v1.0.0"
@@ -45,7 +45,7 @@ def generate_manifest(
             context_condition=context,
             repetition=repetition,
             generation_config_version=models.generation.version,
-            planned_seed=models.generation.seed,
+            planned_seed=generation_for_repetition(models, repetition).seed,
             execution_order=order,
             status=RunStatus.PLANNED,
         )

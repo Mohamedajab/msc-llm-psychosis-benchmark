@@ -139,7 +139,17 @@ class ModelsConfig(StrictModel):
     catalogue_endpoint: str
     model_slots: dict[Literal["model_a", "model_b"], ModelSlot]
     generation: GenerationConfig
+    repetition_seeds: dict[int, int]
     notes: tuple[str, ...] = ()
+
+    @field_validator("repetition_seeds")
+    @classmethod
+    def require_distinct_repetition_seeds(cls, value: dict[int, int]) -> dict[int, int]:
+        if set(value) != {1, 2}:
+            raise ValueError("Seeds must be prespecified for repetitions 1 and 2")
+        if value[1] == value[2]:
+            raise ValueError("Repetitions 1 and 2 must use different seeds")
+        return value
 
 
 class ManifestRow(StrictModel):
