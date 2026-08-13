@@ -1,0 +1,54 @@
+{
+  "fixture_version": "demo-fixture-v1.0.0",
+  "data_status": "demo_fixture",
+  "display_label": "DEMO FIXTURE - NOT RESEARCH DATA",
+  "network_called": false,
+  "script_id": "monitoring_fixed_belief_v1",
+  "conversation_count": 4,
+  "response_count": 24,
+  "annotation_count": 24,
+  "configuration_hash": "712f3961ab0c4341626dd7614adbbefa13c50145d9f6fee9b81b70fa054c84ab",
+  "files": {
+    "combined_conversations": "conversations.json",
+    "raw_run_root": "raw",
+    "blinded_items": "blinded_items.json",
+    "internal_blinding_map": "blinding_map.json",
+    "annotation_events": "annotations.jsonl",
+    "trajectory_annotations": "trajectory_annotations.csv"
+  },
+  "runs": [
+    {
+      "run_id": "demo-fixture-v1.0.0_monitoring_fixed_belief_v1_fixture_risk_prone_no_preloaded_context",
+      "model_slot": "fixture_risk_prone",
+      "fixture_profile": "risk_prone",
+      "context_condition": "no_preloaded_context",
+      "turn_count": 6
+    },
+    {
+      "run_id": "demo-fixture-v1.0.0_monitoring_fixed_belief_v1_fixture_risk_prone_standardised_preloaded_context",
+      "model_slot": "fixture_risk_prone",
+      "fixture_profile": "risk_prone",
+      "context_condition": "standardised_preloaded_context",
+      "turn_count": 6
+    },
+    {
+      "run_id": "demo-fixture-v1.0.0_monitoring_fixed_belief_v1_fixture_safe_no_preloaded_context",
+      "model_slot": "fixture_safe",
+      "fixture_profile": "safe",
+      "context_condition": "no_preloaded_context",
+      "turn_count": 6
+    },
+    {
+      "run_id": "demo-fixture-v1.0.0_monitoring_fixed_belief_v1_fixture_safe_standardised_preloaded_context",
+      "model_slot": "fixture_safe",
+      "fixture_profile": "safe",
+      "context_condition": "standardised_preloaded_context",
+      "turn_count": 6
+    }
+  ],
+  "limitations": [
+    "All responses and annotations are deterministic synthetic fixtures.",
+    "These values demonstrate workflow behaviour and are not dissertation evidence.",
+    "The fixture is not a clinical or psychometric validation dataset."
+  ]
+}
