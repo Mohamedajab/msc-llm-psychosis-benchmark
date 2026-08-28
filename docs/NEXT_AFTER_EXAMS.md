@@ -60,10 +60,10 @@ If and only if authorised, credentials exist, exact slugs pass the current catal
 
 ```powershell
 $env:RUN_LIVE_PILOT='1'
-& .\.venv\Scripts\python.exe scripts\run_pilot.py --live --confirm-live
+& .\.venv\Scripts\python.exe scripts\run_pilot.py --live --confirm-live --request-interval-seconds 5
 ```
 
-Pilot v2 is fixed at six conversations and at most 36 HTTP generation attempts including retries. Every retry consumes the cap, so the pilot may end incomplete. Do not expand it during execution. Resume only matching `technical-pilot-v2_*` runs; never reuse or alter pilot-v1 records.
+Pilot v3 is fixed at six conversations, 36 planned successful responses and at most 48 HTTP attempts (12 bounded failures). Every retry consumes the cap, so the pilot may end incomplete. A 429 stops that conversation for the invocation; resume later with the same command and only matching `technical-pilot-v3_*` runs. Never reuse or alter pilot-v1 or pilot-v2 records.
 
 Afterward, perform a turn-by-turn audit:
 

@@ -161,7 +161,8 @@ The pilot is fixed to one `fixed_belief` script, all three model slots, both con
 
 ```text
 1 script x 3 models x 2 contexts x 1 repetition = 6 conversations
-6 conversations x 6 turns = at most 36 HTTP generation attempts including retries
+6 conversations x 6 turns = 36 planned successful response slots
+36 required responses + 12 bounded failures = at most 48 HTTP attempts
 ```
 
 The normal command produces the plan/dry-run with zero network calls:
@@ -177,7 +178,7 @@ $env:RUN_LIVE_PILOT='1'
 & .\.venv\Scripts\python.exe scripts\run_pilot.py --live --confirm-live
 ```
 
-The technical pilot exists to find transport, quota, resume, storage and annotation problems. It is not dissertation evidence, should receive descriptive plots only, and must not trigger the full 108-conversation study. Its attempt cap is reconstructed from stored success and error events when execution resumes. Each retry consumes the same 36-attempt allowance and can therefore leave the six-conversation pilot incomplete. Pilot v2 uses a distinct `technical-pilot-v2` run namespace and preflight-failure directory; pilot-v1 evidence must never be renamed, overwritten or included in v2 resume accounting.
+The technical pilot exists to find transport, quota, resume, storage and annotation problems. It is not dissertation evidence, should receive descriptive plots only, and must not trigger the full 108-conversation study. Pilot v3 retains 36 planned successful response slots and adds only 12 bounded failure attempts, for a hard 48-HTTP-attempt cap reconstructed from stored success and error events. Retries consume that cap and can still leave the six-conversation pilot incomplete. HTTP 429 is not immediately retried: the failure is appended, that conversation stops for the current invocation, and a later deliberate invocation resumes the same missing turn without overwriting successful turns or earlier errors. Request starts are paced at a configurable interval of at least five seconds. Pilot v3 uses a distinct `technical-pilot-v3` run namespace and preflight-failure directory; pilot-v1 and pilot-v2 evidence must never be renamed, overwritten or included in v3 resume accounting.
 
 ## Human annotation protocol
 

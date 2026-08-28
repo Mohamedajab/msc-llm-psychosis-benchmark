@@ -8,7 +8,7 @@ import os
 import random
 import time
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 from typing import Any
@@ -142,14 +142,19 @@ class OpenRouterProvider(TargetProvider):
         api_key: str | None = None,
         transport: httpx.BaseTransport | None = None,
         sleep: Callable[[float], None] = time.sleep,
+        monotonic: Callable[[], float] = time.monotonic,
     ) -> None:
         self._api_key = api_key or os.getenv("OPENROUTER_API_KEY")
         if not self._api_key:
             raise RuntimeError("OPENROUTER_API_KEY is not set; use fixture or dry-run mode")
         self._transport = transport
         self._sleep = sleep
+        self._monotonic = monotonic
         self._max_request_attempts: int | None = None
         self._request_attempt_count = 0
+        self._retry_rate_limits = True
+        self._minimum_request_interval_seconds = 0.0
+        self._last_request_started_at: float | None = None
 
     @property
     def request_attempt_count(self) -> int:
@@ -169,6 +174,22 @@ class OpenRouterProvider(TargetProvider):
         if self._request_attempt_count:
             raise RuntimeError("Request-attempt budget must be set before generation")
         self._max_request_attempts = maximum
+
+    def set_retry_rate_limits(self, enabled: bool) -> None:
+        """Control whether one generate call may immediately retry HTTP 429."""
+
+        if self._request_attempt_count:
+            raise RuntimeError("Rate-limit retry policy must be set before generation")
+        self._retry_rate_limits = enabled
+
+    def set_minimum_request_interval(self, seconds: float) -> None:
+        """Set minimum elapsed seconds between generation-request starts."""
+
+        if seconds < 0:
+            raise ValueError("Minimum request interval cannot be negative")
+        if self._request_attempt_count:
+            raise RuntimeError("Request pacing must be set before generation")
+        self._minimum_request_interval_seconds = seconds
 
     def validate_exact_models(
         self, model_ids: Sequence[str], timeout_seconds: float = 20
@@ -233,6 +254,7 @@ class OpenRouterProvider(TargetProvider):
                     ),
                 )
             self._request_attempt_count += 1
+            self._pace_request_start()
             try:
                 with httpx.Client(
                     transport=self._transport, timeout=generation.timeout_seconds
@@ -268,6 +290,7 @@ class OpenRouterProvider(TargetProvider):
                 )
                 if (
                     response.status_code in self.retryable_statuses
+                    and (response.status_code != 429 or self._retry_rate_limits)
                     and attempt < generation.max_retries
                 ):
                     self._sleep(self._backoff(attempt, response.headers.get("retry-after")))
@@ -325,6 +348,7 @@ class OpenRouterProvider(TargetProvider):
                     error_message="OpenRouter returned no assistant text",
                     http_status=response.status_code,
                     request_id=request_id,
+                    response_metadata=self._empty_response_diagnostics(body, choice),
                 )
             resolved_model = body.get("model")
             if resolved_model and resolved_model != model_id:
@@ -380,6 +404,7 @@ class OpenRouterProvider(TargetProvider):
         error_message: str,
         http_status: int | None = None,
         request_id: str | None = None,
+        response_metadata: dict[str, Any] | None = None,
     ) -> ProviderResult:
         return ProviderResult(
             status=status,
@@ -391,7 +416,47 @@ class OpenRouterProvider(TargetProvider):
             request_id=request_id,
             error_type=error_type,
             error_message=self._sanitise_text(error_message),
+            response_metadata=response_metadata or {},
         )
+
+    def _pace_request_start(self) -> None:
+        """Pace POST starts; catalogue preflight GETs are intentionally excluded."""
+
+        now = self._monotonic()
+        if self._last_request_started_at is not None:
+            remaining = (
+                self._minimum_request_interval_seconds
+                - (now - self._last_request_started_at)
+            )
+            if remaining > 0:
+                self._sleep(remaining)
+                now = self._monotonic()
+        self._last_request_started_at = now
+
+    @staticmethod
+    def _empty_response_diagnostics(
+        body: Mapping[str, Any], choice: Mapping[str, Any]
+    ) -> dict[str, Any]:
+        """Return structure-only diagnostics without retaining reasoning text."""
+
+        choices = body.get("choices")
+        message = choice.get("message")
+        if not isinstance(message, Mapping):
+            message = {}
+        content = message.get("content")
+        reasoning = message.get("reasoning")
+        reasoning_details = message.get("reasoning_details")
+        return {
+            "choice_count": len(choices) if isinstance(choices, list) else 0,
+            "finish_reason": choice.get("finish_reason"),
+            "content_present": isinstance(content, str) and bool(content.strip()),
+            "reasoning_present": isinstance(reasoning, str) and bool(reasoning),
+            "reasoning_length": len(reasoning) if isinstance(reasoning, str) else 0,
+            "reasoning_details_present": bool(reasoning_details),
+            "reasoning_details_count": (
+                len(reasoning_details) if isinstance(reasoning_details, list) else 0
+            ),
+        }
 
     @staticmethod
     def _classify_http_error(status_code: int) -> ObservationStatus:

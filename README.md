@@ -11,7 +11,7 @@ These labels are deliberately not interchangeable:
 | Label | Meaning |
 |---|---|
 | **DEMO FIXTURE - NOT RESEARCH DATA** | Deterministic offline responses used to demonstrate, test and repair the workflow. They cannot support claims about a real model. |
-| **TECHNICAL PILOT - DESCRIPTIVE ONLY** | A six-conversation, maximum-36-attempt live OpenRouter run used to verify transport, storage, quotas and annotation flow. It is not a powered or representative study. |
+| **TECHNICAL PILOT - DESCRIPTIVE ONLY** | A six-conversation, 36-response-slot, maximum-48-attempt live OpenRouter run used to verify transport, storage, quotas and annotation flow. It is not a powered or representative study. |
 | **MAIN STUDY** | The planned balanced design: 108 conversations and 648 possible assistant responses. It has not been executed. |
 
 Do not mix these categories in a result table without retaining `data_status`, and never present fixture or technical-pilot observations as dissertation findings.
@@ -110,15 +110,15 @@ Generate and verify the fixed six-conversation technical-pilot plan and exact dr
 & .\.venv\Scripts\python.exe scripts\run_pilot.py
 ```
 
-To retain the complete pilot-v2 36-payload preflight as a derived JSON artifact:
+To retain the complete pilot-v3 36-payload preflight as a derived JSON artifact:
 
 ```powershell
-& .\.venv\Scripts\python.exe scripts\run_pilot.py --plan-output outputs\technical_pilot_v2_plan.json
+& .\.venv\Scripts\python.exe scripts\run_pilot.py --plan-output outputs\technical_pilot_v3_plan.json
 ```
 
 ## Optional live technical pilot
 
-The bounded CLI pilot requires explicit live selection, final confirmation, `RUN_LIVE_PILOT=1`, and an API key. It is fixed to one six-turn `fixed_belief` script, all three exact model slots, two context conditions and one repetition: **6 conversations, at most 36 HTTP generation attempts including retries**. Every retry consumes that allowance, so repeated provider failures can leave the pilot incomplete. The cap is reconstructed from append-only records when a run resumes. The dashboard invokes this same bounded pilot and applies the same environment/key gates plus an on-screen final confirmation.
+The bounded CLI pilot requires explicit live selection, final confirmation, `RUN_LIVE_PILOT=1`, and an API key. It is fixed to one six-turn `fixed_belief` script, all three exact model slots, two context conditions and one repetition: **6 conversations, 36 planned successful response slots and at most 48 HTTP attempts**. The extra 12 attempts are a bounded failure allowance. Retries consume the same cap and may still leave the pilot incomplete. Pilot v3 does not immediately retry HTTP 429: it appends the failure, stops that conversation for the invocation, and permits a later deliberate resume. Live request starts are spaced by a configurable minimum of five seconds. The cap is reconstructed from append-only records when a run resumes.
 
 Model C was replaced after technical-pilot-v1 showed that Inkling was restricted to agentic harnesses. The replacement was confirmed in OpenRouter's public catalogue on 29 August 2026 without making a generation request. The active zero-priced endpoints advertise text input/output, seed support and at least 256,000 tokens of context:
 
@@ -130,7 +130,7 @@ Model C was replaced after technical-pilot-v1 showed that Inkling was restricted
 
 They are distinct developer/model families and fixed `:free` IDs, not routers, `latest` aliases or fallbacks. Availability remains time-dependent, so the pilot validates all three from one fresh catalogue response immediately before generation. Model A remains unchanged despite its pilot-v1 HTTP 429 outcome, which is retained as a technical provider failure.
 
-Technical-pilot-v1 records use `technical-pilot-v1_*` run IDs and remain immutable. Pilot v2 uses `technical-pilot-v2_*` run IDs plus a separate v2 preflight-failure directory, preventing resume or attempt accounting from crossing versions.
+Technical-pilot-v1 and technical-pilot-v2 records remain immutable in their respective `technical-pilot-v1_*` and `technical-pilot-v2_*` namespaces. Pilot v3 uses only `technical-pilot-v3_*` run IDs plus a separate v3 preflight-failure directory, preventing resume or attempt accounting from crossing any pilot version. A resume loads existing successful turns and never regenerates or overwrites them; earlier failure events remain append-only when the failed turn is tried in a later invocation.
 
 First copy the template and edit `.env` locally, or set environment variables in the current PowerShell session. Never paste a key into source, documentation, a screenshot or a committed file.
 
@@ -145,10 +145,10 @@ Only when live execution is intentionally authorised:
 
 ```powershell
 $env:RUN_LIVE_PILOT='1'
-& .\.venv\Scripts\python.exe scripts\run_pilot.py --live --confirm-live
+& .\.venv\Scripts\python.exe scripts\run_pilot.py --live --confirm-live --request-interval-seconds 5
 ```
 
-`OPENROUTER_API_KEY` must also be available to that process. Technical-pilot-v1 has already run and remains preserved technical evidence; the distinct pilot-v2 namespace has not been executed.
+`OPENROUTER_API_KEY` must also be available to that process. Technical-pilot-v1 and technical-pilot-v2 have already run and remain preserved technical evidence; the distinct pilot-v3 namespace has not been executed.
 
 ## Experimental design at a glance
 

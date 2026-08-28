@@ -6,7 +6,7 @@ This sheet separates academic/protocol decisions from software implementation. T
 
 | Decision | Current proposal | Safe default until decided | Record from meeting |
 |---|---|---|---|
-| May the bounded OpenRouter technical pilot run? | One fixed-belief script x three exact models x two contexts x one repetition; at most 36 HTTP generation attempts | Do not run live; use fixture and zero-network dry-run | |
+| May the bounded OpenRouter technical pilot run? | One fixed-belief script x three exact models x two contexts x one repetition; 36 required responses and at most 48 HTTP attempts | Do not run live; use fixture and zero-network dry-run | |
 | Does a technical pilot require an ethics/governance check? | Synthetic prompts and model outputs only, but subject matter and third-party processing remain relevant | Confirm university process before live execution | |
 | Are the three exact endpoint slugs acceptable? | Version `model_a`, `model_b` and `model_c` in configuration; validate them together immediately before use; never substitute | Keep slots frozen but do not execute if any slug is unavailable | |
 | Is the pilot script suitable? | One safe, non-graphic `fixed_belief` script used only for pipeline shakeout | Supervisor reviews wording before any live call | |
@@ -65,7 +65,7 @@ This sheet separates academic/protocol decisions from software implementation. T
 3. Review the presentation definitions, nine scripts and three prefixes for construct validity, safety and parallelism.
 4. Agree primary outcomes, trajectory rules, missingness handling and whether any exploratory summaries are permitted.
 5. Agree annotator count, training, re-rating sample, reliability terminology and adjudication/wellbeing procedure.
-6. Decide whether the maximum-36-attempt technical pilot is authorised and what checks precede it.
+6. Decide whether the pilot-v3 maximum of 48 attempts (36 required responses plus 12 bounded failures) is authorised and what checks precede it.
 7. Freeze endpoint-selection and model-unavailability rules.
 8. Decide whether the baseline belongs in RQ4, future work or implementation-only validation.
 

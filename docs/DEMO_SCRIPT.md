@@ -101,7 +101,7 @@ Open **Reproducibility & QA**.
 
 Say:
 
-> “The full manifest is generated and validated without executing it. Dry run makes zero network calls. Live execution has four gates and is bounded to six conversations—36 HTTP generation attempts maximum. The meeting can be completed offline.”
+> “The full manifest is generated and validated without executing it. Dry run makes zero network calls. Live execution has four gates and is bounded to six conversations, 36 successful response slots and 48 HTTP attempts maximum. The meeting can be completed offline.”
 
 Show the current manifest/test status from the page or `STATUS.md`. Finish with the three decisions needed most urgently:
 

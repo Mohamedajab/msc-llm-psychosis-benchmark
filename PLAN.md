@@ -46,7 +46,7 @@ Validation:
 - [x] Implement a payload-inspectable deterministic fixture provider and robust OpenRouter provider.
 - [x] Accumulate full dialogue history on every request and apply the frozen prefix only in the standardised condition.
 - [x] Add dry-run, resume, immutable raw JSON storage, error separation, retries, and complete provenance.
-- [x] Add a four-gate technical pilot with a persistent maximum of 36 HTTP generation attempts.
+- [x] Add a four-gate technical pilot; pilot v3 has 36 response slots and a persistent maximum of 48 HTTP attempts.
 
 Acceptance criteria:
 

@@ -79,13 +79,20 @@ def test_pilot_plan_is_stable_bounded_and_never_calls_provider(
 
     assert first == second
     assert first["network_called"] is False
-    assert first["pilot_version"] == "technical-pilot-v2.0.0"
+    assert first["pilot_version"] == "technical-pilot-v3.0.0"
     assert first["conversation_count"] == 6
-    assert first["maximum_generation_calls"] == 36
-    assert first["maximum_http_generation_attempts_including_retries"] == 36
+    assert first["planned_successful_response_slots"] == 36
+    assert first["bounded_failure_attempts"] == 12
+    assert first["maximum_generation_calls"] == 48
+    assert first["maximum_http_generation_attempts_including_retries"] == 48
+    assert first["minimum_live_request_start_interval_seconds"] == 5.0
     assert len({run["run_id"] for run in first["runs"]}) == 6
-    assert all(run["run_id"].startswith("technical-pilot-v2_") for run in first["runs"])
-    assert all("technical-pilot-v1" not in run["run_id"] for run in first["runs"])
+    assert all(run["run_id"].startswith("technical-pilot-v3_") for run in first["runs"])
+    assert all(
+        "technical-pilot-v1" not in run["run_id"]
+        and "technical-pilot-v2" not in run["run_id"]
+        for run in first["runs"]
+    )
     assert {run["model_slot"] for run in first["runs"]} == {
         "model_a",
         "model_b",
@@ -179,13 +186,15 @@ def test_live_execution_uses_catalogue_preflight_cap_and_resume_without_network(
     assert instances[1].catalogue_checks == instances[0].catalogue_checks
 
     summary = run_pilot.build_live_summary(first, tmp_path / "pilot")
-    assert summary["pilot_version"] == "technical-pilot-v2.0.0"
+    assert summary["pilot_version"] == "technical-pilot-v3.0.0"
     assert summary["completed_conversations"] == 6
     assert summary["planned_conversations"] == 6
     assert summary["successful_responses"] == 36
     assert summary["technical_errors"] == 0
     assert summary["http_error_types"] == {}
-    assert summary["remaining_attempt_allowance"] == 0
+    assert summary["remaining_attempt_allowance"] == 12
+    assert summary["required_responses_remaining"] == 0
+    assert summary["remaining_allowance_sufficient"] is True
     assert len(summary["cells"]) == 6
 
 
@@ -205,14 +214,14 @@ def test_live_summary_reports_http_errors_and_remaining_cap_without_network(
         def generate(self, *, model_id, messages, generation):  # noqa: ANN001, ANN202
             del messages, generation
             return ProviderResult(
-                status=ObservationStatus.RATE_LIMITED,
+                status=ObservationStatus.PROVIDER_ERROR,
                 requested_model_id=model_id,
                 provider_name="openrouter",
                 latency_ms=0,
-                retry_count=0,
-                http_status=429,
-                error_type="http_429",
-                error_message="rate limited",
+                retry_count=2,
+                http_status=503,
+                error_type="http_503",
+                error_message="upstream unavailable",
             )
 
     output_root = tmp_path / "pilot"
@@ -230,9 +239,106 @@ def test_live_summary_reports_http_errors_and_remaining_cap_without_network(
     assert summary["completed_conversations"] == 0
     assert summary["successful_responses"] == 0
     assert summary["technical_errors"] == 6
-    assert summary["http_error_types"] == {"http_429": 6}
+    assert summary["http_error_types"] == {"http_503": 6}
     assert summary["remaining_attempt_allowance"] == 30
+    assert summary["required_responses_remaining"] == 36
+    assert summary["remaining_allowance_sufficient"] is False
     assert all(cell["status"] == "failed" for cell in summary["cells"])
+
+
+def test_later_invocation_resumes_append_only_in_v3_namespace(
+    tmp_path: Path,
+) -> None:
+    policies: list[tuple[bool, float]] = []
+
+    class FirstInvocationProvider(DeterministicFixtureProvider):
+        def __init__(self, *, api_key: str) -> None:
+            assert api_key == "not-a-real-key"
+            super().__init__()
+            self.retry_429 = True
+            self.interval = 0.0
+
+        def set_retry_rate_limits(self, enabled: bool) -> None:
+            self.retry_429 = enabled
+
+        def set_minimum_request_interval(self, seconds: float) -> None:
+            self.interval = seconds
+
+        def validate_exact_models(
+            self, model_ids: tuple[str, ...], timeout_seconds: float = 20
+        ) -> None:
+            del model_ids, timeout_seconds
+            policies.append((self.retry_429, self.interval))
+
+        def generate(self, *, model_id, messages, generation):  # noqa: ANN001, ANN202
+            del messages, generation
+            return ProviderResult(
+                status=ObservationStatus.RATE_LIMITED,
+                requested_model_id=model_id,
+                provider_name="openrouter",
+                latency_ms=0,
+                retry_count=0,
+                http_status=429,
+                error_type="http_429",
+                error_message="rate limited",
+            )
+
+    class ResumeProvider(FirstInvocationProvider):
+        def generate(self, *, model_id, messages, generation):  # noqa: ANN001, ANN202
+            return DeterministicFixtureProvider.generate(
+                self, model_id=model_id, messages=messages, generation=generation
+            )
+
+    gate = {
+        "RUN_LIVE_PILOT": "1",
+        "OPENROUTER_API_KEY": "not-a-real-key",
+    }
+    output_root = tmp_path / "pilot"
+    first = run_pilot.execute_live_pilot(
+        output_root=output_root,
+        live_requested=True,
+        live_confirmed=True,
+        environ=gate,
+        provider_factory=FirstInvocationProvider,
+    )
+    error_paths = sorted(output_root.rglob("turn-01-error-01.json"))
+    original_errors = {path: path.read_bytes() for path in error_paths}
+
+    assert len(first) == 6
+    assert len(error_paths) == 6
+    assert all(path.parent.name.startswith("technical-pilot-v3_") for path in error_paths)
+    assert not list(output_root.glob("technical-pilot-v1*"))
+    assert not list(output_root.glob("technical-pilot-v2*"))
+
+    resumed = run_pilot.execute_live_pilot(
+        output_root=output_root,
+        live_requested=True,
+        live_confirmed=True,
+        environ=gate,
+        provider_factory=ResumeProvider,
+    )
+
+    assert all(len(record.turns) == 6 for record in resumed)
+    assert all(path.read_bytes() == original_errors[path] for path in error_paths)
+    assert all(len(record.errors) == 1 for record in resumed)
+    assert policies == [(False, 5.0), (False, 5.0)]
+    summary = run_pilot.build_live_summary(resumed, output_root)
+    assert summary["attempts_used"] == 42
+    assert summary["remaining_attempt_allowance"] == 6
+    assert summary["remaining_allowance_sufficient"] is True
+
+
+def test_v3_rejects_request_pacing_below_five_seconds() -> None:
+    with pytest.raises(run_pilot.PilotPreflightError, match="at least five seconds"):
+        run_pilot.execute_live_pilot(
+            live_requested=True,
+            live_confirmed=True,
+            environ={
+                "RUN_LIVE_PILOT": "1",
+                "OPENROUTER_API_KEY": "not-a-real-key",
+            },
+            request_interval_seconds=4.99,
+        )
 
 
 def test_failed_exact_model_preflight_is_stored_as_technical_failure(

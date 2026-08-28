@@ -303,7 +303,7 @@ def render_overview(configuration: LocalConfiguration) -> None:
             ),
             (
                 "Technical pilot",
-                "Six conversations / maximum 36 attempts in the documented pilot",
+                "Six conversations / 36 responses / maximum 48 attempts in pilot v3",
                 "Engineering and feasibility evidence; descriptive only",
             ),
             (
@@ -518,7 +518,7 @@ def render_runner(configuration: LocalConfiguration) -> None:
                 _render_run_result(record)
 
     else:
-        st.info(f"TECHNICAL PILOT V2 - DESCRIPTIVE ONLY · {PILOT_VERSION}")
+        st.info(f"TECHNICAL PILOT V3 - DESCRIPTIVE ONLY · {PILOT_VERSION}")
         st.write("The bounded pilot will use these exact configured model IDs:")
         for model_id in resolved_models.values():
             st.code(model_id, language=None)
@@ -531,7 +531,7 @@ def render_runner(configuration: LocalConfiguration) -> None:
         if not environment_gate:
             st.warning("RUN_LIVE_PILOT is not 1. Live execution remains disabled.")
         live_confirmation = st.checkbox(
-            "I give final confirmation to contact OpenRouter for the fixed six-conversation, maximum 36-attempt technical pilot."
+            "I give final confirmation to contact OpenRouter for the fixed six-conversation, 36-response-slot, maximum 48-attempt technical pilot."
         )
         live_button = st.button(
             "Run or resume live technical pilot",

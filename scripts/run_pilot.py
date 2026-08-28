@@ -1,4 +1,4 @@
-"""Plan or explicitly execute the maximum 36-attempt OpenRouter technical pilot.
+"""Plan or explicitly execute the maximum 48-attempt OpenRouter technical pilot.
 
 Normal invocation is an offline dry-run that prints the configuration-driven
 plan. Generation requires ``--live``, ``--confirm-live``, ``RUN_LIVE_PILOT=1``,
@@ -43,14 +43,17 @@ from src.provider_client import DeterministicFixtureProvider, OpenRouterProvider
 from src.schemas import ContextCondition, ConversationRecord, RunHeader
 from src.storage import RawRunStore, atomic_write_json
 
-PILOT_VERSION = "technical-pilot-v2.0.0"
-PILOT_RUN_NAMESPACE = "technical-pilot-v2"
+PILOT_VERSION = "technical-pilot-v3.0.0"
+PILOT_RUN_NAMESPACE = "technical-pilot-v3"
 DEFAULT_SCRIPT_ID = "monitoring_fixed_belief_v1"
 PILOT_RANDOM_SEED = 20260814
-PILOT_PLANNED_TIME = datetime(2026, 8, 28, 23, 11, 14, tzinfo=UTC)
+PILOT_PLANNED_TIME = datetime(2026, 8, 28, 23, 32, 43, tzinfo=UTC)
 DEFAULT_LIVE_OUTPUT_ROOT = ROOT / "data" / "raw" / "runs"
 MAX_CONVERSATIONS = 6
-MAX_GENERATION_CALLS = 36
+PLANNED_RESPONSE_SLOTS = 36
+FAILURE_ATTEMPT_ALLOWANCE = 12
+MAX_GENERATION_CALLS = PLANNED_RESPONSE_SLOTS + FAILURE_ATTEMPT_ALLOWANCE
+MINIMUM_REQUEST_INTERVAL_SECONDS = 5.0
 
 
 class PilotPreflightError(RuntimeError):
@@ -118,7 +121,7 @@ def _assert_pilot_shape(entries: list[dict[str, Any]], model_count: int) -> None
         raise PilotPreflightError(
             "Internal pilot plan error: model/context cells or six-turn payloads are incomplete"
         )
-    if expected_conversations > MAX_CONVERSATIONS or expected_calls > MAX_GENERATION_CALLS:
+    if expected_conversations > MAX_CONVERSATIONS or expected_calls != PLANNED_RESPONSE_SLOTS:
         raise PilotPreflightError("Pilot plan exceeds its persistent request cap")
     if len({entry["run_id"] for entry in entries}) != expected_conversations:
         raise PilotPreflightError("Internal pilot plan error: run IDs are not unique")
@@ -185,8 +188,11 @@ def build_pilot_plan(
         "script_id": script_id,
         "execution_seed": PILOT_RANDOM_SEED,
         "conversation_count": len(entries),
+        "planned_successful_response_slots": PLANNED_RESPONSE_SLOTS,
+        "bounded_failure_attempts": FAILURE_ATTEMPT_ALLOWANCE,
         "maximum_generation_calls": MAX_GENERATION_CALLS,
         "maximum_http_generation_attempts_including_retries": MAX_GENERATION_CALLS,
+        "minimum_live_request_start_interval_seconds": MINIMUM_REQUEST_INTERVAL_SECONDS,
         "configured_models": model_ids,
         "configuration_hash": configuration_hash,
         "live_requirements": [
@@ -250,6 +256,7 @@ def execute_live_pilot(
     live_confirmed: bool = False,
     environ: Mapping[str, str] | None = None,
     provider_factory: Callable[..., Any] = OpenRouterProvider,
+    request_interval_seconds: float = MINIMUM_REQUEST_INTERVAL_SECONDS,
 ) -> list[Any]:
     """Run/resume the bounded pilot after gates and catalogue checks pass."""
 
@@ -262,6 +269,10 @@ def execute_live_pilot(
             "Live pilot blocked: a final --confirm-live-equivalent confirmation is required"
         )
     api_key = require_live_gate(environ)
+    if request_interval_seconds < MINIMUM_REQUEST_INTERVAL_SECONDS:
+        raise PilotPreflightError(
+            "Live pilot blocked: request-start interval must be at least five seconds"
+        )
     script, prefix, models, scripts, histories = _configuration(script_id)
     model_ids = _validated_model_ids(models)
     pilot_generation = generation_for_repetition(models, 1)
@@ -282,11 +293,18 @@ def execute_live_pilot(
     ]
     if incomplete and prior_attempts >= MAX_GENERATION_CALLS:
         raise PilotPreflightError(
-            "Live pilot blocked: the persistent 36-attempt generation cap is exhausted"
+            "Live pilot blocked: the persistent 48-attempt generation cap is exhausted"
         )
+    invocation_attempt_budget = MAX_GENERATION_CALLS - prior_attempts
     set_budget = getattr(provider, "set_request_attempt_budget", None)
     if incomplete and callable(set_budget):
-        set_budget(MAX_GENERATION_CALLS - prior_attempts)
+        set_budget(invocation_attempt_budget)
+    set_retry_rate_limits = getattr(provider, "set_retry_rate_limits", None)
+    if callable(set_retry_rate_limits):
+        set_retry_rate_limits(False)
+    set_request_interval = getattr(provider, "set_minimum_request_interval", None)
+    if callable(set_request_interval):
+        set_request_interval(request_interval_seconds)
     # One catalogue response must contain every exact slug before generation.
     try:
         provider.validate_exact_models(
@@ -314,6 +332,14 @@ def execute_live_pilot(
             configuration_hash=configuration_hash,
         )
         header = _resume_or_new_header(store, candidate)
+        if (
+            incomplete
+            and getattr(provider, "request_attempt_count", 0)
+            >= invocation_attempt_budget
+        ):
+            store.initialise(header)
+            records.append(store.load(header.run_id))
+            continue
         record = ConversationRunner(provider, store).run_or_resume(
             header=header, script=script, prefix=prefix
         )
@@ -370,7 +396,8 @@ def _print_plan_summary(plan: dict[str, Any]) -> None:
     print("OFFLINE DRY-RUN / PREFLIGHT ONLY - NO NETWORK CALLS")
     print(
         f"{plan['conversation_count']} conversations; "
-        f"maximum {plan['maximum_generation_calls']} generation calls"
+        f"{plan['planned_successful_response_slots']} planned response slots; "
+        f"maximum {plan['maximum_generation_calls']} HTTP attempts"
     )
     for entry in plan["runs"]:
         print(
@@ -391,6 +418,11 @@ def build_live_summary(
     store = RawRunStore(output_root)
     run_ids = [record.header.run_id for record in records]
     attempts_used = _stored_generation_attempts(store, run_ids)
+    successful_responses = sum(len(record.turns) for record in records)
+    required_responses_remaining = max(
+        0, PLANNED_RESPONSE_SLOTS - successful_responses
+    )
+    remaining_attempt_allowance = max(0, MAX_GENERATION_CALLS - attempts_used)
     http_errors = Counter(
         event.result.error_type
         for record in records
@@ -418,18 +450,22 @@ def build_live_summary(
         "pilot_version": PILOT_VERSION,
         "completed_conversations": sum(len(record.turns) == 6 for record in records),
         "planned_conversations": len(records),
-        "successful_responses": sum(len(record.turns) for record in records),
+        "successful_responses": successful_responses,
         "technical_errors": sum(len(record.errors) for record in records),
         "http_error_types": dict(http_errors),
         "attempts_used": attempts_used,
-        "remaining_attempt_allowance": max(0, MAX_GENERATION_CALLS - attempts_used),
+        "remaining_attempt_allowance": remaining_attempt_allowance,
+        "required_responses_remaining": required_responses_remaining,
+        "remaining_allowance_sufficient": (
+            remaining_attempt_allowance >= required_responses_remaining
+        ),
         "cells": cells,
         "output_directory": str(Path(output_root).resolve()),
     }
 
 
 def _print_live_summary(summary: Mapping[str, Any]) -> None:
-    print("TECHNICAL PILOT V2 - NOT DISSERTATION RESULTS")
+    print("TECHNICAL PILOT V3 - NOT DISSERTATION RESULTS")
     print(
         f"Completed conversations: {summary['completed_conversations']}/"
         f"{summary['planned_conversations']}"
@@ -450,6 +486,12 @@ def _print_live_summary(summary: Mapping[str, Any]) -> None:
     print(f"Technical errors: {summary['technical_errors']}")
     print(f"HTTP error types: {all_http_types}")
     print(f"Remaining attempt allowance: {summary['remaining_attempt_allowance']}")
+    sufficiency = "yes" if summary["remaining_allowance_sufficient"] else "no"
+    print(
+        "Mathematically sufficient to finish: "
+        f"{sufficiency} (remaining attempts={summary['remaining_attempt_allowance']}; "
+        f"required responses={summary['required_responses_remaining']})"
+    )
     print(f"Output directory: {summary['output_directory']}")
 
 
@@ -465,6 +507,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--script-id", default=DEFAULT_SCRIPT_ID)
     parser.add_argument("--output-root", type=Path, default=DEFAULT_LIVE_OUTPUT_ROOT)
+    parser.add_argument(
+        "--request-interval-seconds",
+        type=float,
+        default=MINIMUM_REQUEST_INTERVAL_SECONDS,
+        help="Seconds between live request starts (minimum 5)",
+    )
     parser.add_argument(
         "--plan-output",
         type=Path,
@@ -485,6 +533,7 @@ def main(argv: list[str] | None = None) -> int:
             script_id=arguments.script_id,
             live_requested=True,
             live_confirmed=arguments.confirm_live,
+            request_interval_seconds=arguments.request_interval_seconds,
         )
     except (OSError, ValueError, RuntimeError) as error:
         print(f"ERROR: {error}", file=sys.stderr)

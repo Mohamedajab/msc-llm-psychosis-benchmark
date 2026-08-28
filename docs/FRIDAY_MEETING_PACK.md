@@ -10,7 +10,7 @@
 
 The prototype now represents the proposed study as a controlled, inspectable software pipeline rather than “one chatbot talks and another chatbot judges it.” Nine synthetic six-turn scripts generate a balanced 108-conversation plan. A common runner sends the exact full dialogue history, varies only a frozen prefix for the context manipulation, and stores every provider-bound payload and response/error with provenance. Human ratings are blinded and use seven separate draft 0-2 axes. A transparent offline NLP layer and conversation-level trajectory analysis provide computational evidence without relying on an LLM judge.
 
-The build is demonstrable entirely with deterministic fixtures. Those outputs are clearly **DEMO FIXTURE - NOT RESEARCH DATA**. An optional live technical pilot is bounded at six conversations/36 HTTP generation attempts and has four independent gates. It has not been treated as main-study evidence. The full 108-conversation study has not been run.
+The build is demonstrable entirely with deterministic fixtures. Those outputs are clearly **DEMO FIXTURE - NOT RESEARCH DATA**. An optional live technical pilot is bounded at six conversations, 36 successful response slots and 48 HTTP attempts, and has four independent gates. It has not been treated as main-study evidence. The full 108-conversation study has not been run.
 
 ## Three evidence categories
 

@@ -96,10 +96,12 @@ The growth invariant is testable. With no prefix, turn 1 contains one user messa
 - requires `OPENROUTER_API_KEY` but never exposes it through the provider contract;
 - can validate all exact configured slugs from one current catalogue response;
 - refuses a returned model ID that differs from the requested slug;
-- applies configured timeouts and bounded retries;
+- applies configured timeouts, bounded retries and a shared HTTP-attempt budget;
+- can disable immediate HTTP 429 retries and pace live request starts;
 - honours numeric or HTTP-date `Retry-After` values;
 - distinguishes transport, rate-limit, blocked and provider failures;
 - records response text, IDs, finish reason, usage, latency, retry count, HTTP status and selected metadata where supplied;
+- for HTTP 200 responses with blank assistant content, records only safe structural diagnostics (choice count, finish reason, content presence, reasoning presence/length and reasoning-details presence/count), never hidden reasoning text;
 - truncates/sanitises provider error text and redacts the key.
 
 The adapter never silently substitutes a provider/model and never treats an upstream block as a safe textual refusal.
@@ -183,7 +185,9 @@ The application should remain thin: experimental messages are built in `src/payl
 
 ## Secrets and network boundary
 
-`.env`, raw run evidence and local annotations are ignored. The API key is read into memory only for live execution; it is not included in run schemas, hashes or exports. The fixed six-conversation CLI pilot requires `RUN_LIVE_PILOT=1`, `--live`, `--confirm-live`, and the key. Pilot v2 uses `technical-pilot-v2_*` run IDs and a version-specific preflight-failure directory, so it cannot resume or count attempts from pilot v1. Retries consume the same 36-attempt cap and may leave cells incomplete. The dashboard invokes the same bounded pilot and requires live-mode selection, the environment gate, the key and final on-screen confirmation. All other documented paths are offline.
+`.env`, raw run evidence and local annotations are ignored. The API key is read into memory only for live execution; it is not included in run schemas, hashes or exports. The fixed six-conversation CLI pilot requires `RUN_LIVE_PILOT=1`, `--live`, `--confirm-live`, and the key. Pilot v3 uses `technical-pilot-v3_*` run IDs and a version-specific preflight-failure directory, so it cannot resume or count attempts from pilot v1 or v2. Its 48-attempt cap covers 36 required responses plus 12 failures. Retries consume that cap and may leave cells incomplete; HTTP 429 is recorded once and stops that conversation until a later deliberate invocation. Live POST starts are at least five seconds apart. The dashboard invokes the same bounded pilot and requires live-mode selection, the environment gate, the key and final on-screen confirmation. All other documented paths are offline.
+
+OpenRouter documents final assistant `content` separately from `message.reasoning` and `message.reasoning_details`; GLM 5.2 is advertised as a reasoning model. Therefore an HTTP 200 can still be unusable when `content` is blank, including a plausible case where reasoning is present but no final answer is produced. Pilot-v2 did not retain the response-body structure, so that explanation is an inference rather than a proven diagnosis. The adapter never promotes hidden reasoning to chatbot text. OpenRouter's documented `reasoning.exclude` option controls whether reasoning is returned, not whether final content will be produced, so v3 does not guess at a request-setting change. The new structure-only diagnostics are intended to establish the cause safely if the condition recurs. See [OpenRouter reasoning tokens](https://openrouter.ai/docs/guides/best-practices/reasoning-tokens) and the [GLM 5.2 endpoint description](https://openrouter.ai/z-ai/glm-5.2%3Afree).
 
 ## Reproducibility boundary
 

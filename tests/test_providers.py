@@ -86,6 +86,64 @@ def test_rate_limit_honours_retry_after_and_is_bounded() -> None:
     assert sleeps == [3.0, 3.0]
 
 
+def test_rate_limit_can_stop_without_immediate_retry() -> None:
+    calls = 0
+    sleeps: list[float] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        del request
+        calls += 1
+        return httpx.Response(429, json={"error": {"message": "wait"}})
+
+    provider = OpenRouterProvider(
+        api_key="secret", transport=httpx.MockTransport(handler), sleep=sleeps.append
+    )
+    provider.set_retry_rate_limits(False)
+    result = provider.generate(
+        model_id="openai/gpt-oss-20b:free", messages=MESSAGES, generation=GENERATION
+    )
+
+    assert result.status == ObservationStatus.RATE_LIMITED
+    assert result.retry_count == 0
+    assert calls == 1
+    assert sleeps == []
+
+
+def test_request_starts_are_paced_without_real_sleep() -> None:
+    clock = [0.0]
+    sleeps: list[float] = []
+
+    def fake_sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+        clock[0] += seconds
+
+    provider = OpenRouterProvider(
+        api_key="secret",
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(
+                200,
+                json={
+                    "model": "openai/gpt-oss-20b:free",
+                    "choices": [
+                        {"message": {"content": "Done."}, "finish_reason": "stop"}
+                    ],
+                },
+            )
+        ),
+        sleep=fake_sleep,
+        monotonic=lambda: clock[0],
+    )
+    provider.set_minimum_request_interval(5.0)
+
+    for _ in range(2):
+        provider.generate(
+            model_id="openai/gpt-oss-20b:free", messages=MESSAGES, generation=GENERATION
+        )
+
+    assert sleeps == [5.0]
+
+
 def test_invalid_request_and_embedded_error_are_not_responses_or_retried() -> None:
     calls = 0
 
@@ -218,6 +276,45 @@ def test_refusal_is_a_response_but_choice_error_and_empty_text_are_not() -> None
         assert result.text is None
 
 
+def test_empty_response_stores_structure_not_hidden_reasoning() -> None:
+    hidden = "private chain of thought"
+    result = OpenRouterProvider(
+        api_key="secret",
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(
+                200,
+                json={
+                    "model": "openai/gpt-oss-20b:free",
+                    "choices": [
+                        {
+                            "message": {
+                                "content": "",
+                                "reasoning": hidden,
+                                "reasoning_details": [{"type": "reasoning.text"}],
+                            },
+                            "finish_reason": "length",
+                        }
+                    ],
+                },
+            )
+        ),
+        sleep=lambda _: None,
+    ).generate(model_id="openai/gpt-oss-20b:free", messages=MESSAGES, generation=GENERATION)
+
+    assert result.error_type == "empty_response"
+    assert result.text is None
+    assert result.response_metadata == {
+        "choice_count": 1,
+        "finish_reason": "length",
+        "content_present": False,
+        "reasoning_present": True,
+        "reasoning_length": len(hidden),
+        "reasoning_details_present": True,
+        "reasoning_details_count": 1,
+    }
+    assert hidden not in result.model_dump_json()
+
+
 def test_catalogue_preflight_requires_exact_configured_slug() -> None:
     provider = OpenRouterProvider(
         api_key="secret",
@@ -275,6 +372,33 @@ def test_shared_request_budget_counts_retries_and_blocks_before_network() -> Non
     )
     assert again.error_type == "request_budget_exhausted"
     assert calls == 2
+
+
+def test_hard_48_attempt_budget_never_sends_attempt_49() -> None:
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        del request
+        calls += 1
+        return httpx.Response(503, json={"error": {"message": "retry"}})
+
+    provider = OpenRouterProvider(
+        api_key="secret", transport=httpx.MockTransport(handler), sleep=lambda _: None
+    )
+    provider.set_request_attempt_budget(48)
+    for _ in range(16):
+        result = provider.generate(
+            model_id="openai/gpt-oss-20b:free", messages=MESSAGES, generation=GENERATION
+        )
+        assert result.error_type == "http_503"
+
+    blocked = provider.generate(
+        model_id="openai/gpt-oss-20b:free", messages=MESSAGES, generation=GENERATION
+    )
+    assert blocked.error_type == "request_budget_exhausted"
+    assert calls == 48
+    assert provider.request_attempt_count == 48
 
 
 def test_resolved_model_mismatch_is_rejected_and_secret_redacted() -> None:
