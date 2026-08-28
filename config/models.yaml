@@ -1,6 +1,6 @@
-version: "1.1.0"
+version: "1.2.0"
 provider: openrouter
-catalogue_checked_at_utc: "2026-08-28T22:43:14Z"
+catalogue_checked_at_utc: "2026-08-28T23:11:14Z"
 catalogue_endpoint: "https://openrouter.ai/api/v1/models"
 model_slots:
   model_a:
@@ -10,7 +10,7 @@ model_slots:
     default_model_id: "minimax/minimax-m3:free"
     exact_slug_required: true
   model_c:
-    default_model_id: "thinkingmachines/inkling-small:free"
+    default_model_id: "z-ai/glm-5.2:free"
     exact_slug_required: true
 generation:
   version: "generation-v1"
@@ -24,6 +24,6 @@ repetition_seeds:
   1: 20260814
   2: 20260815
 notes:
-  - "These exact free slugs were present in the public OpenRouter catalogue on 2026-08-28."
-  - "The models are instruction/general-purpose text-chat models from Google, MiniMax, and Thinking Machines; all advertise seed support and at least 262144 tokens of context."
+  - "Model C z-ai/glm-5.2:free was confirmed in the public OpenRouter catalogue on 2026-08-29; this catalogue verification made no generation request."
+  - "The active models are instruction/general-purpose text-chat models from Google, MiniMax, and Z.ai; all advertise seed support and at least 256000 tokens of context."
   - "Availability can change; live execution validates the configured slug and never substitutes another model."

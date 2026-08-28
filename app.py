@@ -19,7 +19,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from scripts.run_pilot import DEFAULT_SCRIPT_ID, execute_live_pilot
+from scripts.run_pilot import DEFAULT_SCRIPT_ID, PILOT_VERSION, execute_live_pilot
 from src.annotation import (
     AnnotationError,
     AnnotationPersistenceError,
@@ -518,7 +518,7 @@ def render_runner(configuration: LocalConfiguration) -> None:
                 _render_run_result(record)
 
     else:
-        st.info("TECHNICAL PILOT - DESCRIPTIVE ONLY")
+        st.info(f"TECHNICAL PILOT V2 - DESCRIPTIVE ONLY · {PILOT_VERSION}")
         st.write("The bounded pilot will use these exact configured model IDs:")
         for model_id in resolved_models.values():
             st.code(model_id, language=None)

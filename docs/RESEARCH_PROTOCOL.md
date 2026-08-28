@@ -177,7 +177,7 @@ $env:RUN_LIVE_PILOT='1'
 & .\.venv\Scripts\python.exe scripts\run_pilot.py --live --confirm-live
 ```
 
-The technical pilot exists to find transport, quota, resume, storage and annotation problems. It is not dissertation evidence, should receive descriptive plots only, and must not trigger the full 108-conversation study. Its attempt cap is reconstructed from stored success and error events when execution resumes.
+The technical pilot exists to find transport, quota, resume, storage and annotation problems. It is not dissertation evidence, should receive descriptive plots only, and must not trigger the full 108-conversation study. Its attempt cap is reconstructed from stored success and error events when execution resumes. Each retry consumes the same 36-attempt allowance and can therefore leave the six-conversation pilot incomplete. Pilot v2 uses a distinct `technical-pilot-v2` run namespace and preflight-failure directory; pilot-v1 evidence must never be renamed, overwritten or included in v2 resume accounting.
 
 ## Human annotation protocol
 

@@ -18,6 +18,7 @@ import random
 import sys
 import tempfile
 import uuid
+from collections import Counter
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
@@ -39,13 +40,14 @@ from src.config_loader import (
 )
 from src.conversation_runner import ConversationRunner, create_run_header
 from src.provider_client import DeterministicFixtureProvider, OpenRouterProvider
-from src.schemas import ContextCondition, RunHeader
+from src.schemas import ContextCondition, ConversationRecord, RunHeader
 from src.storage import RawRunStore, atomic_write_json
 
-PILOT_VERSION = "technical-pilot-v1.0.0"
+PILOT_VERSION = "technical-pilot-v2.0.0"
+PILOT_RUN_NAMESPACE = "technical-pilot-v2"
 DEFAULT_SCRIPT_ID = "monitoring_fixed_belief_v1"
 PILOT_RANDOM_SEED = 20260814
-PILOT_PLANNED_TIME = datetime(2026, 8, 14, 9, 0, tzinfo=UTC)
+PILOT_PLANNED_TIME = datetime(2026, 8, 28, 23, 11, 14, tzinfo=UTC)
 DEFAULT_LIVE_OUTPUT_ROOT = ROOT / "data" / "raw" / "runs"
 MAX_CONVERSATIONS = 6
 MAX_GENERATION_CALLS = 36
@@ -105,7 +107,7 @@ def _ordered_cells(model_slots: Any) -> list[tuple[str, ContextCondition]]:
 
 
 def _run_id(script_id: str, slot: str, condition: ContextCondition) -> str:
-    return f"technical-pilot-v1_{script_id}_{slot}_{condition.value}_r1"
+    return f"{PILOT_RUN_NAMESPACE}_{script_id}_{slot}_{condition.value}_r1"
 
 
 def _assert_pilot_shape(entries: list[dict[str, Any]], model_count: int) -> None:
@@ -346,7 +348,7 @@ def _store_preflight_failure(
     message = str(error).replace(api_key, "[REDACTED]")[:500]
     destination = (
         Path(output_root)
-        / "technical-pilot-preflight-failures"
+        / f"{PILOT_RUN_NAMESPACE}-preflight-failures"
         / f"{timestamp.strftime('%Y%m%dT%H%M%S%fZ')}-{uuid.uuid4().hex}.json"
     )
     return atomic_write_json(
@@ -379,6 +381,76 @@ def _print_plan_summary(plan: dict[str, Any]) -> None:
         "To execute, explicitly pass --live --confirm-live and set "
         "RUN_LIVE_PILOT=1 plus the API key."
     )
+
+
+def build_live_summary(
+    records: list[ConversationRecord], output_root: str | Path
+) -> dict[str, Any]:
+    """Summarise technical outcomes without exposing conversation content."""
+
+    store = RawRunStore(output_root)
+    run_ids = [record.header.run_id for record in records]
+    attempts_used = _stored_generation_attempts(store, run_ids)
+    http_errors = Counter(
+        event.result.error_type
+        for record in records
+        for event in record.errors
+        if (event.result.error_type or "").startswith("http_")
+    )
+    cells = [
+        {
+            "model_slot": record.header.model_slot,
+            "context_condition": record.header.context_condition.value,
+            "status": record.status.value,
+            "successful_responses": len(record.turns),
+            "technical_errors": len(record.errors),
+            "http_error_types": dict(
+                Counter(
+                    event.result.error_type
+                    for event in record.errors
+                    if (event.result.error_type or "").startswith("http_")
+                )
+            ),
+        }
+        for record in records
+    ]
+    return {
+        "pilot_version": PILOT_VERSION,
+        "completed_conversations": sum(len(record.turns) == 6 for record in records),
+        "planned_conversations": len(records),
+        "successful_responses": sum(len(record.turns) for record in records),
+        "technical_errors": sum(len(record.errors) for record in records),
+        "http_error_types": dict(http_errors),
+        "attempts_used": attempts_used,
+        "remaining_attempt_allowance": max(0, MAX_GENERATION_CALLS - attempts_used),
+        "cells": cells,
+        "output_directory": str(Path(output_root).resolve()),
+    }
+
+
+def _print_live_summary(summary: Mapping[str, Any]) -> None:
+    print("TECHNICAL PILOT V2 - NOT DISSERTATION RESULTS")
+    print(
+        f"Completed conversations: {summary['completed_conversations']}/"
+        f"{summary['planned_conversations']}"
+    )
+    for cell in summary["cells"]:
+        http_types = ", ".join(
+            f"{name}={count}" for name, count in cell["http_error_types"].items()
+        ) or "none"
+        print(
+            f"{cell['model_slot']} | {cell['context_condition']} | {cell['status']} | "
+            f"responses={cell['successful_responses']} | errors={cell['technical_errors']} | "
+            f"HTTP errors={http_types}"
+        )
+    all_http_types = ", ".join(
+        f"{name}={count}" for name, count in summary["http_error_types"].items()
+    ) or "none"
+    print(f"Successful responses: {summary['successful_responses']}")
+    print(f"Technical errors: {summary['technical_errors']}")
+    print(f"HTTP error types: {all_http_types}")
+    print(f"Remaining attempt allowance: {summary['remaining_attempt_allowance']}")
+    print(f"Output directory: {summary['output_directory']}")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -418,11 +490,9 @@ def main(argv: list[str] | None = None) -> int:
         print(f"ERROR: {error}", file=sys.stderr)
         return 2
 
-    completed = sum(len(record.turns) == 6 for record in records)
-    print("TECHNICAL PILOT - NOT DISSERTATION RESULTS")
-    print(f"Completed/resumed {completed}/{len(records)} conversations")
-    print(arguments.output_root.resolve())
-    return 0 if completed == len(records) else 1
+    summary = build_live_summary(records, arguments.output_root)
+    _print_live_summary(summary)
+    return 0 if summary["completed_conversations"] == len(records) else 1
 
 
 if __name__ == "__main__":

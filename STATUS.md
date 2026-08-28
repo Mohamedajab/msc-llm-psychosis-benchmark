@@ -1,69 +1,70 @@
 # Build Status
 
-Last updated: 28 August 2026, 23:50 BST (Europe/London)
+Last updated: 29 August 2026 (Europe/London)
 
 ## Outcome
 
-The repository now has a minimal configuration-driven three-model OpenRouter integration. No live inference or pilot was run. Dry-run and deterministic-fixture paths remain zero-network and visibly separated from the gated live technical pilot.
+Model C has been replaced in the active configuration with `z-ai/glm-5.2:free`. Gemma and MiniMax are unchanged. The planned main-study design remains 108 conversations and 648 response slots.
 
-The verified pre-edit state is preserved by annotated tag `codex/pre-openrouter-three-model-integration-20260828` at commit `043ff25`.
+No live generation request was made during this update. Dry-run and deterministic-fixture paths remain zero-network.
 
-## Exact target models
+## Technical-pilot-v1 evidence
 
-One read-only request to `https://openrouter.ai/api/v1/models` was made on 28 August 2026. It confirmed these exact zero-priced text-input/text-output endpoints with seed support and sufficient context:
+Technical-pilot-v1 was executed before this update and remains technical evidence rather than dissertation results:
 
-- `google/gemma-4-31b-it:free` — Google DeepMind instruction-tuned family; 262,144-token context.
-- `minimax/minimax-m3:free` — MiniMax general multimodal foundation family; 1,048,576-token context.
-- `thinkingmachines/inkling-small:free` — Thinking Machines general-purpose family; 1,048,576-token context.
+- `model_a`, `google/gemma-4-31b-it:free`: provider HTTP 429 failures;
+- `model_b`, `minimax/minimax-m3:free`: both six-turn conversations completed;
+- former `model_c`, `thinkingmachines/inkling-small:free`: HTTP 403 because the endpoint is restricted to agentic harnesses.
 
-The IDs are versioned in `config/models.yaml`. Routers, `latest` aliases, paid endpoints and silent substitution are rejected.
+The 25 pilot-v1 raw files remain under their original `technical-pilot-v1_*` paths. Before editing, their aggregate path/content SHA-256 was `0827053491f3baed31240df57b472bdcef73f74d1b4cc293f4155b8811e59657`. They were not renamed, rewritten, deleted or included in the pilot-v2 attempt allowance.
 
-## Experiment accounting
+The pre-update Git state is preserved by annotated tag `codex/pre-glm-pilot-v2-20260829` at commit `4d326c6`.
 
-- Main study: `3 presentations x 3 themes x 3 models x 2 contexts x 2 repetitions = 108 conversations`.
-- Planned main-study responses: `108 x 6 = 648`.
-- Technical pilot: `1 frozen scenario x 3 models x 2 contexts = 6 conversations`.
-- Pilot cap: at most 36 HTTP generation attempts including retries, reconstructed from append-only records on resume.
+## Active exact model configuration
 
-Every later request retains the frozen context condition, all earlier user messages, all assistant responses verbatim, and the current user message. Requested/returned identity, run ID, turn, repetition, seed/parameters, timestamps, latency, usage, payload hash, and error/retry details remain stored in provenance.
+- `model_a`: `google/gemma-4-31b-it:free`
+- `model_b`: `minimax/minimax-m3:free`
+- `model_c`: `z-ai/glm-5.2:free`
 
-## Safety gates
+GLM 5.2 was confirmed in OpenRouter's public catalogue on 29 August 2026 as zero-priced, text-input/text-output, seed-compatible, general purpose, and having a 256,000-token context. This was catalogue verification, not a generation request.
 
-Live execution requires all four conditions:
+## Technical-pilot-v2 boundary
 
-1. explicit live mode or `--live`;
-2. `RUN_LIVE_PILOT=1`;
-3. `OPENROUTER_API_KEY` available to the process;
-4. final on-screen confirmation or `--confirm-live`.
+- Version: `technical-pilot-v2.0.0`
+- Run namespace: `technical-pilot-v2_*`
+- Preflight failures: `technical-pilot-v2-preflight-failures/`
+- Plan: one frozen scenario x three configured models x two contexts = six conversations and 36 response slots.
+- Safety cap: at most 36 HTTP generation attempts including retries.
 
-All exact IDs are checked from one catalogue response before generation. A failed preflight creates a technical-failure record and makes no generation request. Provider errors are never saved as chatbot responses.
+Retries consume the cap and may leave the pilot incomplete. Resume accounting uses only matching pilot-v2 run IDs. Exact-slug catalogue validation still occurs before generation and never substitutes another model.
 
-## Final validation
+The live CLI summary reports completion per model/context, successful-response and technical-error counts, HTTP error types, remaining allowance, and output directory. It does not print response text, prompts, payloads or secrets.
 
-All commands used `C:\Users\Moham\OneDrive\Documents\project\.venv\Scripts\python.exe`.
+## Validation
 
-| Validation | Result |
+| Check | Result |
 |---|---|
-| `python -m pytest -q` | 76 passed in 18.31s |
+| `python -m pytest -q` | 77 passed in 28.10s |
 | `python -m ruff check app.py src scripts tests` | All checks passed |
 | `python -m compileall -q app.py src scripts tests` | Exit 0 |
 | `python scripts\generate_manifest.py --validate` | 108 unique balanced runs |
-| `python scripts\run_pilot.py` | Offline only; 6 conversations; maximum 36 generation attempts |
-| Programmatic design audit | 3 exact IDs, 108 unique runs, 648 response slots, balanced cells, distinct seeds, complete later-turn history, zero-network pilot |
+| `python scripts\run_pilot.py` | Offline only; six pilot-v2 conversations and 36 planned requests |
+| Programmatic audit | Exact Gemma/MiniMax/GLM IDs, 108/648 balance, zero-network v2 plan, disjoint namespaces |
+| Pilot-v1 preservation | 25 files; aggregate SHA-256 unchanged |
 
-## Current evidence status and unresolved risks
+## Evidence status and unresolved risks
 
-- Demo fixtures are **DEMO FIXTURE - NOT RESEARCH DATA**.
-- The technical pilot remains unexecuted and **TECHNICAL PILOT - DESCRIPTIVE ONLY**.
-- The 108-row main-study manifest is a plan; the main study has not run.
-- Free endpoint availability, quotas and provider infrastructure can change; same-time preflight may therefore stop collection.
-- A remote provider may not honour a seed deterministically, and infrastructure behind an unchanged slug may change.
+- Pilot v1 is preserved technical evidence, not main-study evidence.
+- Pilot v2 is planned but has not been run.
+- Gemma remains active; its v1 HTTP 429 is retained as a provider failure and may recur.
+- Free endpoint availability, quotas and provider infrastructure can change.
+- Seeds may not guarantee deterministic remote output.
 - The seven-axis rubric remains a draft pending supervisor/research-group confirmation.
-- OneDrive conflict/locking and raw-evidence backup procedures remain operational risks.
+- OneDrive locking and raw-evidence backup remain operational risks.
 
-## Deliberately authorised live command
+## Later authorised pilot-v2 command
 
-Only after approval and with the API key available:
+Only after deliberate approval and with the API key available:
 
 ```powershell
 $env:RUN_LIVE_PILOT='1'

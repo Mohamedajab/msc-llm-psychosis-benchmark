@@ -110,25 +110,27 @@ Generate and verify the fixed six-conversation technical-pilot plan and exact dr
 & .\.venv\Scripts\python.exe scripts\run_pilot.py
 ```
 
-To retain the complete 36-payload preflight as a derived JSON artifact:
+To retain the complete pilot-v2 36-payload preflight as a derived JSON artifact:
 
 ```powershell
-& .\.venv\Scripts\python.exe scripts\run_pilot.py --plan-output outputs\technical_pilot_plan.json
+& .\.venv\Scripts\python.exe scripts\run_pilot.py --plan-output outputs\technical_pilot_v2_plan.json
 ```
 
 ## Optional live technical pilot
 
-The bounded CLI pilot requires explicit live selection, final confirmation, `RUN_LIVE_PILOT=1`, and an API key. It is fixed to one six-turn `fixed_belief` script, all three exact model slots, two context conditions and one repetition: **6 conversations, at most 36 HTTP generation attempts including retries**. The cap is reconstructed from append-only records when a run resumes. The dashboard invokes this same bounded pilot and applies the same environment/key gates plus an on-screen final confirmation.
+The bounded CLI pilot requires explicit live selection, final confirmation, `RUN_LIVE_PILOT=1`, and an API key. It is fixed to one six-turn `fixed_belief` script, all three exact model slots, two context conditions and one repetition: **6 conversations, at most 36 HTTP generation attempts including retries**. Every retry consumes that allowance, so repeated provider failures can leave the pilot incomplete. The cap is reconstructed from append-only records when a run resumes. The dashboard invokes this same bounded pilot and applies the same environment/key gates plus an on-screen final confirmation.
 
-The public OpenRouter catalogue was checked once on 28 August 2026 without making a generation request. The selected zero-priced endpoints all advertised text input/output, seed support and at least 262,144 tokens of context:
+Model C was replaced after technical-pilot-v1 showed that Inkling was restricted to agentic harnesses. The replacement was confirmed in OpenRouter's public catalogue on 29 August 2026 without making a generation request. The active zero-priced endpoints advertise text input/output, seed support and at least 256,000 tokens of context:
 
 | Slot | Exact fixed ID | Selection rationale |
 |---|---|---|
 | `model_a` | `google/gemma-4-31b-it:free` | Google DeepMind instruction-tuned family; 262,144-token context |
 | `model_b` | `minimax/minimax-m3:free` | MiniMax general multimodal foundation family; 1,048,576-token context |
-| `model_c` | `thinkingmachines/inkling-small:free` | Thinking Machines general-purpose family; 1,048,576-token context |
+| `model_c` | `z-ai/glm-5.2:free` | Z.ai general-purpose family; 256,000-token context |
 
-They are distinct developer/model families and fixed `:free` IDs, not routers, `latest` aliases or fallbacks. Availability remains time-dependent, so the pilot validates all three from one fresh catalogue response immediately before generation.
+They are distinct developer/model families and fixed `:free` IDs, not routers, `latest` aliases or fallbacks. Availability remains time-dependent, so the pilot validates all three from one fresh catalogue response immediately before generation. Model A remains unchanged despite its pilot-v1 HTTP 429 outcome, which is retained as a technical provider failure.
+
+Technical-pilot-v1 records use `technical-pilot-v1_*` run IDs and remain immutable. Pilot v2 uses `technical-pilot-v2_*` run IDs plus a separate v2 preflight-failure directory, preventing resume or attempt accounting from crossing versions.
 
 First copy the template and edit `.env` locally, or set environment variables in the current PowerShell session. Never paste a key into source, documentation, a screenshot or a committed file.
 
@@ -137,7 +139,7 @@ Copy-Item .env.example .env
 notepad .env
 ```
 
-Before any live run, check the exact model IDs in `.env` against the current OpenRouter catalogue. Availability of free endpoints can change. The runner rejects an unavailable or silently substituted model rather than changing the study condition.
+Before any live run, review the exact IDs in `config/models.yaml`. Availability of free endpoints can change. The runner checks every configured exact slug and rejects an unavailable or silently substituted model rather than changing the study condition.
 
 Only when live execution is intentionally authorised:
 
@@ -146,7 +148,7 @@ $env:RUN_LIVE_PILOT='1'
 & .\.venv\Scripts\python.exe scripts\run_pilot.py --live --confirm-live
 ```
 
-`OPENROUTER_API_KEY` must also be available to that process. The Friday demonstration does not depend on this command, and this repository does not claim that a live call has been run successfully.
+`OPENROUTER_API_KEY` must also be available to that process. Technical-pilot-v1 has already run and remains preserved technical evidence; the distinct pilot-v2 namespace has not been executed.
 
 ## Experimental design at a glance
 

@@ -63,7 +63,7 @@ $env:RUN_LIVE_PILOT='1'
 & .\.venv\Scripts\python.exe scripts\run_pilot.py --live --confirm-live
 ```
 
-The pilot is fixed at six conversations and at most 36 HTTP generation attempts including retries. Do not expand it during execution. Resume rather than restarting completed turns.
+Pilot v2 is fixed at six conversations and at most 36 HTTP generation attempts including retries. Every retry consumes the cap, so the pilot may end incomplete. Do not expand it during execution. Resume only matching `technical-pilot-v2_*` runs; never reuse or alter pilot-v1 records.
 
 Afterward, perform a turn-by-turn audit:
 

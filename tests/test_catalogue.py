@@ -49,5 +49,5 @@ def test_exact_models_resolve_from_versioned_configuration() -> None:
     assert resolve_model_ids(models) == {
         "model_a": "google/gemma-4-31b-it:free",
         "model_b": "minimax/minimax-m3:free",
-        "model_c": "thinkingmachines/inkling-small:free",
+        "model_c": "z-ai/glm-5.2:free",
     }

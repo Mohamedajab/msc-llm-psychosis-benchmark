@@ -10,7 +10,12 @@ import pytest
 
 from scripts import generate_demo, generate_snapshot, run_pilot
 from src.provider_client import DeterministicFixtureProvider
-from src.schemas import AnnotationEvent, ConversationRecord
+from src.schemas import (
+    AnnotationEvent,
+    ConversationRecord,
+    ObservationStatus,
+    ProviderResult,
+)
 
 
 def _tree_digest(root: Path) -> str:
@@ -74,10 +79,13 @@ def test_pilot_plan_is_stable_bounded_and_never_calls_provider(
 
     assert first == second
     assert first["network_called"] is False
+    assert first["pilot_version"] == "technical-pilot-v2.0.0"
     assert first["conversation_count"] == 6
     assert first["maximum_generation_calls"] == 36
     assert first["maximum_http_generation_attempts_including_retries"] == 36
     assert len({run["run_id"] for run in first["runs"]}) == 6
+    assert all(run["run_id"].startswith("technical-pilot-v2_") for run in first["runs"])
+    assert all("technical-pilot-v1" not in run["run_id"] for run in first["runs"])
     assert {run["model_slot"] for run in first["runs"]} == {
         "model_a",
         "model_b",
@@ -156,7 +164,7 @@ def test_live_execution_uses_catalogue_preflight_cap_and_resume_without_network(
     assert instances[0].catalogue_checks == [
         "google/gemma-4-31b-it:free",
         "minimax/minimax-m3:free",
-        "thinkingmachines/inkling-small:free",
+        "z-ai/glm-5.2:free",
     ]
 
     second = run_pilot.execute_live_pilot(
@@ -169,6 +177,62 @@ def test_live_execution_uses_catalogue_preflight_cap_and_resume_without_network(
     assert len(second) == 6
     assert len(instances[1].calls) == 0
     assert instances[1].catalogue_checks == instances[0].catalogue_checks
+
+    summary = run_pilot.build_live_summary(first, tmp_path / "pilot")
+    assert summary["pilot_version"] == "technical-pilot-v2.0.0"
+    assert summary["completed_conversations"] == 6
+    assert summary["planned_conversations"] == 6
+    assert summary["successful_responses"] == 36
+    assert summary["technical_errors"] == 0
+    assert summary["http_error_types"] == {}
+    assert summary["remaining_attempt_allowance"] == 0
+    assert len(summary["cells"]) == 6
+
+
+def test_live_summary_reports_http_errors_and_remaining_cap_without_network(
+    tmp_path: Path,
+) -> None:
+    class HttpErrorProvider(DeterministicFixtureProvider):
+        def __init__(self, *, api_key: str) -> None:
+            assert api_key == "not-a-real-key"
+            super().__init__()
+
+        def validate_exact_models(
+            self, model_ids: tuple[str, ...], timeout_seconds: float = 20
+        ) -> None:
+            del model_ids, timeout_seconds
+
+        def generate(self, *, model_id, messages, generation):  # noqa: ANN001, ANN202
+            del messages, generation
+            return ProviderResult(
+                status=ObservationStatus.RATE_LIMITED,
+                requested_model_id=model_id,
+                provider_name="openrouter",
+                latency_ms=0,
+                retry_count=0,
+                http_status=429,
+                error_type="http_429",
+                error_message="rate limited",
+            )
+
+    output_root = tmp_path / "pilot"
+    records = run_pilot.execute_live_pilot(
+        output_root=output_root,
+        live_requested=True,
+        live_confirmed=True,
+        environ={
+            "RUN_LIVE_PILOT": "1",
+            "OPENROUTER_API_KEY": "not-a-real-key",
+        },
+        provider_factory=HttpErrorProvider,
+    )
+    summary = run_pilot.build_live_summary(records, output_root)
+    assert summary["completed_conversations"] == 0
+    assert summary["successful_responses"] == 0
+    assert summary["technical_errors"] == 6
+    assert summary["http_error_types"] == {"http_429": 6}
+    assert summary["remaining_attempt_allowance"] == 30
+    assert all(cell["status"] == "failed" for cell in summary["cells"])
 
 
 def test_failed_exact_model_preflight_is_stored_as_technical_failure(

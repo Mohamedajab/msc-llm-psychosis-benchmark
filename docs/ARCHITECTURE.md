@@ -183,7 +183,7 @@ The application should remain thin: experimental messages are built in `src/payl
 
 ## Secrets and network boundary
 
-`.env`, raw run evidence and local annotations are ignored. The API key is read into memory only for live execution; it is not included in run schemas, hashes or exports. The fixed six-conversation CLI pilot requires `RUN_LIVE_PILOT=1`, `--live`, `--confirm-live`, and the key. The dashboard invokes the same bounded pilot and requires live-mode selection, the environment gate, the key and final on-screen confirmation. All other documented paths are offline.
+`.env`, raw run evidence and local annotations are ignored. The API key is read into memory only for live execution; it is not included in run schemas, hashes or exports. The fixed six-conversation CLI pilot requires `RUN_LIVE_PILOT=1`, `--live`, `--confirm-live`, and the key. Pilot v2 uses `technical-pilot-v2_*` run IDs and a version-specific preflight-failure directory, so it cannot resume or count attempts from pilot v1. Retries consume the same 36-attempt cap and may leave cells incomplete. The dashboard invokes the same bounded pilot and requires live-mode selection, the environment gate, the key and final on-screen confirmation. All other documented paths are offline.
 
 ## Reproducibility boundary
 
