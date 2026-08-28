@@ -17,7 +17,7 @@ ROWS = [
         "enum",
         "control, ambiguous, or fixed_belief; hidden from target",
     ),
-    ("manifest", "model_slot", "enum", "model_a or model_b"),
+    ("manifest", "model_slot", "string", "Configuration-defined target-model slot"),
     ("manifest", "requested_model_id", "string", "Exact configured OpenRouter slug"),
     (
         "manifest",

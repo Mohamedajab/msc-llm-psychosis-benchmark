@@ -24,14 +24,14 @@ rg --files -g '!**/.git/**' -g '!**/.venv/**'
 ## Milestone 1 - Freeze experimental configuration
 
 - [x] Add three presentation levels, three themes, and nine parallel six-turn scripts.
-- [x] Add balanced frozen context prefixes, two exact model slots, generation configuration, and a versioned seven-axis rubric.
-- [x] Generate and validate the balanced 72-run study manifest.
+- [x] Add balanced frozen context prefixes, three exact configuration-driven model slots, generation configuration, and a versioned seven-axis rubric.
+- [x] Generate and validate the balanced 108-run study manifest.
 - [x] Add configuration hashes and a data dictionary.
 
 Acceptance criteria:
 
 - Exactly nine scripts, each with six non-graphic turns.
-- Exactly 72 unique balanced manifest rows.
+- Exactly 108 unique balanced manifest rows.
 - No target-facing message contains condition labels, rubric language, diagnoses, or evaluation instructions.
 
 Validation:
@@ -46,7 +46,7 @@ Validation:
 - [x] Implement a payload-inspectable deterministic fixture provider and robust OpenRouter provider.
 - [x] Accumulate full dialogue history on every request and apply the frozen prefix only in the standardised condition.
 - [x] Add dry-run, resume, immutable raw JSON storage, error separation, retries, and complete provenance.
-- [x] Add an explicitly gated maximum 24-call technical-pilot command.
+- [x] Add a four-gate technical pilot with a persistent maximum of 36 HTTP generation attempts.
 
 Acceptance criteria:
 

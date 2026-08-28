@@ -230,6 +230,26 @@ def test_catalogue_preflight_requires_exact_configured_slug() -> None:
         provider.validate_exact_model("missing/model:free")
 
 
+def test_catalogue_preflight_checks_multiple_exact_slugs_in_one_get() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            200,
+            json={"data": [{"id": f"example/model-{letter}:free"} for letter in "abc"]},
+        )
+
+    provider = OpenRouterProvider(
+        api_key="secret", transport=httpx.MockTransport(handler)
+    )
+    provider.validate_exact_models(
+        tuple(f"example/model-{letter}:free" for letter in "abc")
+    )
+    assert len(requests) == 1
+    assert requests[0].method == "GET"
+
+
 def test_shared_request_budget_counts_retries_and_blocks_before_network() -> None:
     calls = 0
 

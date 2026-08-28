@@ -6,9 +6,9 @@ This sheet separates academic/protocol decisions from software implementation. T
 
 | Decision | Current proposal | Safe default until decided | Record from meeting |
 |---|---|---|---|
-| May the bounded OpenRouter technical pilot run? | One fixed-belief script x two exact models x two contexts x one repetition; at most 24 calls | Do not run live; use fixture and zero-network dry-run | |
+| May the bounded OpenRouter technical pilot run? | One fixed-belief script x three exact models x two contexts x one repetition; at most 36 HTTP generation attempts | Do not run live; use fixture and zero-network dry-run | |
 | Does a technical pilot require an ethics/governance check? | Synthetic prompts and model outputs only, but subject matter and third-party processing remain relevant | Confirm university process before live execution | |
-| Are the two exact endpoint slugs acceptable? | Resolve `model_a` and `model_b` from environment; validate catalogue immediately before use; never substitute | Keep slots frozen but do not execute if either slug is unavailable | |
+| Are the three exact endpoint slugs acceptable? | Version `model_a`, `model_b` and `model_c` in configuration; validate them together immediately before use; never substitute | Keep slots frozen but do not execute if any slug is unavailable | |
 | Is the pilot script suitable? | One safe, non-graphic `fixed_belief` script used only for pipeline shakeout | Supervisor reviews wording before any live call | |
 | Are provider terms/data handling acceptable? | Send only synthetic text; store local provenance; never send credentials as content | Review current OpenRouter terms and university guidance | |
 
@@ -33,13 +33,13 @@ This sheet separates academic/protocol decisions from software implementation. T
 | Working title | “A Controlled Multi-Turn Benchmark for Psychosis-Related Belief Reinforcement in Large Language Model Chatbots” | Retain as working, not a novelty or causal claim | |
 | Aim | Build and validate a reproducible benchmark/pipeline for selected response trajectories in safe synthetic conversations | Keep non-clinical evaluation framing | |
 | RQ1 | Distinguish targeted presentations from matched controls in primary harmful/protective outcomes | Retain pending confirmation | |
-| RQ2 | Compare two exact endpoints under identical protocol | Retain, with endpoint/date/configuration-bounded claims | |
+| RQ2 | Compare three exact endpoints under identical protocol | Retain, with endpoint/date/configuration-bounded claims | |
 | RQ3 | Examine six-turn trajectories after repeated confirmation pressure | Retain, with conversation-level analysis | |
 | RQ4 | Evaluate human-rubric reliability and any later grouped automated baseline | Keep automation secondary or remove from primary RQs | |
 | Are presentation definitions acceptable? | `control`, `ambiguous`, `fixed_belief` as synthetic stimulus levels, never diagnoses | Do not use clinical group labels | |
 | Are nine scripts sufficiently parallel? | Same themes and functional six-turn progression, with presentation-specific wording | Conduct supervisor/content review before freezing v1 | |
 | Are prefixes balanced and neutral? | One shared prefix per theme; no desired-response cue | Review and freeze alongside scripts | |
-| Is two repetitions sufficient/appropriate? | Two per factorial cell, yielding 72 conversations | Treat as a feasibility design until justified; revise manifest version if changed | |
+| Is two repetitions sufficient/appropriate? | Two per factorial cell, yielding 108 conversations | Treat as a feasibility design until justified; revise manifest version if changed | |
 | How should endpoint availability changes be handled? | Recheck immediately before execution; abort rather than substitute | Never mix substitute endpoints into the same study version | |
 | What constitutes a protocol deviation? | Any change to script, prefix, model slug, generation settings, rubric or execution status | Version, hash and report every deviation | |
 
@@ -65,7 +65,7 @@ This sheet separates academic/protocol decisions from software implementation. T
 3. Review the presentation definitions, nine scripts and three prefixes for construct validity, safety and parallelism.
 4. Agree primary outcomes, trajectory rules, missingness handling and whether any exploratory summaries are permitted.
 5. Agree annotator count, training, re-rating sample, reliability terminology and adjudication/wellbeing procedure.
-6. Decide whether the maximum-24-call technical pilot is authorised and what checks precede it.
+6. Decide whether the maximum-36-attempt technical pilot is authorised and what checks precede it.
 7. Freeze endpoint-selection and model-unavailability rules.
 8. Decide whether the baseline belongs in RQ4, future work or implementation-only validation.
 

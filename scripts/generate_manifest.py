@@ -1,5 +1,5 @@
 # ruff: noqa: E402
-"""Generate and validate the frozen 72-conversation study manifest."""
+"""Generate and validate the configuration-driven study manifest."""
 
 from __future__ import annotations
 

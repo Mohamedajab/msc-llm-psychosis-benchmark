@@ -170,17 +170,32 @@ class OpenRouterProvider(TargetProvider):
             raise RuntimeError("Request-attempt budget must be set before generation")
         self._max_request_attempts = maximum
 
-    def validate_exact_model(self, model_id: str, timeout_seconds: float = 20) -> None:
-        """Check current catalogue presence without substituting any model."""
-        with httpx.Client(transport=self._transport, timeout=timeout_seconds) as client:
-            response = client.get(self.catalogue_endpoint)
-            response.raise_for_status()
-            available = {item.get("id") for item in response.json().get("data", [])}
-        if model_id not in available:
+    def validate_exact_models(
+        self, model_ids: Sequence[str], timeout_seconds: float = 20
+    ) -> None:
+        """Check all configured IDs using one catalogue response."""
+
+        requested = tuple(model_ids)
+        if not requested:
+            raise ValueError("At least one exact model ID is required")
+        try:
+            with httpx.Client(transport=self._transport, timeout=timeout_seconds) as client:
+                response = client.get(self.catalogue_endpoint)
+                response.raise_for_status()
+                available = {item.get("id") for item in response.json().get("data", [])}
+        except (httpx.HTTPError, ValueError) as error:
+            raise RuntimeError("OpenRouter catalogue preflight failed") from error
+        missing = [model_id for model_id in requested if model_id not in available]
+        if missing:
             raise RuntimeError(
-                f"Configured exact OpenRouter model is unavailable: {model_id}. "
-                "Edit the environment setting; no substitute was selected."
+                f"Configured exact OpenRouter model(s) unavailable: {', '.join(missing)}. "
+                "Edit the versioned model configuration; no substitute was selected."
             )
+
+    def validate_exact_model(self, model_id: str, timeout_seconds: float = 20) -> None:
+        """Compatibility wrapper for a one-model catalogue preflight."""
+
+        self.validate_exact_models((model_id,), timeout_seconds)
 
     def generate(
         self,

@@ -4,12 +4,10 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 from pathlib import Path
 from typing import Any
 
 import yaml
-from dotenv import load_dotenv
 from pydantic import BaseModel, ValidationError
 
 from src.schemas import GenerationConfig, HistoryPrefix, ModelsConfig, RubricConfig, ScriptConfig
@@ -64,25 +62,22 @@ def load_rubric(path: str | Path) -> RubricConfig:
 
 
 def resolve_model_ids(
-    config: ModelsConfig, *, project_root: str | Path | None = None
+    config: ModelsConfig,
 ) -> dict[str, str]:
-    """Resolve exact model slugs from project ``.env`` then the environment.
+    """Return exact model slugs from the versioned configuration."""
 
-    Existing process environment values take precedence. Secret values are
-    neither returned beyond their specific setting nor logged by this loader.
-    """
-    root = Path(project_root) if project_root is not None else Path(__file__).resolve().parents[1]
-    load_dotenv(root / ".env", override=False)
     resolved: dict[str, str] = {}
     for slot_name, slot in config.model_slots.items():
-        value = os.getenv(slot.env_var, slot.default_model_id).strip()
+        value = slot.default_model_id.strip()
         if not value or value in {"openrouter/free", "openrouter/auto"} or "latest" in value:
             raise ConfigurationError(
-                f"{slot.env_var} must contain one exact concrete model slug; received {value!r}"
+                f"{slot_name} must contain one exact concrete model slug; received {value!r}"
             )
         resolved[slot_name] = value
-    if set(resolved) != {"model_a", "model_b"} or len(set(resolved.values())) != 2:
-        raise ConfigurationError("Exactly two distinct model slots must resolve")
+    if set(resolved) != set(config.model_slots):
+        raise ConfigurationError("Every configured target-model slot must resolve")
+    if len(set(resolved.values())) != len(resolved):
+        raise ConfigurationError("Configured target-model slots must resolve to distinct IDs")
     return resolved
 
 

@@ -98,7 +98,6 @@ class HistoryPrefix(StrictModel):
 
 
 class ModelSlot(StrictModel):
-    env_var: str
     default_model_id: str
     exact_slug_required: bool = True
 
@@ -109,6 +108,8 @@ class ModelSlot(StrictModel):
             raise ValueError(
                 "A concrete model slug is required; routers and latest aliases are forbidden"
             )
+        if not value.endswith(":free"):
+            raise ValueError("Target-model IDs must be exact free endpoints ending in :free")
         return value
 
 
@@ -137,10 +138,22 @@ class ModelsConfig(StrictModel):
     provider: Literal["openrouter"]
     catalogue_checked_at_utc: datetime
     catalogue_endpoint: str
-    model_slots: dict[Literal["model_a", "model_b"], ModelSlot]
+    model_slots: dict[str, ModelSlot]
     generation: GenerationConfig
     repetition_seeds: dict[int, int]
     notes: tuple[str, ...] = ()
+
+    @field_validator("model_slots")
+    @classmethod
+    def require_named_distinct_slots(cls, value: dict[str, ModelSlot]) -> dict[str, ModelSlot]:
+        if not value:
+            raise ValueError("At least one target-model slot is required")
+        if any(not name.startswith("model_") for name in value):
+            raise ValueError("Target-model slot names must begin with model_")
+        defaults = [slot.default_model_id for slot in value.values()]
+        if len(set(defaults)) != len(defaults):
+            raise ValueError("Target-model slots must use distinct default model IDs")
+        return value
 
     @field_validator("repetition_seeds")
     @classmethod
@@ -159,7 +172,7 @@ class ManifestRow(StrictModel):
     script_id: str
     theme: Theme
     presentation_level: PresentationLevel
-    model_slot: Literal["model_a", "model_b"]
+    model_slot: str = Field(pattern=r"^model_[a-z0-9_]+$")
     requested_model_id: str
     context_condition: ContextCondition
     repetition: int = Field(ge=1, le=2)

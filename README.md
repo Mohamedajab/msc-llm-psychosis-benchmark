@@ -11,8 +11,8 @@ These labels are deliberately not interchangeable:
 | Label | Meaning |
 |---|---|
 | **DEMO FIXTURE - NOT RESEARCH DATA** | Deterministic offline responses used to demonstrate, test and repair the workflow. They cannot support claims about a real model. |
-| **TECHNICAL PILOT - DESCRIPTIVE ONLY** | A maximum four-conversation live OpenRouter run used to verify transport, storage, quotas and annotation flow. It is not a powered or representative study. |
-| **MAIN STUDY** | The planned balanced design: 72 conversations and 432 possible assistant responses. It has not been executed as part of the Friday build. |
+| **TECHNICAL PILOT - DESCRIPTIVE ONLY** | A six-conversation, maximum-36-attempt live OpenRouter run used to verify transport, storage, quotas and annotation flow. It is not a powered or representative study. |
+| **MAIN STUDY** | The planned balanced design: 108 conversations and 648 possible assistant responses. It has not been executed. |
 
 Do not mix these categories in a result table without retaining `data_status`, and never present fixture or technical-pilot observations as dissertation findings.
 
@@ -20,7 +20,7 @@ Do not mix these categories in a result table without retaining `data_status`, a
 
 - A versioned catalogue of nine scripts: three presentation levels (`control`, `ambiguous`, `fixed_belief`) crossed with three safe themes (`monitoring`, `personal_messages`, `ai_relationship`). Every script has exactly six user turns.
 - Two context conditions: `no_preloaded_context` and `standardised_preloaded_context`, with a frozen balanced prefix for each theme.
-- A deterministic 72-row manifest: 3 presentations x 3 themes x 2 exact model slots x 2 context conditions x 2 repetitions. Six responses per conversation give 432 planned response observations.
+- A deterministic 108-row manifest: 3 presentations x 3 themes x 3 exact model slots x 2 context conditions x 2 repetitions. Six responses per conversation give 648 planned response observations.
 - Exact, genuinely multi-turn payload construction. At turn *n*, the target receives the optional frozen prefix, every earlier user/assistant exchange, and user turn *n* in order.
 - No target-facing system message. A fail-closed payload check rejects benchmark, diagnosis, desired-safety and rubric cues before a request is sent.
 - Offline deterministic fixture providers, a zero-network dry run, and an OpenRouter adapter with exact-model checking, typed error observations, bounded retry/backoff and `Retry-After` support.
@@ -104,13 +104,13 @@ cd "C:\Users\Moham\OneDrive\Documents\project"
 & .\.venv\Scripts\python.exe -m compileall -q app.py src scripts tests
 ```
 
-Generate and verify the fixed four-conversation technical-pilot plan and exact dry-run payloads with **zero network use**:
+Generate and verify the fixed six-conversation technical-pilot plan and exact dry-run payloads with **zero network use**:
 
 ```powershell
 & .\.venv\Scripts\python.exe scripts\run_pilot.py
 ```
 
-To retain the complete 24-payload preflight as a derived JSON artifact:
+To retain the complete 36-payload preflight as a derived JSON artifact:
 
 ```powershell
 & .\.venv\Scripts\python.exe scripts\run_pilot.py --plan-output outputs\technical_pilot_plan.json
@@ -118,7 +118,17 @@ To retain the complete 24-payload preflight as a derived JSON artifact:
 
 ## Optional live technical pilot
 
-The bounded CLI pilot path is intentionally double-gated. It requires both an API key and an explicit live flag. It is fixed to one six-turn `fixed_belief` script, two exact model slots, two context conditions and one repetition: **4 conversations, at most 24 generation calls**. Resume reuses successful saved turns, so it does not duplicate them. The dashboard also exposes a single-cell live runner; it requires the key and an explicit on-screen confirmation and should be treated as technical-pilot execution only.
+The bounded CLI pilot requires explicit live selection, final confirmation, `RUN_LIVE_PILOT=1`, and an API key. It is fixed to one six-turn `fixed_belief` script, all three exact model slots, two context conditions and one repetition: **6 conversations, at most 36 HTTP generation attempts including retries**. The cap is reconstructed from append-only records when a run resumes. The dashboard invokes this same bounded pilot and applies the same environment/key gates plus an on-screen final confirmation.
+
+The public OpenRouter catalogue was checked once on 28 August 2026 without making a generation request. The selected zero-priced endpoints all advertised text input/output, seed support and at least 262,144 tokens of context:
+
+| Slot | Exact fixed ID | Selection rationale |
+|---|---|---|
+| `model_a` | `google/gemma-4-31b-it:free` | Google DeepMind instruction-tuned family; 262,144-token context |
+| `model_b` | `minimax/minimax-m3:free` | MiniMax general multimodal foundation family; 1,048,576-token context |
+| `model_c` | `thinkingmachines/inkling-small:free` | Thinking Machines general-purpose family; 1,048,576-token context |
+
+They are distinct developer/model families and fixed `:free` IDs, not routers, `latest` aliases or fallbacks. Availability remains time-dependent, so the pilot validates all three from one fresh catalogue response immediately before generation.
 
 First copy the template and edit `.env` locally, or set environment variables in the current PowerShell session. Never paste a key into source, documentation, a screenshot or a committed file.
 
@@ -133,7 +143,7 @@ Only when live execution is intentionally authorised:
 
 ```powershell
 $env:RUN_LIVE_PILOT='1'
-& .\.venv\Scripts\python.exe scripts\run_pilot.py --live
+& .\.venv\Scripts\python.exe scripts\run_pilot.py --live --confirm-live
 ```
 
 `OPENROUTER_API_KEY` must also be available to that process. The Friday demonstration does not depend on this command, and this repository does not claim that a live call has been run successfully.
@@ -144,12 +154,12 @@ $env:RUN_LIVE_PILOT='1'
 |---|---|
 | Presentation | `control`, `ambiguous`, `fixed_belief` |
 | Theme | `monitoring`, `personal_messages`, `ai_relationship` |
-| Model | `model_a`, `model_b`, each resolved to one exact slug |
+| Model | `model_a`, `model_b`, `model_c`, each resolved to one exact slug |
 | Context | `no_preloaded_context`, `standardised_preloaded_context` |
 | Repetition | 1, 2 |
 | Turns | 6 scripted user turns per conversation |
 
-The main manifest has `3 x 3 x 2 x 2 x 2 = 72` conversations and `72 x 6 = 432` planned assistant-response slots. Upstream transport/provider/moderation failures are stored as missing/error observations, not misclassified as safe text. A refusal written by the target model is a real textual response and can be annotated.
+The main manifest has `3 x 3 x 3 x 2 x 2 = 108` conversations and `108 x 6 = 648` planned assistant-response slots. Upstream transport/provider/moderation failures are stored as missing/error observations, not misclassified as safe text. A refusal written by the target model is a real textual response and can be annotated.
 
 ## Human rubric
 
@@ -186,7 +196,7 @@ src/nlp_features.py            offline lexical and TF-IDF features
 src/trajectory_analysis.py     conversation summaries and bootstrap
 src/baseline.py                guarded grouped supervised baseline
 src/judge.py                   disabled, unvalidated judge contract only
-scripts/generate_manifest.py   reproducible 72-row manifest
+scripts/generate_manifest.py   reproducible 108-row manifest
 scripts/generate_demo.py       deterministic offline demo fixtures
 scripts/run_pilot.py           zero-network plan or explicitly gated live pilot
 scripts/generate_snapshot.py   static offline meeting snapshot

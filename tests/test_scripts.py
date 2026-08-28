@@ -21,11 +21,6 @@ def _tree_digest(root: Path) -> str:
     return digest.hexdigest()
 
 
-def _set_models(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("OPENROUTER_MODEL_A", "example/model-a:free")
-    monkeypatch.setenv("OPENROUTER_MODEL_B", "example/model-b:free")
-
-
 def test_demo_generator_is_complete_offline_and_byte_deterministic(
     tmp_path: Path,
 ) -> None:
@@ -68,8 +63,6 @@ def test_pilot_plan_is_stable_bounded_and_never_calls_provider(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _set_models(monkeypatch)
-
     class NetworkForbidden:
         def __init__(self, *args: object, **kwargs: object) -> None:
             raise AssertionError("OpenRouter must not be constructed in dry-run mode")
@@ -81,19 +74,20 @@ def test_pilot_plan_is_stable_bounded_and_never_calls_provider(
 
     assert first == second
     assert first["network_called"] is False
-    assert first["conversation_count"] == 4
-    assert first["maximum_generation_calls"] == 24
-    assert first["maximum_http_generation_attempts_including_retries"] == 24
-    assert len({run["run_id"] for run in first["runs"]}) == 4
+    assert first["conversation_count"] == 6
+    assert first["maximum_generation_calls"] == 36
+    assert first["maximum_http_generation_attempts_including_retries"] == 36
+    assert len({run["run_id"] for run in first["runs"]}) == 6
     assert {run["model_slot"] for run in first["runs"]} == {
         "model_a",
         "model_b",
+        "model_c",
     }
     assert {run["context_condition"] for run in first["runs"]} == {
         "no_preloaded_context",
         "standardised_preloaded_context",
     }
-    assert sum(len(run["payloads"]) for run in first["runs"]) == 24
+    assert sum(len(run["payloads"]) for run in first["runs"]) == 36
     assert all(
         payload["network_called"] is False for run in first["runs"] for payload in run["payloads"]
     )
@@ -107,6 +101,8 @@ def test_pilot_plan_is_stable_bounded_and_never_calls_provider(
 def test_live_pilot_requires_environment_gate_and_key() -> None:
     with pytest.raises(run_pilot.PilotPreflightError, match="explicit --live"):
         run_pilot.execute_live_pilot(environ={})
+    with pytest.raises(run_pilot.PilotPreflightError, match="final --confirm-live"):
+        run_pilot.execute_live_pilot(live_requested=True, environ={})
     with pytest.raises(run_pilot.PilotPreflightError, match="RUN_LIVE_PILOT=1"):
         run_pilot.require_live_gate({})
     with pytest.raises(run_pilot.PilotPreflightError, match="API_KEY"):
@@ -120,7 +116,6 @@ def test_live_pilot_requires_environment_gate_and_key() -> None:
 def test_live_execution_uses_catalogue_preflight_cap_and_resume_without_network(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    _set_models(monkeypatch)
     instances = []
 
     class FakeProvider(DeterministicFixtureProvider):
@@ -134,6 +129,12 @@ def test_live_execution_uses_catalogue_preflight_cap_and_resume_without_network(
             assert timeout_seconds <= 20
             self.catalogue_checks.append(model_id)
 
+        def validate_exact_models(
+            self, model_ids: tuple[str, ...], timeout_seconds: float = 20
+        ) -> None:
+            assert timeout_seconds <= 20
+            self.catalogue_checks.extend(model_ids)
+
     gate = {
         "RUN_LIVE_PILOT": "1",
         "OPENROUTER_API_KEY": "not-a-real-key",
@@ -141,26 +142,67 @@ def test_live_execution_uses_catalogue_preflight_cap_and_resume_without_network(
     first = run_pilot.execute_live_pilot(
         output_root=tmp_path / "pilot",
         live_requested=True,
+        live_confirmed=True,
         environ=gate,
         provider_factory=FakeProvider,
     )
-    assert len(first) == 4
+    assert len(first) == 6
     assert all(len(record.turns) == 6 for record in first)
-    assert len(instances[0].calls) == 24
+    assert len(instances[0].calls) == 36
+    run_ids = [record.header.run_id for record in first]
+    assert run_pilot._stored_generation_attempts(
+        run_pilot.RawRunStore(tmp_path / "pilot"), run_ids
+    ) == 36
     assert instances[0].catalogue_checks == [
-        "example/model-a:free",
-        "example/model-b:free",
+        "google/gemma-4-31b-it:free",
+        "minimax/minimax-m3:free",
+        "thinkingmachines/inkling-small:free",
     ]
 
     second = run_pilot.execute_live_pilot(
         output_root=tmp_path / "pilot",
         live_requested=True,
+        live_confirmed=True,
         environ=gate,
         provider_factory=FakeProvider,
     )
-    assert len(second) == 4
+    assert len(second) == 6
     assert len(instances[1].calls) == 0
     assert instances[1].catalogue_checks == instances[0].catalogue_checks
+
+
+def test_failed_exact_model_preflight_is_stored_as_technical_failure(
+    tmp_path: Path,
+) -> None:
+    class MissingModelProvider(DeterministicFixtureProvider):
+        def __init__(self, *, api_key: str) -> None:
+            assert api_key == "not-a-real-key"
+            super().__init__()
+
+        def validate_exact_models(
+            self, model_ids: tuple[str, ...], timeout_seconds: float = 20
+        ) -> None:
+            del model_ids, timeout_seconds
+            raise RuntimeError("configured exact model is unavailable")
+
+    output_root = tmp_path / "pilot"
+    with pytest.raises(run_pilot.PilotPreflightError, match="technical failure record"):
+        run_pilot.execute_live_pilot(
+            output_root=output_root,
+            live_requested=True,
+            live_confirmed=True,
+            environ={
+                "RUN_LIVE_PILOT": "1",
+                "OPENROUTER_API_KEY": "not-a-real-key",
+            },
+            provider_factory=MissingModelProvider,
+        )
+    failure_paths = list(output_root.rglob("*.json"))
+    assert len(failure_paths) == 1
+    failure = json.loads(failure_paths[0].read_text(encoding="utf-8"))
+    assert failure["status"] == "technical_failure"
+    assert failure["generation_requests_made"] == 0
+    assert "not-a-real-key" not in failure_paths[0].read_text(encoding="utf-8")
 
 
 def test_static_snapshot_is_generated_only_from_demo_outputs(tmp_path: Path) -> None:

@@ -3,7 +3,7 @@ manifest,run_id,string,Stable unique conversation-run identifier
 manifest,script_id,string,Frozen six-turn script identifier
 manifest,theme,enum,"monitoring, personal_messages, or ai_relationship"
 manifest,presentation_level,enum,"control, ambiguous, or fixed_belief; hidden from target"
-manifest,model_slot,enum,model_a or model_b
+manifest,model_slot,string,Configuration-defined target-model slot
 manifest,requested_model_id,string,Exact configured OpenRouter slug
 manifest,context_condition,enum,no_preloaded_context or standardised_preloaded_context
 manifest,repetition,integer,Planned repetition 1 or 2

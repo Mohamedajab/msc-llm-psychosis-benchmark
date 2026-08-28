@@ -44,11 +44,11 @@ The frozen intended main study contains:
 |---|---|---:|
 | Presentation level | `control`, `ambiguous`, `fixed_belief` | 3 |
 | Scenario theme | `monitoring`, `personal_messages`, `ai_relationship` | 3 |
-| Model slot | `model_a`, `model_b` | 2 |
+| Model slot | `model_a`, `model_b`, `model_c` | 3 |
 | Context condition | `no_preloaded_context`, `standardised_preloaded_context` | 2 |
 | Repetition | 1, 2 | 2 |
 
-This gives `3 x 3 x 2 x 2 x 2 = 72` planned conversations. Each has six assistant-response opportunities, giving `72 x 6 = 432` planned response observations if every call returns text.
+This gives `3 x 3 x 3 x 2 x 2 = 108` planned conversations. Each has six assistant-response opportunities, giving `108 x 6 = 648` planned response observations if every call returns text.
 
 The seeded execution order is recorded in `outputs/experiment_manifest.csv`. The manifest is generated from versioned configuration rather than edited by hand:
 
@@ -114,12 +114,9 @@ The runner's dry-run mode builds all six payloads with placeholders but makes no
 
 ## Model and generation configuration
 
-Two slots are resolved from environment variables with exact versioned defaults in `config/models.yaml`:
+Model slots are configuration-driven. The current three exact IDs are versioned in `config/models.yaml`; adding or removing a target is a configuration change rather than an application-code change. `.env` is reserved for credentials and explicit execution gates.
 
-- `OPENROUTER_MODEL_A`
-- `OPENROUTER_MODEL_B`
-
-Protocol v1 requires an exact concrete model slug. Auto-routers, `latest` aliases and silent substitution are rejected. Free-model availability is time-dependent, so both slugs must be checked against the current catalogue immediately before a live pilot or main run. A returned model ID that differs from the requested ID is stored as an error rather than accepted into the condition.
+Protocol v1 requires an exact concrete model slug. Auto-routers, `latest` aliases and silent substitution are rejected. Free-model availability is time-dependent, so all slugs are checked from one current catalogue response immediately before a live pilot. A returned model ID that differs from the requested ID is stored as an error rather than accepted into the condition.
 
 Generation configuration `generation-v1` currently fixes temperature, maximum tokens, top-p, planned seed, timeout and maximum retries in `config/models.yaml`. A seed is recorded for reproducibility but must not be described as guaranteeing determinism unless the endpoint documents and honours it.
 
@@ -160,11 +157,11 @@ The API key is never a record field. Raw records are the source of truth; CSVs, 
 
 ## Friday technical pilot
 
-The pilot is fixed to one `fixed_belief` script, both model slots, both context conditions and one repetition:
+The pilot is fixed to one `fixed_belief` script, all three model slots, both context conditions and one repetition:
 
 ```text
-1 script x 2 models x 2 contexts x 1 repetition = 4 conversations
-4 conversations x 6 turns = at most 24 generation calls
+1 script x 3 models x 2 contexts x 1 repetition = 6 conversations
+6 conversations x 6 turns = at most 36 HTTP generation attempts including retries
 ```
 
 The normal command produces the plan/dry-run with zero network calls:
@@ -173,14 +170,14 @@ The normal command produces the plan/dry-run with zero network calls:
 & .\.venv\Scripts\python.exe scripts\run_pilot.py
 ```
 
-Live execution requires an API key plus both an environment gate and command flag:
+Live execution requires an API key, environment gate, explicit live flag and final confirmation flag:
 
 ```powershell
 $env:RUN_LIVE_PILOT='1'
-& .\.venv\Scripts\python.exe scripts\run_pilot.py --live
+& .\.venv\Scripts\python.exe scripts\run_pilot.py --live --confirm-live
 ```
 
-The technical pilot exists to find transport, quota, resume, storage and annotation problems. It is not dissertation evidence, should receive descriptive plots only, and must not trigger the full 72-conversation study.
+The technical pilot exists to find transport, quota, resume, storage and annotation problems. It is not dissertation evidence, should receive descriptive plots only, and must not trigger the full 108-conversation study. Its attempt cap is reconstructed from stored success and error events when execution resumes.
 
 ## Human annotation protocol
 

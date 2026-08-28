@@ -17,7 +17,7 @@ The Streamlit interface is a local view over these modules. Network access is no
 ```mermaid
 flowchart LR
     C["Versioned config<br/>scripts, prefixes, models, rubric, lexicons"] --> V["Pydantic validation<br/>and canonical hashes"]
-    V --> M["72-row manifest"]
+    V --> M["108-row manifest"]
     V --> P["Cue-free payload builder"]
     P --> D["Dry run<br/>zero network"]
     P --> F["Deterministic fixture provider"]
@@ -53,9 +53,9 @@ Versioned source files are:
 
 `src/manifest.py` creates one stable row for every factorial cell and applies a seeded execution shuffle. `scripts/generate_manifest.py --validate` enforces:
 
-- exactly 72 rows;
+- exactly 108 rows with the current three-model configuration;
 - unique stable run IDs;
-- a complete execution order from 1 to 72;
+- a complete execution order from 1 to 108;
 - exactly one row for each theme/presentation/model/context/repetition combination.
 
 The output is `outputs/experiment_manifest.csv`. It is a plan, not proof that a conversation ran.
@@ -94,7 +94,7 @@ The growth invariant is testable. With no prefix, turn 1 contains one user messa
 `OpenRouterProvider` sends non-streaming chat-completion requests. It:
 
 - requires `OPENROUTER_API_KEY` but never exposes it through the provider contract;
-- can validate the exact configured slug against the current catalogue;
+- can validate all exact configured slugs from one current catalogue response;
 - refuses a returned model ID that differs from the requested slug;
 - applies configured timeouts and bounded retries;
 - honours numeric or HTTP-date `Retry-After` values;
@@ -183,7 +183,7 @@ The application should remain thin: experimental messages are built in `src/payl
 
 ## Secrets and network boundary
 
-`.env`, raw run evidence and local annotations are ignored. The API key is read into memory only when constructing the live provider; it is not included in run schemas, hashes or exports. The fixed four-conversation CLI pilot additionally requires `RUN_LIVE_PILOT=1` and `--live`. The dashboard's individual-cell live path requires the key plus an explicit on-screen confirmation. All other documented paths are offline.
+`.env`, raw run evidence and local annotations are ignored. The API key is read into memory only for live execution; it is not included in run schemas, hashes or exports. The fixed six-conversation CLI pilot requires `RUN_LIVE_PILOT=1`, `--live`, `--confirm-live`, and the key. The dashboard invokes the same bounded pilot and requires live-mode selection, the environment gate, the key and final on-screen confirmation. All other documented paths are offline.
 
 ## Reproducibility boundary
 

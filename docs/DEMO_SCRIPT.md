@@ -23,7 +23,7 @@ Show **Study Overview**.
 
 Say:
 
-> “This is a controlled synthetic benchmark, not a clinical or public-facing chatbot. The planned main design crosses three presentations, three themes, two exact models, two context conditions and two repetitions. That produces 72 six-turn conversations and 432 planned responses. Today I am showing deterministic fixtures and the technical pipeline, not dissertation results.”
+> “This is a controlled synthetic benchmark, not a clinical or public-facing chatbot. The planned main design crosses three presentations, three themes, three exact models, two context conditions and two repetitions. That produces 108 six-turn conversations and 648 planned responses. Today I am showing deterministic fixtures and the technical pipeline, not dissertation results.”
 
 Point to the evidence-status distinction:
 
@@ -91,7 +91,7 @@ Open **Trajectory Analysis**.
 
 Say:
 
-> “The analysis unit is the conversation. It summarises A1, A2 and A3 separately, including onset of A1=2, safety intervention, persistence, recovery, final-turn behaviour and missingness. Comparisons are matched by script and repetition, and bootstrap utilities resample whole conversations or script clusters rather than pretending 432 turns are independent.”
+> “The analysis unit is the conversation. It summarises A1, A2 and A3 separately, including onset of A1=2, safety intervention, persistence, recovery, final-turn behaviour and missingness. Comparisons are matched by script and repetition, and bootstrap utilities resample whole conversations or script clusters rather than pretending 648 turns are independent.”
 
 Keep fixture/pilot plots visibly labelled and descriptive.
 
@@ -101,7 +101,7 @@ Open **Reproducibility & QA**.
 
 Say:
 
-> “The full manifest is generated and validated without executing it. Dry run makes zero network calls. Live execution is double-gated and bounded to four conversations—24 calls maximum. The meeting can be completed offline.”
+> “The full manifest is generated and validated without executing it. Dry run makes zero network calls. Live execution has four gates and is bounded to six conversations—36 HTTP generation attempts maximum. The meeting can be completed offline.”
 
 Show the current manifest/test status from the page or `STATUS.md`. Finish with the three decisions needed most urgently:
 
@@ -117,9 +117,9 @@ Use this if Wi-Fi, OpenRouter or the browser is unreliable.
 
 Open **Study Overview** and say:
 
-> “This is an offline deterministic demonstration. Fixture outputs are not research data. The 72-row manifest represents the planned design; it has not been executed.”
+> “This is an offline deterministic demonstration. Fixture outputs are not research data. The 108-row manifest represents the planned design; it has not been executed.”
 
-Show the `72 conversations / 432 response slots` summary.
+Show the `108 conversations / 648 response slots` summary.
 
 ### 0:25-0:55
 
@@ -171,7 +171,7 @@ Then open these files in VS Code:
 ## Questions to answer carefully
 
 **“Are these results?”**  
-No. Fixture outputs are workflow data. Any four-conversation live run is a technical pilot and descriptive only. The main study is the unexecuted 72-conversation manifest.
+No. Fixture outputs are workflow data. Any six-conversation live run is a technical pilot and descriptive only. The main study is the unexecuted 108-conversation manifest.
 
 **“Is this measuring psychosis?”**  
 No. It measures prespecified textual response behaviours in synthetic prompts. Presentation conditions are not diagnoses and there are no patient participants.

@@ -28,7 +28,7 @@ def generate_manifest(
     model_ids = resolve_model_ids(models)
     factors: list[tuple[ScriptConfig, str, ContextCondition, int]] = []
     for script in sorted(scripts, key=lambda item: item.script_id):
-        for model_slot in ("model_a", "model_b"):
+        for model_slot in models.model_slots:
             for context in ContextCondition:
                 for repetition in (1, 2):
                     factors.append((script, model_slot, context, repetition))
@@ -40,7 +40,7 @@ def generate_manifest(
             script_id=script.script_id,
             theme=script.theme,
             presentation_level=script.presentation_level,
-            model_slot=model_slot,  # type: ignore[arg-type]
+            model_slot=model_slot,
             requested_model_id=model_ids[model_slot],
             context_condition=context,
             repetition=repetition,
@@ -55,8 +55,10 @@ def generate_manifest(
 
 def validate_manifest(rows: list[ManifestRow]) -> list[str]:
     errors: list[str] = []
-    if len(rows) != 72:
-        errors.append(f"Expected 72 manifest rows; found {len(rows)}")
+    model_slots = {row.model_slot for row in rows}
+    expected_rows = 9 * len(model_slots) * len(ContextCondition) * 2
+    if len(rows) != expected_rows:
+        errors.append(f"Expected {expected_rows} manifest rows; found {len(rows)}")
     if len({row.run_id for row in rows}) != len(rows):
         errors.append("Manifest run IDs are not unique")
     if {row.execution_order for row in rows} != set(range(1, len(rows) + 1)):
@@ -71,8 +73,10 @@ def validate_manifest(rows: list[ManifestRow]) -> list[str]:
         )
         for row in rows
     )
-    if len(counts) != 72 or set(counts.values()) != {1}:
-        errors.append("The 3x3x2x2x2 factorial cells are not perfectly balanced")
+    if len(counts) != expected_rows or set(counts.values()) != {1}:
+        errors.append(
+            f"The 3x3x{len(model_slots)}x2x2 factorial cells are not perfectly balanced"
+        )
     return errors
 
 

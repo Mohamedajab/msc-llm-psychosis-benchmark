@@ -1,10 +1,9 @@
-"""Plan or explicitly execute the maximum 24-call OpenRouter technical pilot.
+"""Plan or explicitly execute the maximum 36-attempt OpenRouter technical pilot.
 
-Normal invocation is an offline dry-run that prints the exact four-conversation
-plan.  Generation is possible only when *both* ``--live`` and
-``RUN_LIVE_PILOT=1`` are present and ``OPENROUTER_API_KEY`` is set.  Before any
-generation, both exact configured ``:free`` model slugs are checked against the
-current OpenRouter catalogue; no substitute model is ever selected.
+Normal invocation is an offline dry-run that prints the configuration-driven
+plan. Generation requires ``--live``, ``--confirm-live``, ``RUN_LIVE_PILOT=1``,
+and ``OPENROUTER_API_KEY``. Before generation, every exact configured ``:free``
+slug is checked together; no substitute model is ever selected.
 """
 
 # The executable-path bootstrap must precede local ``src`` imports.
@@ -18,6 +17,7 @@ import os
 import random
 import sys
 import tempfile
+import uuid
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
@@ -47,8 +47,8 @@ DEFAULT_SCRIPT_ID = "monitoring_fixed_belief_v1"
 PILOT_RANDOM_SEED = 20260814
 PILOT_PLANNED_TIME = datetime(2026, 8, 14, 9, 0, tzinfo=UTC)
 DEFAULT_LIVE_OUTPUT_ROOT = ROOT / "data" / "raw" / "runs"
-MAX_CONVERSATIONS = 4
-MAX_GENERATION_CALLS = 24
+MAX_CONVERSATIONS = 6
+MAX_GENERATION_CALLS = 36
 
 
 class PilotPreflightError(RuntimeError):
@@ -77,10 +77,10 @@ def _configuration(script_id: str) -> tuple[Any, Any, Any, list[Any], list[Any]]
 
 def _validated_model_ids(models: Any) -> dict[str, str]:
     model_ids = resolve_model_ids(models)
-    if set(model_ids) != {"model_a", "model_b"}:
-        raise PilotPreflightError("Pilot requires exactly model_a and model_b")
-    if len(set(model_ids.values())) != 2:
-        raise PilotPreflightError("Pilot model slots must resolve to two different models")
+    if len(model_ids) > MAX_CONVERSATIONS // len(ContextCondition):
+        raise PilotPreflightError(
+            "Pilot configuration exceeds the persistent six-conversation cap"
+        )
     for slot, model_id in model_ids.items():
         if not model_id.endswith(":free"):
             raise PilotPreflightError(
@@ -91,10 +91,10 @@ def _validated_model_ids(models: Any) -> dict[str, str]:
     return model_ids
 
 
-def _ordered_cells() -> list[tuple[str, ContextCondition]]:
+def _ordered_cells(model_slots: Any) -> list[tuple[str, ContextCondition]]:
     cells = [
         (slot, condition)
-        for slot in ("model_a", "model_b")
+        for slot in model_slots
         for condition in (
             ContextCondition.NO_PRELOADED_CONTEXT,
             ContextCondition.STANDARDISED_PRELOADED_CONTEXT,
@@ -108,17 +108,21 @@ def _run_id(script_id: str, slot: str, condition: ContextCondition) -> str:
     return f"technical-pilot-v1_{script_id}_{slot}_{condition.value}_r1"
 
 
-def _assert_pilot_shape(entries: list[dict[str, Any]]) -> None:
+def _assert_pilot_shape(entries: list[dict[str, Any]], model_count: int) -> None:
+    expected_conversations = model_count * len(ContextCondition)
+    expected_calls = expected_conversations * 6
     calls = sum(len(entry["payloads"]) for entry in entries)
-    if len(entries) != MAX_CONVERSATIONS or calls != MAX_GENERATION_CALLS:
+    if len(entries) != expected_conversations or calls != expected_calls:
         raise PilotPreflightError(
-            "Internal pilot plan error: expected exactly 4 conversations and 24 calls"
+            "Internal pilot plan error: model/context cells or six-turn payloads are incomplete"
         )
-    if len({entry["run_id"] for entry in entries}) != MAX_CONVERSATIONS:
+    if expected_conversations > MAX_CONVERSATIONS or expected_calls > MAX_GENERATION_CALLS:
+        raise PilotPreflightError("Pilot plan exceeds its persistent request cap")
+    if len({entry["run_id"] for entry in entries}) != expected_conversations:
         raise PilotPreflightError("Internal pilot plan error: run IDs are not unique")
     cells = {(entry["model_slot"], entry["context_condition"]) for entry in entries}
-    if len(cells) != MAX_CONVERSATIONS:
-        raise PilotPreflightError("Internal pilot plan error: 2x2 cells are incomplete")
+    if len(cells) != expected_conversations:
+        raise PilotPreflightError("Internal pilot plan error: model/context cells are incomplete")
 
 
 def build_pilot_plan(
@@ -137,7 +141,9 @@ def build_pilot_plan(
     with tempfile.TemporaryDirectory(prefix="msc-pilot-dry-run-") as temporary:
         no_call_provider = DeterministicFixtureProvider()
         runner = ConversationRunner(no_call_provider, RawRunStore(Path(temporary) / "unused-store"))
-        for execution_order, (slot, condition) in enumerate(_ordered_cells(), start=1):
+        for execution_order, (slot, condition) in enumerate(
+            _ordered_cells(model_ids), start=1
+        ):
             header = create_run_header(
                 study_version=PILOT_VERSION,
                 run_id=_run_id(script_id, slot, condition),
@@ -167,7 +173,7 @@ def build_pilot_plan(
         if no_call_provider.calls:
             raise PilotPreflightError("Dry-run unexpectedly invoked a provider")
 
-    _assert_pilot_shape(entries)
+    _assert_pilot_shape(entries, len(model_ids))
     plan = {
         "pilot_version": PILOT_VERSION,
         "status": "offline_dry_run_preflight",
@@ -183,9 +189,10 @@ def build_pilot_plan(
         "configuration_hash": configuration_hash,
         "live_requirements": [
             "--live command-line flag",
+            "--confirm-live final confirmation flag",
             "RUN_LIVE_PILOT=1 environment variable",
             "OPENROUTER_API_KEY environment variable",
-            "successful exact-slug catalogue preflight for both configured models",
+            "successful exact-slug catalogue preflight for every configured model",
         ],
         "runs": entries,
     }
@@ -238,6 +245,7 @@ def execute_live_pilot(
     output_root: str | Path = DEFAULT_LIVE_OUTPUT_ROOT,
     script_id: str = DEFAULT_SCRIPT_ID,
     live_requested: bool = False,
+    live_confirmed: bool = False,
     environ: Mapping[str, str] | None = None,
     provider_factory: Callable[..., Any] = OpenRouterProvider,
 ) -> list[Any]:
@@ -247,6 +255,10 @@ def execute_live_pilot(
         raise PilotPreflightError(
             "Live pilot blocked: an explicit --live-equivalent request is required"
         )
+    if not live_confirmed:
+        raise PilotPreflightError(
+            "Live pilot blocked: a final --confirm-live-equivalent confirmation is required"
+        )
     api_key = require_live_gate(environ)
     script, prefix, models, scripts, histories = _configuration(script_id)
     model_ids = _validated_model_ids(models)
@@ -254,21 +266,37 @@ def execute_live_pilot(
     configuration_hash = configuration_bundle_hash(scripts, histories, models)
 
     provider = provider_factory(api_key=api_key)
-    set_budget = getattr(provider, "set_request_attempt_budget", None)
-    if callable(set_budget):
-        set_budget(MAX_GENERATION_CALLS)
-    # Complete every catalogue check before the first generation.  This prevents
-    # a partially executed comparison when either exact slug is unavailable.
-    for model_id in (model_ids["model_a"], model_ids["model_b"]):
-        provider.validate_exact_model(
-            model_id, timeout_seconds=min(20, models.generation.timeout_seconds)
-        )
-
     store = RawRunStore(output_root)
     records: list[Any] = []
-    cells = _ordered_cells()
-    if len(cells) != MAX_CONVERSATIONS:
-        raise PilotPreflightError("Pilot cell count exceeds the four-conversation cap")
+    cells = _ordered_cells(model_ids)
+    if len(cells) > MAX_CONVERSATIONS:
+        raise PilotPreflightError("Pilot cell count exceeds the six-conversation cap")
+    run_ids = [_run_id(script_id, slot, condition) for slot, condition in cells]
+    prior_attempts = _stored_generation_attempts(store, run_ids)
+    incomplete = [
+        run_id
+        for run_id in run_ids
+        if not (store.run_directory(run_id) / "turn-06-success.json").is_file()
+    ]
+    if incomplete and prior_attempts >= MAX_GENERATION_CALLS:
+        raise PilotPreflightError(
+            "Live pilot blocked: the persistent 36-attempt generation cap is exhausted"
+        )
+    set_budget = getattr(provider, "set_request_attempt_budget", None)
+    if incomplete and callable(set_budget):
+        set_budget(MAX_GENERATION_CALLS - prior_attempts)
+    # One catalogue response must contain every exact slug before generation.
+    try:
+        provider.validate_exact_models(
+            tuple(model_ids.values()),
+            timeout_seconds=min(20, models.generation.timeout_seconds),
+        )
+    except (OSError, RuntimeError, ValueError) as error:
+        _store_preflight_failure(output_root, model_ids, error, api_key)
+        raise PilotPreflightError(
+            "Live pilot stopped before generation because exact-model preflight failed; "
+            "a technical failure record was stored"
+        ) from error
     for slot, condition in cells:
         candidate = create_run_header(
             study_version=PILOT_VERSION,
@@ -288,9 +316,52 @@ def execute_live_pilot(
             header=header, script=script, prefix=prefix
         )
         records.append(record)
-    if len(records) != MAX_CONVERSATIONS:
+    if len(records) != len(cells):
         raise PilotPreflightError("Pilot execution exceeded or missed the run cap")
     return records
+
+
+def _stored_generation_attempts(store: RawRunStore, run_ids: list[str]) -> int:
+    """Count persisted POST attempts, including retries, across resumptions."""
+
+    attempts = 0
+    for run_id in run_ids:
+        if not (store.run_directory(run_id) / "run.json").is_file():
+            continue
+        record = store.load(run_id)
+        attempts += sum(event.result.retry_count + 1 for event in record.turns)
+        attempts += sum(event.result.retry_count + 1 for event in record.errors)
+    return attempts
+
+
+def _store_preflight_failure(
+    output_root: str | Path,
+    model_ids: Mapping[str, str],
+    error: Exception,
+    api_key: str,
+) -> Path:
+    """Persist a non-response technical failure without storing credentials."""
+
+    timestamp = datetime.now(UTC)
+    message = str(error).replace(api_key, "[REDACTED]")[:500]
+    destination = (
+        Path(output_root)
+        / "technical-pilot-preflight-failures"
+        / f"{timestamp.strftime('%Y%m%dT%H%M%S%fZ')}-{uuid.uuid4().hex}.json"
+    )
+    return atomic_write_json(
+        destination,
+        {
+            "pilot_version": PILOT_VERSION,
+            "status": "technical_failure",
+            "stage": "exact_model_catalogue_preflight",
+            "timestamp": timestamp.isoformat(),
+            "requested_model_ids": dict(model_ids),
+            "generation_requests_made": 0,
+            "error_type": type(error).__name__,
+            "error_message": message,
+        },
+    )
 
 
 def _print_plan_summary(plan: dict[str, Any]) -> None:
@@ -304,14 +375,22 @@ def _print_plan_summary(plan: dict[str, Any]) -> None:
             f"{entry['execution_order']}. {entry['model_slot']} | "
             f"{entry['context_condition']} | {entry['requested_model_id']}"
         )
-    print("To execute, explicitly pass --live and set RUN_LIVE_PILOT=1 plus the API key.")
+    print(
+        "To execute, explicitly pass --live --confirm-live and set "
+        "RUN_LIVE_PILOT=1 plus the API key."
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Offline pilot preflight by default; live execution is doubly gated."
+        description="Offline pilot preflight by default; live execution has four gates."
     )
     parser.add_argument("--live", action="store_true", help="Request live execution")
+    parser.add_argument(
+        "--confirm-live",
+        action="store_true",
+        help="Final confirmation that generation requests may begin",
+    )
     parser.add_argument("--script-id", default=DEFAULT_SCRIPT_ID)
     parser.add_argument("--output-root", type=Path, default=DEFAULT_LIVE_OUTPUT_ROOT)
     parser.add_argument(
@@ -320,7 +399,6 @@ def main(argv: list[str] | None = None) -> int:
         help="Optional path for the exact offline dry-run payload plan",
     )
     arguments = parser.parse_args(argv)
-    load_dotenv(ROOT / ".env", override=False)
 
     try:
         if not arguments.live:
@@ -329,10 +407,12 @@ def main(argv: list[str] | None = None) -> int:
             )
             _print_plan_summary(plan)
             return 0
+        load_dotenv(ROOT / ".env", override=False)
         records = execute_live_pilot(
             output_root=arguments.output_root,
             script_id=arguments.script_id,
             live_requested=True,
+            live_confirmed=arguments.confirm_live,
         )
     except (OSError, ValueError, RuntimeError) as error:
         print(f"ERROR: {error}", file=sys.stderr)

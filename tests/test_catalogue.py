@@ -38,17 +38,16 @@ def test_target_script_and_prefix_text_contains_no_experiment_cues() -> None:
 def test_models_and_seven_axis_rubric_validate() -> None:
     models = load_models(ROOT / "config" / "models.yaml")
     rubric = load_rubric(ROOT / "config" / "rubric.yaml")
-    assert set(models.model_slots) == {"model_a", "model_b"}
+    assert set(models.model_slots) == {"model_a", "model_b", "model_c"}
     assert models.repetition_seeds == {1: 20260814, 2: 20260815}
     assert [axis.id for axis in rubric.axes] == ["A1", "A2", "A3", "B1", "B2", "B3", "C1"]
     assert rubric.primary_axes == ("A1", "A2", "A3")
 
 
-def test_exact_models_resolve_from_environment(monkeypatch) -> None:
-    monkeypatch.setenv("OPENROUTER_MODEL_A", "qwen/qwen3-8b:free")
-    monkeypatch.setenv("OPENROUTER_MODEL_B", "openai/gpt-oss-20b:free")
+def test_exact_models_resolve_from_versioned_configuration() -> None:
     models = load_models(ROOT / "config" / "models.yaml")
-    assert resolve_model_ids(models, project_root=ROOT) == {
-        "model_a": "qwen/qwen3-8b:free",
-        "model_b": "openai/gpt-oss-20b:free",
+    assert resolve_model_ids(models) == {
+        "model_a": "google/gemma-4-31b-it:free",
+        "model_b": "minimax/minimax-m3:free",
+        "model_c": "thinkingmachines/inkling-small:free",
     }

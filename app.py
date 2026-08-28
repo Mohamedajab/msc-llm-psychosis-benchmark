@@ -19,6 +19,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
+from scripts.run_pilot import DEFAULT_SCRIPT_ID, execute_live_pilot
 from src.annotation import (
     AnnotationError,
     AnnotationPersistenceError,
@@ -47,7 +48,7 @@ from src.nlp_features import (
     project_responses_2d,
     top_tfidf_terms,
 )
-from src.provider_client import DeterministicFixtureProvider, OpenRouterProvider
+from src.provider_client import DeterministicFixtureProvider
 from src.schemas import (
     AnnotationEvent,
     AxisScores,
@@ -259,19 +260,19 @@ def render_global_header(view: str) -> None:
 def render_overview(configuration: LocalConfiguration) -> None:
     st.header("Study Overview")
     st.write(
-        "This prototype evaluates how two fixed language-model slots respond across six controlled turns when synthetic users express increasingly certain unsupported interpretations. The contribution is the controlled, auditable research pipeline—not an automated clinical judgement."
+        "This prototype evaluates how three fixed language-model slots respond across six controlled turns when synthetic users express increasingly certain unsupported interpretations. The contribution is the controlled, auditable research pipeline—not an automated clinical judgement."
     )
 
     metric_columns = st.columns(4)
-    metric_columns[0].metric("Planned conversations", "72")
+    metric_columns[0].metric("Planned conversations", "108")
     metric_columns[1].metric("Frozen scripts", len(configuration.scripts))
     metric_columns[2].metric("Turns per conversation", "6")
-    metric_columns[3].metric("Planned responses", "432")
+    metric_columns[3].metric("Planned responses", "648")
 
     st.subheader("Research questions")
     questions = (
         "RQ1 — How does presentation level affect belief-confirming and harm-enabling responses across a six-turn exchange?",
-        "RQ2 — How do the two fixed target-model slots differ on the primary A1, A2, and A3 outcomes?",
+        "RQ2 — How do the three fixed target-model slots differ on the primary A1, A2, and A3 outcomes?",
         "RQ3 — Does standardised preloaded context change response trajectories compared with no preloaded context?",
         "RQ4 — At what turn do high-risk confirmation or protective safety intervention first appear, persist, or recover?",
     )
@@ -282,7 +283,7 @@ def render_overview(configuration: LocalConfiguration) -> None:
         [
             ("Presentation level", "3", "control, ambiguous, fixed-belief"),
             ("Scenario theme", "3", "monitoring, personal messages, AI relationship"),
-            ("Target model slot", "2", "two exact configured model identifiers"),
+            ("Target model slot", "3", "three exact configured model identifiers"),
             ("Context condition", "2", "none or one frozen standardised prefix"),
             ("Repetition", "2", "two planned repetitions"),
             ("Conversation length", "6 turns", "fixed for every script"),
@@ -297,12 +298,12 @@ def render_overview(configuration: LocalConfiguration) -> None:
         [
             (
                 "Planned study",
-                "72 manifest rows",
+                "108 manifest rows",
                 "Design coverage only; no claim that collection is complete",
             ),
             (
                 "Technical pilot",
-                "Maximum four conversations / 24 calls in the documented pilot",
+                "Six conversations / maximum 36 attempts in the documented pilot",
                 "Engineering and feasibility evidence; descriptive only",
             ),
             (
@@ -320,29 +321,37 @@ def _selection_controls(
     configuration: LocalConfiguration,
 ) -> tuple[ScriptConfig, ContextCondition, str, str, str]:
     script_lookup = {script.script_id: script for script in configuration.scripts}
-    script_id = st.selectbox(
-        "Frozen six-turn script",
-        options=sorted(script_lookup),
-        format_func=lambda value: script_lookup[value].title,
-    )
-    condition = st.selectbox(
-        "Context condition",
-        options=list(ContextCondition),
-        format_func=lambda value: value.value.replace("_", " "),
-    )
     mode = st.selectbox("Execution mode", options=EXECUTION_MODES)
     model_slot = ""
     fixture_profile = "safe"
+    if mode == EXECUTION_MODES[2]:
+        script_id = DEFAULT_SCRIPT_ID
+        condition = ContextCondition.NO_PRELOADED_CONTEXT
+        st.caption(
+            "Live pilot scope is fixed: one frozen scenario × every configured model "
+            "× both context conditions."
+        )
+    else:
+        script_id = st.selectbox(
+            "Frozen six-turn script",
+            options=sorted(script_lookup),
+            format_func=lambda value: script_lookup[value].title,
+        )
+        condition = st.selectbox(
+            "Context condition",
+            options=list(ContextCondition),
+            format_func=lambda value: value.value.replace("_", " "),
+        )
     if mode == EXECUTION_MODES[1]:
         fixture_profile = st.selectbox(
             "Fixture response profile",
             options=("safe", "risk_prone"),
             format_func=lambda value: value.replace("_", " ").title(),
         )
-    else:
+    elif mode == EXECUTION_MODES[0]:
         model_slot = st.selectbox(
             "Target model slot",
-            options=("model_a", "model_b"),
+            options=tuple(configuration.models.model_slots),
             format_func=lambda value: value.replace("_", " ").title(),
         )
     return script_lookup[script_id], condition, mode, model_slot, fixture_profile
@@ -422,10 +431,14 @@ def render_runner(configuration: LocalConfiguration) -> None:
     left, right = st.columns([3, 2])
     with left:
         script, condition, mode, model_slot, fixture_profile = _selection_controls(configuration)
-        run_id_input = st.text_input(
-            "Run identifier",
-            value="friday-demo-run",
-            help="Existing matching runs resume safely; successful turns are never overwritten.",
+        run_id_input = (
+            ""
+            if mode == EXECUTION_MODES[2]
+            else st.text_input(
+                "Run identifier",
+                value="friday-demo-run",
+                help="Existing matching runs resume safely; successful turns are never overwritten.",
+            )
         )
     prefix = history_for_script(script, configuration.histories)
     with right:
@@ -506,52 +519,44 @@ def render_runner(configuration: LocalConfiguration) -> None:
 
     else:
         st.info("TECHNICAL PILOT - DESCRIPTIVE ONLY")
-        model_id = resolved_models[model_slot]
-        st.code(model_id, language=None)
+        st.write("The bounded pilot will use these exact configured model IDs:")
+        for model_id in resolved_models.values():
+            st.code(model_id, language=None)
         key_present = bool(os.getenv("OPENROUTER_API_KEY", "").strip())
+        environment_gate = os.getenv("RUN_LIVE_PILOT") == "1"
         if not key_present:
             st.warning(
                 "OPENROUTER_API_KEY is not present in this process. Live execution remains disabled; dry-run and fixture modes still work."
             )
+        if not environment_gate:
+            st.warning("RUN_LIVE_PILOT is not 1. Live execution remains disabled.")
         live_confirmation = st.checkbox(
-            "I confirm that this will contact OpenRouter, use the exact model shown above, and create a technical-pilot record."
+            "I give final confirmation to contact OpenRouter for the fixed six-conversation, maximum 36-attempt technical pilot."
         )
         live_button = st.button(
             "Run or resume live technical pilot",
             type="primary",
-            disabled=not (key_present and live_confirmation),
+            disabled=not (key_present and environment_gate and live_confirmation),
         )
         st.caption(
             "No catalogue check or generation request occurs until the enabled button is clicked. The API key is never displayed or stored."
         )
         if live_button:
             try:
-                run_id = validate_run_identifier(run_id_input)
-                provider = OpenRouterProvider()
-                with st.spinner("Checking the exact model slug in the live catalogue…"):
-                    provider.validate_exact_model(
-                        model_id,
-                        timeout_seconds=configuration.models.generation.timeout_seconds,
-                    )
-                header = create_or_resume_header(
-                    store=store,
-                    run_id=run_id,
-                    data_status="technical_pilot",
-                    script=script,
-                    condition=condition,
-                    model_slot=model_slot,
-                    model_id=model_id,
-                    configuration=configuration,
-                )
-                with st.spinner("Running or resuming the six-turn technical pilot…"):
-                    record = ConversationRunner(provider, store).run_or_resume(
-                        header=header, script=script, prefix=prefix
+                with st.spinner("Checking all exact slugs, then running the bounded pilot…"):
+                    records = execute_live_pilot(
+                        output_root=RAW_RUN_DIR,
+                        live_requested=True,
+                        live_confirmed=True,
                     )
             except (FileExistsError, OSError, RuntimeError, ValueError) as error:
                 st.error(str(error))
             else:
-                st.session_state.current_run_id = record.header.run_id
-                _render_run_result(record)
+                st.session_state.current_run_id = records[-1].header.run_id
+                completed = sum(len(record.turns) == 6 for record in records)
+                st.success(f"Completed/resumed {completed}/{len(records)} pilot conversations.")
+                for record in records:
+                    st.write(f"{record.header.run_id}: {record.status.value}")
 
 
 def _metadata_frame(record: ConversationRecord) -> pd.DataFrame:
@@ -1131,7 +1136,7 @@ def render_qa(configuration: LocalConfiguration) -> None:
         validation_columns[1].metric("Unique run IDs", manifest["run_id"].nunique())
         validation_columns[2].metric("Scripts", manifest["script_id"].nunique())
         validation_columns[3].metric("Balanced cells", "Yes")
-        st.success("The locally generated 3×3×2×2×2 manifest contains 72 unique balanced rows.")
+        st.success("The locally generated 3×3×3×2×2 manifest contains 108 unique balanced rows.")
         st.dataframe(manifest, hide_index=True, width="stretch")
         st.download_button(
             "Download generated manifest CSV",

@@ -8,17 +8,17 @@
 
 ## One-minute summary
 
-The prototype now represents the proposed study as a controlled, inspectable software pipeline rather than “one chatbot talks and another chatbot judges it.” Nine synthetic six-turn scripts generate a balanced 72-conversation plan. A common runner sends the exact full dialogue history, varies only a frozen prefix for the context manipulation, and stores every provider-bound payload and response/error with provenance. Human ratings are blinded and use seven separate draft 0-2 axes. A transparent offline NLP layer and conversation-level trajectory analysis provide computational evidence without relying on an LLM judge.
+The prototype now represents the proposed study as a controlled, inspectable software pipeline rather than “one chatbot talks and another chatbot judges it.” Nine synthetic six-turn scripts generate a balanced 108-conversation plan. A common runner sends the exact full dialogue history, varies only a frozen prefix for the context manipulation, and stores every provider-bound payload and response/error with provenance. Human ratings are blinded and use seven separate draft 0-2 axes. A transparent offline NLP layer and conversation-level trajectory analysis provide computational evidence without relying on an LLM judge.
 
-The Friday build is demonstrable entirely with deterministic fixtures. Those outputs are clearly **DEMO FIXTURE - NOT RESEARCH DATA**. An optional live technical pilot is bounded at four conversations/24 calls and double-gated. It has not been treated as main-study evidence. The full 72-conversation study has not been run.
+The build is demonstrable entirely with deterministic fixtures. Those outputs are clearly **DEMO FIXTURE - NOT RESEARCH DATA**. An optional live technical pilot is bounded at six conversations/36 HTTP generation attempts and has four independent gates. It has not been treated as main-study evidence. The full 108-conversation study has not been run.
 
 ## Three evidence categories
 
 | Category | What exists | What may be claimed |
 |---|---|---|
 | **DEMO FIXTURE - NOT RESEARCH DATA** | Deterministic safe/risk-prone response profiles for offline workflow testing | The pipeline works on controlled fixture inputs; nothing about real-model safety |
-| **TECHNICAL PILOT - DESCRIPTIVE ONLY** | A fixed, explicitly gated plan for 1 script x 2 models x 2 contexts x 6 turns | Transport/storage/feasibility observations only, if actually executed |
-| **MAIN STUDY** | Validated 72-row manifest and analysis protocol | The design is ready for review; no empirical model comparison until authorised execution and annotation |
+| **TECHNICAL PILOT - DESCRIPTIVE ONLY** | A fixed, explicitly gated plan for 1 script x 3 models x 2 contexts x 6 turns | Transport/storage/feasibility observations only, if actually executed |
+| **MAIN STUDY** | Validated 108-row manifest and analysis protocol | The design is ready for review; no empirical model comparison until authorised execution and annotation |
 
 ## Main-study design
 
@@ -28,9 +28,9 @@ x 3 themes
 x 2 exact model slots
 x 2 context conditions
 x 2 repetitions
-= 72 conversations
+= 108 conversations
 
-72 conversations x 6 turns = 432 planned assistant responses
+108 conversations x 6 turns = 648 planned assistant responses
 ```
 
 Presentation levels are `control`, `ambiguous` and `fixed_belief`. Themes are perceived monitoring, personally directed messages and an unsupported special AI relationship/hidden access. Context is either `no_preloaded_context` or `standardised_preloaded_context`. These are synthetic stimulus conditions, not diagnoses.
@@ -40,7 +40,7 @@ Presentation levels are `control`, `ambiguous` and `fixed_belief`. Themes are pe
 ### Experimental control
 
 - exactly nine versioned scripts with six turns each;
-- a balanced deterministic 72-row manifest;
+- a balanced deterministic 108-row manifest;
 - exact model slots and fixed generation configuration;
 - frozen theme-specific prefixes shared across presentation levels;
 - no model/presentation/rubric metadata in target-facing messages.
@@ -94,7 +94,7 @@ Use [DEMO_SCRIPT.md](DEMO_SCRIPT.md) for exact narration.
 
 | Time | Screen | Point to establish |
 |---:|---|---|
-| 0:00-0:40 | Study Overview | planned design, 72/432, and evidence-status separation |
+| 0:00-0:40 | Study Overview | planned design, 108/648, and evidence-status separation |
 | 0:40-1:35 | Experiment Runner | one offline fixture run and/or exact six-payload preview |
 | 1:35-2:15 | Transcript & Provenance | turn-6 full history, no system cue, hashes and metadata |
 | 2:15-3:10 | Blinded Annotation | hidden factors, seven separate axes, draft-anchor caveat |
@@ -151,7 +151,7 @@ The priority decisions are:
 3. recover/confirm the authoritative detailed seven-axis anchors and freeze rubric version 1;
 4. approve primary outcomes (A1, A2, A3 separately), A3 threshold and trajectory definitions;
 5. confirm annotator count, training, re-rating fraction and adjudication procedure;
-6. confirm whether the four-conversation technical pilot may be run and whether it needs an ethics/provider-terms check first;
+6. confirm whether the six-conversation technical pilot may be run and whether it needs an ethics/provider-terms check first;
 7. approve the rule for selecting/fixing exact model endpoints before main execution;
 8. confirm that the grouped supervised baseline remains secondary and that no automated judge is required for the core dissertation.
 

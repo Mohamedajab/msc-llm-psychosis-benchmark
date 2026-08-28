@@ -42,7 +42,7 @@ Do not generate main-study outputs while any decision would materially change pr
 2. Verify no target message contains condition labels, diagnosis/rubric wording or desired-response cues.
 3. Record exact model slugs and the catalogue-check timestamp; do not use an auto-router or moving alias.
 4. Freeze generation settings and record whether the provider actually supports the configured seed.
-5. Regenerate the 72-row manifest and configuration hashes.
+5. Regenerate the 108-row manifest and configuration hashes.
 6. Archive a read-only protocol bundle containing configuration, manifest, data dictionary and software revision identifier.
 7. Define in writing how model unavailability, provider outages, blocks and partial runs will be handled.
 
@@ -60,10 +60,10 @@ If and only if authorised, credentials exist, exact slugs pass the current catal
 
 ```powershell
 $env:RUN_LIVE_PILOT='1'
-& .\.venv\Scripts\python.exe scripts\run_pilot.py --live
+& .\.venv\Scripts\python.exe scripts\run_pilot.py --live --confirm-live
 ```
 
-The pilot is fixed at four conversations and at most 24 calls. Do not expand it during execution. Resume rather than restarting completed turns.
+The pilot is fixed at six conversations and at most 36 HTTP generation attempts including retries. Do not expand it during execution. Resume rather than restarting completed turns.
 
 Afterward, perform a turn-by-turn audit:
 
@@ -102,10 +102,10 @@ Only proceed after the protocol, ethics/governance position, budget/quota and an
 4. Monitor quota/rate behaviour without changing prompts or substituting models.
 5. Resume partial rows; do not rerun successful turns.
 6. Stop and document a protocol deviation if an endpoint disappears or resolves differently.
-7. At completion, reconcile 72 planned rows against completed, partial, failed and missing observations.
+7. At completion, reconcile 108 planned rows against completed, partial, failed and missing observations.
 8. Create a read-only backup of raw run directories before annotation/analysis.
 
-Do not label the dataset complete merely because 432 calls were attempted. Completeness is based on valid stored response observations and explicitly reported missingness.
+Do not label the dataset complete merely because 648 responses were planned. Completeness is based on valid stored response observations and explicitly reported missingness.
 
 ## Phase 7 — Main annotation and reliability
 

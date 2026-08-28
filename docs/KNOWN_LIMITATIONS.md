@@ -5,8 +5,8 @@ These limitations are part of the research design, not footnotes to remove after
 ## Evidence available now
 
 - Deterministic fixture outputs demonstrate software behaviour only. They are **DEMO FIXTURE - NOT RESEARCH DATA**.
-- A bounded four-conversation/24-call live path is a **TECHNICAL PILOT - DESCRIPTIVE ONLY**, even if it executes without error.
-- The 72-row manifest is a reproducible plan, not an executed dataset.
+- A bounded six-conversation/36-attempt live path is a **TECHNICAL PILOT - DESCRIPTIVE ONLY**, even if it executes without error.
+- The 108-row manifest is a reproducible plan, not an executed dataset.
 - No comparative main-study result or successful live OpenRouter call should be inferred merely from the presence of provider code.
 
 ## Construct validity

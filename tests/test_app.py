@@ -101,6 +101,15 @@ def test_live_execution_is_disabled_without_key_or_confirmation(monkeypatch, tmp
     assert live_button.disabled
     assert network_attempts == []
 
+    monkeypatch.setenv("OPENROUTER_API_KEY", "not-a-real-key")
+    app.run(timeout=60)
+    assert _button(app, "Run or resume live technical pilot").disabled
+
+    monkeypatch.setenv("RUN_LIVE_PILOT", "1")
+    app.run(timeout=60)
+    assert _button(app, "Run or resume live technical pilot").disabled
+    assert network_attempts == []
+
 
 def test_fixture_annotation_nlp_and_trajectory_flow(monkeypatch, tmp_path) -> None:
     app, network_attempts = _offline_app(monkeypatch, tmp_path)
