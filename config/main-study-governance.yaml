@@ -1,0 +1,9 @@
+version: "main-study-governance-v1.0.0"
+supervisor_protocol_approval: "PENDING"
+ethics_approval: "PENDING"
+rubric_approval: "PENDING"
+annotation_adjudication_approval: "PENDING"
+data_management_approval: "PENDING"
+notes:
+  - "These statuses record human governance decisions; command-line confirmations cannot change them."
+  - "No approval is inferred from technical qualification or software validation."

@@ -27,12 +27,12 @@ def main() -> int:
     scripts = load_scripts(ROOT / "config" / "scenarios")
     models = load_models(ROOT / "config" / "models.yaml")
     rows = generate_manifest(scripts, models)
-    errors = validate_manifest(rows)
+    errors = validate_manifest(rows, models=models)
     if errors:
         for error in errors:
             print(f"ERROR: {error}")
         return 1
-    write_manifest_csv(rows, arguments.output)
+    write_manifest_csv(rows, arguments.output, models=models)
     print(f"Manifest valid: {len(rows)} unique balanced runs")
     print(arguments.output)
     return 0

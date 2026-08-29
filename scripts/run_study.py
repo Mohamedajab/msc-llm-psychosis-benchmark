@@ -20,6 +20,11 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from scripts.protocol_bundle import verify_historical_bundle
+from src.active_study import (
+    FINAL_MANIFEST_RELATIVE_PATH,
+    FINAL_MODELS_RELATIVE_PATH,
+    verify_active_study_bundle,
+)
 from src.config_loader import (
     load_histories,
     load_models,
@@ -27,12 +32,9 @@ from src.config_loader import (
     resolve_model_ids,
     validate_catalogue,
 )
+from src.main_study_readiness import evaluate_main_study_readiness
 from src.manifest import generate_manifest, manifest_dataframe, validate_manifest
-from src.pilot_qualification import (
-    QualificationVerdict,
-    assess_pilot_v4,
-    assess_pilot_v5,
-)
+from src.pilot_qualification import assess_pilot_v4, assess_pilot_v5
 from src.provider_client import OpenRouterProvider
 from src.storage import RawRunStore, atomic_write_json
 from src.study_execution import (
@@ -48,6 +50,7 @@ DEFAULT_OUTPUT_ROOT = ROOT / "data" / "raw" / "study-v2"
 PREFLIGHT_FAILURE_ROOT = ROOT / "data" / "raw" / "study-preflight"
 MINIMUM_REQUEST_INTERVAL_SECONDS = 5.0
 TECHNICAL_PILOT_OUTPUT_ROOT = ROOT / "data" / "raw" / "runs"
+GOVERNANCE_PATH = ROOT / "config" / "main-study-governance.yaml"
 
 
 class StudyPreflightError(RuntimeError):
@@ -62,7 +65,7 @@ def load_frozen_study() -> tuple[list[Any], list[Any], Any, list[Any]]:
     if catalogue_errors:
         raise StudyPreflightError("; ".join(catalogue_errors))
     rows = generate_manifest(scripts, models)
-    manifest_errors = validate_manifest(rows)
+    manifest_errors = validate_manifest(rows, models=models, expected_study_version=STUDY_VERSION)
     if manifest_errors:
         raise StudyPreflightError("; ".join(manifest_errors))
     if len(rows) != 72 or len(rows) * 6 != 432:
@@ -84,6 +87,11 @@ def build_offline_preflight(
     pilot_v4 = assess_pilot_v4(output_root=pilot_output_root, persist=False)
     pilot_v5 = assess_pilot_v5(output_root=pilot_output_root, persist=False)
     status = load_study_v2_status()
+    readiness = evaluate_main_study_readiness(
+        repository_root=ROOT,
+        governance_path=GOVERNANCE_PATH,
+        pilot_output_root=pilot_output_root,
+    )
     return {
         "status": "offline_preflight",
         "network_called": False,
@@ -107,7 +115,14 @@ def build_offline_preflight(
         "main_study_status": status.main_study_status,
         "replacement_blocker": status.blocker,
         "main_study_live_blocked": replacement_endpoint_not_frozen(status)
-        or pilot_v5.main_study_blocked,
+        or pilot_v5.main_study_blocked
+        or readiness.main_study != "READY",
+        "replacement_catalogue": readiness.replacement_catalogue,
+        "replacement_screen": readiness.replacement_screen,
+        "replacement_selection": readiness.replacement_selection,
+        "active_bundle": readiness.active_bundle,
+        "governance": readiness.governance,
+        "readiness_blockers": list(readiness.blockers),
     }
 
 
@@ -162,6 +177,12 @@ def execute_live_study(
     environ: Mapping[str, str] | None = None,
     provider_factory: Callable[..., Any] = OpenRouterProvider,
     pilot_output_root: Path = TECHNICAL_PILOT_OUTPUT_ROOT,
+    catalogue_record_path: Path | None = None,
+    selection_record_path: Path | None = None,
+    screen_output_root: Path | None = None,
+    active_bundle_root: Path | None = None,
+    final_artifact_root: Path = ROOT,
+    governance_path: Path = GOVERNANCE_PATH,
 ) -> dict[str, Any]:
     if maximum_http_attempts < 1:
         raise StudyPreflightError("Live study requires a positive explicit attempt cap")
@@ -169,27 +190,59 @@ def execute_live_study(
         raise StudyPreflightError("max_new_conversations must be positive")
     if request_interval_seconds < MINIMUM_REQUEST_INTERVAL_SECONDS:
         raise StudyPreflightError("Study request pacing must be at least five seconds")
-    status = load_study_v2_status()
-    if replacement_endpoint_not_frozen(status):
+    readiness = evaluate_main_study_readiness(
+        repository_root=ROOT,
+        governance_path=governance_path,
+        catalogue_record_path=catalogue_record_path,
+        selection_record_path=selection_record_path,
+        screen_output_root=screen_output_root,
+        pilot_output_root=pilot_output_root,
+        active_bundle_root=active_bundle_root,
+        final_artifact_root=final_artifact_root,
+    )
+    if readiness.main_study != "READY":
+        primary = readiness.blockers[0] if readiness.blockers else "readiness_not_pass"
         raise StudyPreflightError(
-            "Main Study V2 is blocked: replacement_endpoint_not_frozen "
-            f"(replacement_endpoint_status={status.replacement_endpoint_status}, "
-            f"pilot_v6_status={status.pilot_v6_status})"
+            f"Main Study V2 is blocked: {primary}; all blockers={list(readiness.blockers)}"
         )
+    if None in (
+        catalogue_record_path,
+        selection_record_path,
+        screen_output_root,
+        active_bundle_root,
+    ):
+        raise StudyPreflightError("Main Study V2 active evidence paths are incomplete")
+    verify_active_study_bundle(
+        bundle_root=active_bundle_root,
+        repository_root=ROOT,
+        artifact_root=final_artifact_root,
+        selection_record_path=selection_record_path,
+        catalogue_record_path=catalogue_record_path,
+        screen_output_root=screen_output_root,
+        pilot_output_root=pilot_output_root,
+    )
     key = require_live_gate(
         live_requested=live_requested,
         live_confirmed=live_confirmed,
         protocol_confirmed=protocol_confirmed,
         environ=environ,
     )
-    scripts, histories, models, rows = load_frozen_study()
-    verify_historical_bundle()
-    qualification = assess_pilot_v5(output_root=pilot_output_root, persist=True)
-    if qualification.verdict != QualificationVerdict.PASS:
-        raise StudyPreflightError(
-            "Main Study V2 is blocked: internally recomputed Pilot V5 "
-            f"qualification={qualification.verdict.value}"
-        )
+    scripts = load_scripts(ROOT / "config" / "scenarios")
+    histories = load_histories(ROOT / "config" / "histories")
+    models = load_models(final_artifact_root / FINAL_MODELS_RELATIVE_PATH)
+    rows = generate_manifest(scripts, models, study_version="study-v2.1.0")
+    manifest_errors = validate_manifest(rows, models=models, expected_study_version="study-v2.1.0")
+    if manifest_errors:
+        raise StudyPreflightError("; ".join(manifest_errors))
+    expected = manifest_dataframe(rows).fillna("").astype(str).reset_index(drop=True)
+    actual = (
+        pd.read_csv(final_artifact_root / FINAL_MANIFEST_RELATIVE_PATH)
+        .fillna("")
+        .astype(str)
+        .reset_index(drop=True)
+    )
+    if list(actual.columns) != list(expected.columns) or not actual.equals(expected):
+        raise StudyPreflightError("Final active manifest differs from selected configuration")
     model_ids = resolve_model_ids(models)
     provider = provider_factory(api_key=key)
     provider.set_retry_rate_limits(False)
@@ -239,6 +292,9 @@ def _print_offline(summary: dict[str, Any]) -> None:
     print(f"Pilot V5: {summary['pilot_v5_qualification']}")
     print(f"replacement endpoint: {summary['replacement_endpoint_status']}")
     print(f"Pilot V6: {summary['pilot_v6_status']}")
+    print(f"replacement screen: {summary['replacement_screen']}")
+    print(f"replacement selection: {summary['replacement_selection']}")
+    print(f"active final bundle: {summary['active_bundle']}")
     print(f"main study: {summary['main_study_status']}")
     print(f"blocker: {summary['replacement_blocker']}")
     print(
@@ -261,6 +317,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--stop-after-execution-order", type=int)
     parser.add_argument("--output-root", type=Path, default=DEFAULT_OUTPUT_ROOT)
     parser.add_argument("--pilot-output-root", type=Path, default=TECHNICAL_PILOT_OUTPUT_ROOT)
+    parser.add_argument("--catalogue-record", type=Path)
+    parser.add_argument("--selection-record", type=Path)
+    parser.add_argument("--screen-output-root", type=Path)
+    parser.add_argument("--active-bundle-root", type=Path)
+    parser.add_argument("--final-artifact-root", type=Path, default=ROOT)
+    parser.add_argument("--governance", type=Path, default=GOVERNANCE_PATH)
     parser.add_argument(
         "--request-interval-seconds", type=float, default=MINIMUM_REQUEST_INTERVAL_SECONDS
     )
@@ -282,6 +344,12 @@ def main(argv: list[str] | None = None) -> int:
             stop_after_execution_order=args.stop_after_execution_order,
             request_interval_seconds=args.request_interval_seconds,
             pilot_output_root=args.pilot_output_root,
+            catalogue_record_path=args.catalogue_record,
+            selection_record_path=args.selection_record,
+            screen_output_root=args.screen_output_root,
+            active_bundle_root=args.active_bundle_root,
+            final_artifact_root=args.final_artifact_root,
+            governance_path=args.governance,
         )
     except (OSError, RuntimeError, ValueError) as error:
         print(f"ERROR: {error}", file=sys.stderr)

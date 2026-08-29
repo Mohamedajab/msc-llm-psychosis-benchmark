@@ -6,10 +6,20 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pandas as pd
 import pytest
+import yaml
 
 from scripts import assess_pilot_v6 as assess_script
-from scripts import run_pilot_v6
+from scripts import run_pilot_v6, run_study
+from src.active_study import (
+    FINAL_MANIFEST_RELATIVE_PATH,
+    FINAL_MODELS_RELATIVE_PATH,
+    ActiveStudyError,
+    freeze_active_study_bundle,
+    verify_active_study_bundle,
+)
+from src.main_study_readiness import evaluate_main_study_readiness
 from src.pilot_v6 import (
     FINAL_CONFIGURATION_VERSION,
     MAX_HTTP_ATTEMPTS,
@@ -178,6 +188,26 @@ def _mutate(path: Path, transform) -> None:  # noqa: ANN001, ANN202
     value = json.loads(path.read_text(encoding="utf-8"))
     transform(value)
     path.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
+
+
+def _approved_governance(tmp_path: Path) -> Path:
+    path = tmp_path / "governance.yaml"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        yaml.safe_dump(
+            {
+                "version": "main-study-governance-v1.0.0",
+                "supervisor_protocol_approval": "APPROVED",
+                "ethics_approval": "APPROVED",
+                "rubric_approval": "APPROVED",
+                "annotation_adjudication_approval": "APPROVED",
+                "data_management_approval": "APPROVED",
+                "notes": ["Synthetic test fixture only."],
+            }
+        ),
+        encoding="utf-8",
+    )
+    return path
 
 
 def test_current_pilot_v6_is_not_configured_and_default_is_zero_network(
@@ -558,3 +588,207 @@ def test_assessor_output_is_content_free_and_append_only(
         "OPENROUTER_API_KEY",
     )
     assert all(value not in output_text for value in private_markers)
+
+
+def test_active_bundle_cannot_be_created_without_selection_or_v6_pass(tmp_path: Path) -> None:
+    with pytest.raises(ActiveStudyError, match="selection and Pilot V6 PASS"):
+        freeze_active_study_bundle(
+            repository_root=ROOT,
+            artifact_root=tmp_path / "artifacts",
+            bundle_root=tmp_path / "bundle",
+            selection_record_path=None,
+            catalogue_record_path=None,
+            screen_output_root=None,
+            pilot_output_root=None,
+            software_commit="synthetic-test",
+        )
+
+    catalogue, screens, selection, _ = _configuration(tmp_path / "not-run")
+    with pytest.raises(ActiveStudyError, match="NOT_RUN, not PASS"):
+        freeze_active_study_bundle(
+            repository_root=ROOT,
+            artifact_root=tmp_path / "artifacts-not-run",
+            bundle_root=tmp_path / "bundle-not-run",
+            selection_record_path=selection,
+            catalogue_record_path=catalogue,
+            screen_output_root=screens,
+            pilot_output_root=tmp_path / "empty-pilot",
+            software_commit="synthetic-test",
+        )
+
+
+def _freeze_valid_bundle(tmp_path: Path):  # noqa: ANN202
+    paths = _write_pilot(tmp_path / "evidence")
+    catalogue, screens, selection, pilot_output, _ = paths
+    artifacts = tmp_path / "artifacts"
+    bundle = tmp_path / "bundle"
+    metadata = freeze_active_study_bundle(
+        repository_root=ROOT,
+        artifact_root=artifacts,
+        bundle_root=bundle,
+        selection_record_path=selection,
+        catalogue_record_path=catalogue,
+        screen_output_root=screens,
+        pilot_output_root=pilot_output,
+        created_at=NOW,
+        software_commit="synthetic-test",
+    )
+    return catalogue, screens, selection, pilot_output, artifacts, bundle, metadata
+
+
+def test_final_freeze_creates_exact_72_row_selected_pair_and_safe_bundle(tmp_path: Path) -> None:
+    catalogue, screens, selection, pilot, artifacts, bundle, metadata = _freeze_valid_bundle(
+        tmp_path
+    )
+    assert metadata.study_version == "study-v2.1.0"
+    assert metadata.configuration_version == "2.2.0"
+    assert metadata.generation_version == "generation-v3"
+    assert metadata.planned_conversations == 72
+    assert metadata.planned_response_slots == 432
+    assert metadata.model_ids == {
+        "model_minimax": MINIMAX_MODEL_ID,
+        "model_replacement": REPLACEMENT,
+    }
+    frame = pd.read_csv(artifacts / FINAL_MANIFEST_RELATIVE_PATH)
+    assert len(frame) == 72
+    assert frame["run_id"].nunique() == 72
+    assert set(frame["requested_model_id"]) == {MINIMAX_MODEL_ID, REPLACEMENT}
+    assert set(frame["repetition"]) == {1, 2}
+    assert set(frame["planned_seed"]) == {20260814, 20260815}
+    assert set(frame["context_condition"]) == {
+        "no_preloaded_context",
+        "standardised_preloaded_context",
+    }
+    assert (artifacts / FINAL_MODELS_RELATIVE_PATH).is_file()
+    verified = verify_active_study_bundle(
+        bundle_root=bundle,
+        repository_root=ROOT,
+        artifact_root=artifacts,
+        selection_record_path=selection,
+        catalogue_record_path=catalogue,
+        screen_output_root=screens,
+        pilot_output_root=pilot,
+    )
+    assert verified == metadata
+    bundled_paths = {item.bundle_path for item in metadata.items}
+    assert all("data/raw" not in value for value in bundled_paths)
+    assert all("response" not in value for value in bundled_paths)
+
+
+def test_active_bundle_detects_bundled_or_current_source_tampering(tmp_path: Path) -> None:
+    catalogue, screens, selection, pilot, artifacts, bundle, _ = _freeze_valid_bundle(tmp_path)
+    bundled_manifest = bundle / "files" / "artifact" / FINAL_MANIFEST_RELATIVE_PATH
+    bundled_manifest.write_bytes(bundled_manifest.read_bytes() + b"\n")
+    with pytest.raises(ActiveStudyError, match="hash mismatch"):
+        verify_active_study_bundle(
+            bundle_root=bundle,
+            repository_root=ROOT,
+            artifact_root=artifacts,
+            selection_record_path=selection,
+            catalogue_record_path=catalogue,
+            screen_output_root=screens,
+            pilot_output_root=pilot,
+        )
+
+    second = _freeze_valid_bundle(tmp_path / "second")
+    second[4].joinpath(FINAL_MODELS_RELATIVE_PATH).write_text("version: tampered\n")
+    with pytest.raises(ActiveStudyError, match="Current-source mismatch"):
+        verify_active_study_bundle(
+            bundle_root=second[5],
+            repository_root=ROOT,
+            artifact_root=second[4],
+            selection_record_path=second[2],
+            catalogue_record_path=second[0],
+            screen_output_root=second[1],
+            pilot_output_root=second[3],
+        )
+
+
+def test_readiness_is_blocked_today_and_ready_only_on_complete_synthetic_chain(
+    tmp_path: Path,
+) -> None:
+    current = evaluate_main_study_readiness(
+        repository_root=ROOT,
+        governance_path=ROOT / "config" / "main-study-governance.yaml",
+    )
+    assert current.replacement_catalogue == "NOT_FETCHED"
+    assert current.replacement_screen == "NOT_RUN"
+    assert current.replacement_selection == "NOT_SELECTED"
+    assert current.pilot_v6 == "NOT_CONFIGURED"
+    assert current.active_bundle == "NOT_CREATED"
+    assert current.main_study == "BLOCKED"
+    assert current.network_requests == 0
+
+    catalogue, screens, selection, pilot, artifacts, bundle, _ = _freeze_valid_bundle(
+        tmp_path / "ready"
+    )
+    ready = evaluate_main_study_readiness(
+        repository_root=ROOT,
+        governance_path=_approved_governance(tmp_path),
+        catalogue_record_path=catalogue,
+        selection_record_path=selection,
+        screen_output_root=screens,
+        pilot_output_root=pilot,
+        active_bundle_root=bundle,
+        final_artifact_root=artifacts,
+    )
+    assert ready.replacement_screen == "PASS"
+    assert ready.replacement_selection == "PASS"
+    assert ready.pilot_v6 == "PASS"
+    assert ready.active_bundle == "PASS"
+    assert ready.governance == "PASS"
+    assert ready.main_study == "READY"
+    assert ready.blockers == ()
+
+
+def test_main_study_blocks_before_provider_without_chain_and_uses_mock_only_when_ready(
+    tmp_path: Path,
+) -> None:
+    constructed = False
+
+    def forbidden(**kwargs):  # noqa: ANN003, ANN202
+        nonlocal constructed
+        constructed = True
+        raise AssertionError("provider construction must remain unreachable")
+
+    with pytest.raises(run_study.StudyPreflightError, match="replacement_endpoint_not_frozen"):
+        run_study.execute_live_study(
+            maximum_http_attempts=1,
+            live_requested=True,
+            live_confirmed=True,
+            protocol_confirmed=True,
+            output_root=tmp_path / "blocked-output",
+            pilot_output_root=tmp_path / "blocked-pilot",
+            environ={"RUN_LIVE_STUDY": "1", "OPENROUTER_API_KEY": "test-only"},
+            provider_factory=forbidden,
+        )
+    assert constructed is False
+
+    catalogue, screens, selection, pilot, artifacts, bundle, _ = _freeze_valid_bundle(
+        tmp_path / "allowed"
+    )
+    instances: list[AttemptFixture] = []
+
+    def factory(*, api_key: str) -> AttemptFixture:
+        instance = AttemptFixture(api_key=api_key)
+        instances.append(instance)
+        return instance
+
+    summary = run_study.execute_live_study(
+        maximum_http_attempts=1,
+        live_requested=True,
+        live_confirmed=True,
+        protocol_confirmed=True,
+        output_root=tmp_path / "allowed-output",
+        pilot_output_root=pilot,
+        catalogue_record_path=catalogue,
+        selection_record_path=selection,
+        screen_output_root=screens,
+        active_bundle_root=bundle,
+        final_artifact_root=artifacts,
+        governance_path=_approved_governance(tmp_path / "allowed-governance"),
+        environ={"RUN_LIVE_STUDY": "1", "OPENROUTER_API_KEY": "test-only"},
+        provider_factory=factory,
+    )
+    assert instances and instances[0].request_attempt_count == 1
+    assert summary["http_attempts_used"] == 1
