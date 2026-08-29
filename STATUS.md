@@ -7,10 +7,16 @@
 - Rubric: draft, pending supervisor/research-group approval.
 - Pilot V4: completed 4/4 conversations and 24/24 response slots; permanently `FAIL` under
   its frozen criteria because 12 responses ended `finish_reason=length` and were truncated.
-- Pilot V5: implemented/planned under generation-v3, not executed; current verdict `NOT_RUN`.
-- Main-study runner: offline by default; no live Study V2 execution has occurred.
-- Main-study machine gate: Pilot V5 PASS required; current live collection state is blocked.
-- Current full offline test suite: 139 passing tests.
+- Pilot V5: ran under generation-v3/1024 tokens; completed 4/4 conversations and 24/24
+  response slots but is permanently `FAIL` because 11 responses ended `finish_reason=length`
+  and were truncated. It cannot be resumed into PASS.
+- Nemotron is rejected as the proposed final Study V2 comparator on technical
+  generation-suitability grounds only (not clinical safety behaviour).
+- MiniMax remains a technically qualified candidate based on its completed pilot behaviour.
+- Replacement endpoint: `NOT_SELECTED`; Pilot V6: `NOT_CONFIGURED`.
+- Main-study runner: offline by default; live Study V2 collection is blocked by
+  `replacement_endpoint_not_frozen` and by the recomputed Pilot V5 `FAIL`.
+- Current full offline test suite: 150 passing tests.
 
 ## Immutable technical evidence
 
@@ -28,7 +34,13 @@
 
 ## Readiness
 
-Pilot V4 is closed failed technical evidence. Pilot V5 is a conditional go only after separate
-live authorisation. The main study is a no-go until Pilot V5 independently passes with 24/24
-complete, non-truncated slots within 32 attempts, academic/rubric/ethics/data-management
-decisions are genuinely approved, and human annotation is ready. No main-study result exists.
+Pilot V4 is closed failed technical evidence. Pilot V5 is closed failed technical evidence:
+it completed 24/24 response slots but 11 Nemotron/Nvidia responses were truncated, so it cannot
+be resumed into PASS. Nemotron is rejected as the proposed final comparator on technical
+generation-suitability grounds only. MiniMax remains technically qualified.
+
+The second exact endpoint is `NOT_SELECTED`, Pilot V6 is `NOT_CONFIGURED`, and the main study
+is `BLOCKED` by the `replacement_endpoint_not_frozen` blocker plus the recomputed Pilot V5
+`FAIL`. Collection remains a no-go until a replacement endpoint passes prospective technical
+screening, is explicitly frozen, and academic/rubric/ethics/data-management decisions are
+genuinely approved and human annotation is ready. No main-study result exists.

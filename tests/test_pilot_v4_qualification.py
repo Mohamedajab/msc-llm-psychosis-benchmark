@@ -194,7 +194,7 @@ def _live_environment() -> dict[str, str]:
     return {"RUN_LIVE_STUDY": "1", "OPENROUTER_API_KEY": "test-only-value"}
 
 
-def test_main_study_live_blocks_before_provider_construction_without_pass(
+def test_main_study_blocks_before_provider_construction_when_replacement_pending(
     tmp_path: Path, monkeypatch
 ) -> None:
     constructed = False
@@ -204,8 +204,8 @@ def test_main_study_live_blocks_before_provider_construction_without_pass(
         constructed = True
         raise AssertionError("provider construction must remain unreachable")
 
-    monkeypatch.setattr(run_study, "verify_bundle", lambda: {})
-    with pytest.raises(run_study.StudyPreflightError, match="qualification=NOT_RUN"):
+    monkeypatch.setattr(run_study, "verify_historical_bundle", lambda: {})
+    with pytest.raises(run_study.StudyPreflightError, match="replacement_endpoint_not_frozen"):
         run_study.execute_live_study(
             maximum_http_attempts=1,
             live_requested=True,
@@ -219,7 +219,7 @@ def test_main_study_live_blocks_before_provider_construction_without_pass(
     assert constructed is False
 
 
-def test_main_study_reaches_only_mocked_provider_after_recomputed_pass(
+def test_main_study_blocks_after_recomputed_pass_when_replacement_pending(
     tmp_path: Path, monkeypatch
 ) -> None:
     pilot_root = tmp_path / "runs"
@@ -227,50 +227,41 @@ def test_main_study_reaches_only_mocked_provider_after_recomputed_pass(
 
     class MockedStudyProvider(QualificationFixture):
         constructed = False
-        catalogue_checked = False
 
         def __init__(self, *, api_key: str) -> None:
             assert api_key
             super().__init__()
             type(self).constructed = True
 
-        def set_retry_rate_limits(self, enabled: bool) -> None:
-            assert enabled is False
-
-        def set_minimum_request_interval(self, seconds: float) -> None:
-            assert seconds >= 5
-
-        def set_provider_routing(self, policy) -> None:  # noqa: ANN001
-            assert policy.allow_fallbacks is False
-
-        def validate_exact_models_strict(self, model_ids, **kwargs) -> None:  # noqa: ANN001, ANN003
-            assert len(model_ids) == 2
-            type(self).catalogue_checked = True
-
-    monkeypatch.setattr(run_study, "verify_bundle", lambda: {})
-    summary = run_study.execute_live_study(
-        maximum_http_attempts=1,
-        live_requested=True,
-        live_confirmed=True,
-        protocol_confirmed=True,
-        output_root=tmp_path / "study",
-        pilot_output_root=pilot_root,
-        environ=_live_environment(),
-        provider_factory=MockedStudyProvider,
-    )
-    assert MockedStudyProvider.constructed is True
-    assert MockedStudyProvider.catalogue_checked is True
-    assert summary["http_attempts_used"] == 1
+    monkeypatch.setattr(run_study, "verify_historical_bundle", lambda: {})
+    with pytest.raises(run_study.StudyPreflightError, match="replacement_endpoint_not_frozen"):
+        run_study.execute_live_study(
+            maximum_http_attempts=1,
+            live_requested=True,
+            live_confirmed=True,
+            protocol_confirmed=True,
+            output_root=tmp_path / "study",
+            pilot_output_root=pilot_root,
+            environ=_live_environment(),
+            provider_factory=MockedStudyProvider,
+        )
+    assert MockedStudyProvider.constructed is False
 
 
 def test_offline_main_study_reports_gate_without_constructing_provider(
     tmp_path: Path, monkeypatch
 ) -> None:
-    monkeypatch.setattr(run_study, "verify_bundle", lambda: {"software_commit": "x", "items": []})
+    monkeypatch.setattr(
+        run_study, "verify_historical_bundle", lambda: {"software_commit": "x", "items": []}
+    )
     report = run_study.build_offline_preflight(pilot_output_root=tmp_path / "runs")
     assert report["network_called"] is False
     assert report["pilot_v4_qualification"] == "NOT_RUN"
     assert report["pilot_v5_qualification"] == "NOT_RUN"
+    assert report["replacement_endpoint_status"] == "NOT_SELECTED"
+    assert report["pilot_v6_status"] == "NOT_CONFIGURED"
+    assert report["main_study_status"] == "BLOCKED"
+    assert report["replacement_blocker"] == "replacement_endpoint_not_frozen"
     assert report["main_study_live_blocked"] is True
 
 

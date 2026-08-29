@@ -36,8 +36,18 @@ responses—all from the Nemotron endpoint through Nvidia—ended `finish_reason
 were truncated. MiniMax through GMICloud produced 12/12 `stop` responses. Pilot V4 therefore
 remains permanently `FAIL` under its frozen prospective criteria.
 
-Before any main-study data collection, generation-v3 raises only the completion limit from
+Before any main-study data collection, generation-v3 raised only the completion limit from
 512 to 1024 tokens. Temperature, top-p, timeout, retry policy, models, seeds, scripts,
-histories, rubric and the 72-conversation factorial design are unchanged. This is a
+histories, rubric and the 72-conversation factorial design are unchanged. This was a
 prospective feasibility correction, not a reinterpretation of V4. The exact generation-v2
-configuration is archived, and separately versioned Pilot V5 must qualify generation-v3.
+configuration is archived, and separately versioned Pilot V5 tested generation-v3.
+
+Pilot V5 ran under generation-v3 and completed 24/24 slots, but 11 Nemotron/Nvidia responses
+still ended `finish_reason=length`, so it failed its frozen zero-truncation criteria and is
+closed as immutable technical evidence that cannot be resumed into PASS. Nemotron is therefore
+rejected as the proposed final Study V2 comparator on technical generation-suitability grounds
+only. The second exact endpoint is `NOT_SELECTED` and Pilot V6 is `NOT_CONFIGURED`; the
+72-conversation factorial structure remains intended but cannot be refrozen until a replacement
+passes prospective technical screening. The existing frozen bundle is preserved unchanged as
+the superseded MiniMax/Nemotron candidate design, and its byte-identity is verified
+independently of current active-study readiness.

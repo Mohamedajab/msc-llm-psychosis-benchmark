@@ -112,7 +112,7 @@ def generate_bundle(*, created_at: datetime | None = None) -> dict:
     return metadata
 
 
-def verify_bundle() -> dict:
+def _read_bundle_metadata() -> dict:
     if not METADATA_PATH.is_file():
         raise RuntimeError("Frozen Study V2 protocol bundle has not been generated")
     metadata = json.loads(METADATA_PATH.read_text(encoding="utf-8"))
@@ -120,16 +120,71 @@ def verify_bundle() -> dict:
         raise RuntimeError("Protocol bundle study version mismatch")
     if metadata.get("contains_sensitive_or_observed_data") is not False:
         raise RuntimeError("Protocol bundle safety declaration is invalid")
+    if not metadata.get("items"):
+        raise RuntimeError("Protocol bundle contains no items")
+    return metadata
+
+
+def historical_bundle_fingerprint() -> str:
+    """Return a SHA-256 over the entire frozen historical bundle tree.
+
+    This proves the historical bundle (the superseded MiniMax/Nemotron candidate
+    design) remains byte-identical, independent of the current working tree.
+    """
+
+    digest = hashlib.sha256()
+    for path in sorted(value for value in BUNDLE_ROOT.rglob("*") if value.is_file()):
+        digest.update(path.relative_to(ROOT).as_posix().encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(path.read_bytes())
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
+def verify_historical_bundle() -> dict:
+    """Verify the frozen historical bundle is internally byte-identical.
+
+    This does not compare against the current working tree. The historical bundle
+    is the immutable evidence of the superseded MiniMax/Nemotron candidate design;
+    current active-study readiness is tracked separately by the replacement-pending
+    status, not by rewriting this bundle.
+    """
+
+    metadata = _read_bundle_metadata()
+    recorded = {item["bundle_path"] for item in metadata["items"]}
+    on_disk = {
+        path.relative_to(BUNDLE_ROOT).as_posix()
+        for path in BUNDLE_ROOT.rglob("*")
+        if path.is_file() and path.resolve() != METADATA_PATH.resolve()
+    }
+    if on_disk != recorded:
+        raise RuntimeError("Historical bundle file set differs from its recorded items")
+    for item in metadata["items"]:
+        bundled = BUNDLE_ROOT / item["bundle_path"]
+        if sha256_file(bundled) != item["sha256"]:
+            raise RuntimeError(f"Historical bundle hash mismatch: {item['source_path']}")
+    return metadata
+
+
+def verify_bundle() -> dict:
+    """Verify current working-tree sources still match the frozen bundle.
+
+    This is the historical source-equivalence check. Once the MiniMax/Nemotron
+    candidate design is superseded, current sources may legitimately diverge from
+    the frozen bundle; active collection is then governed by verify_historical_bundle
+    plus the replacement-pending status instead.
+    """
+
+    metadata = verify_historical_bundle()
     expected_sources = {path.relative_to(ROOT).as_posix() for path in _source_files()}
     actual_sources = {item["source_path"] for item in metadata.get("items", [])}
     if actual_sources != expected_sources:
         raise RuntimeError("Protocol bundle allowlist differs from the frozen source set")
     for item in metadata["items"]:
         source = ROOT / item["source_path"]
-        bundled = BUNDLE_ROOT / item["bundle_path"]
         expected = item["sha256"]
-        if sha256_file(source) != expected or sha256_file(bundled) != expected:
-            raise RuntimeError(f"Protocol bundle hash mismatch: {item['source_path']}")
+        if sha256_file(source) != expected:
+            raise RuntimeError(f"Protocol bundle source hash mismatch: {item['source_path']}")
     return metadata
 
 
@@ -140,12 +195,15 @@ def main(argv: list[str] | None = None) -> int:
     action.add_argument("--verify", action="store_true")
     args = parser.parse_args(argv)
     try:
-        metadata = generate_bundle() if args.generate else verify_bundle()
+        if args.generate:
+            metadata = generate_bundle()
+        else:
+            metadata = verify_historical_bundle()
     except (OSError, RuntimeError, ValueError, json.JSONDecodeError) as error:
         print(f"ERROR: {error}", file=sys.stderr)
         return 1
     print(
-        f"Protocol bundle valid: {metadata['study_version']} | "
+        f"Historical protocol bundle valid: {metadata['study_version']} | "
         f"{len(metadata['items'])} hashed planned-study files"
     )
     print(METADATA_PATH)

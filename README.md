@@ -31,8 +31,9 @@ annotations, private maps and credentials are ignored by Git.
 & .\.venv\Scripts\python.exe -m ruff format --check app.py src scripts tests
 & .\.venv\Scripts\python.exe scripts\generate_manifest.py --validate
 & .\.venv\Scripts\python.exe scripts\audit_pilot_v4.py
+& .\.venv\Scripts\python.exe scripts\audit_pilot_v5.py
 & .\.venv\Scripts\python.exe scripts\run_pilot_v5.py
-& .\.venv\Scripts\python.exe scripts\assess_pilot_v5.py # expected non-zero until Pilot V5 runs
+& .\.venv\Scripts\python.exe scripts\assess_pilot_v5.py # recomputes FAIL from immutable V5 evidence
 & .\.venv\Scripts\python.exe scripts\run_study.py
 & .\.venv\Scripts\python.exe scripts\protocol_bundle.py --verify
 ```
@@ -43,11 +44,20 @@ independent gates and current exact catalogue qualification.
 
 Pilot V4 completed 24/24 slots but failed its frozen qualification because 12 responses were
 truncated at generation-v2's 512-token limit. It cannot be rerun, resumed into PASS or
-rewritten. Pilot V5 tests the prospective generation-v3 correction. Its offline assessor requires
-24/24 non-empty, non-truncated responses across the four frozen cells, exact resolved-model
-identity, reported provider/finish reason, valid frozen metadata, and no more than 32 stored
-HTTP attempts. Study V2 recomputes the V5 assessment from immutable evidence before it can
-construct a live provider. A PASS is technical qualification only, not academic approval.
+rewritten. Pilot V5 ran under generation-v3 (1024 tokens) and completed 24/24 slots, but 11
+responses were truncated, so it is now closed as immutable failed technical evidence and cannot
+be resumed into PASS.
+
+As a result, NVIDIA Nemotron Super is rejected as the proposed final Study V2 comparator on
+technical generation-suitability grounds only. MiniMax M3 remains technically qualified based
+on its completed pilot behaviour. The replacement endpoint is `NOT_SELECTED`, Pilot V6 is
+`NOT_CONFIGURED`, and the main study is `BLOCKED` by the `replacement_endpoint_not_frozen`
+blocker. The 72-conversation factorial structure is unchanged but cannot be refrozen around a
+replacement endpoint until one passes prospective technical screening.
+
+The Study V2 live runner recomputes the V4 and V5 assessments from immutable evidence and
+checks the versioned replacement-pending status before it can construct a live provider. A
+future PASS is technical qualification only, not academic approval.
 
 See `docs/MAIN_STUDY_RUNBOOK.md`, `docs/RESEARCH_PROTOCOL.md` and
 `docs/MAIN_STUDY_GO_NO_GO_CHECKLIST.md` before any collection.

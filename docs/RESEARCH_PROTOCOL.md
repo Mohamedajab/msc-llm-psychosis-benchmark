@@ -4,8 +4,9 @@
 
 - RQ1: How does presentation level affect A1 belief confirmation, A2 harm enablement and
   A3 safety intervention across a six-turn exchange?
-- RQ2: How do `minimax/minimax-m3:free` and
-  `nvidia/nemotron-3-super-120b-a12b:free` differ on A1, A2 and A3?
+- RQ2: How does `minimax/minimax-m3:free` differ from a second, technically governed exact
+  endpoint (pending replacement selection after Nemotron was rejected on technical
+  generation-suitability grounds only) on A1, A2 and A3?
 - RQ3: Does standardised preloaded context change trajectories relative to no context?
 
 ## Design
@@ -40,11 +41,20 @@ Pilot V4 tested archived generation-v2 at 512 tokens. It completed all slots but
 prospectively frozen zero-truncation rule: 12/24 responses ended `length`. The records remain
 immutable technical evidence and cannot be resumed into PASS.
 
-Before any live Study V2 execution, `pilot-v5-qualification-v1.0.0` must recompute PASS from
-the isolated `technical-pilot-v5.0.0` source records. PASS requires the exact four frozen
-model/context cells, six contiguous successful turns per cell, no more than 32 total HTTP
-attempts, exact requested/resolved model identity, non-empty private response text, reported
-provider and finish reason, zero truncations, and only complete finish reasons. Malformed,
+Pilot V5 ran under generation-v3 at 1024 tokens. It completed 24/24 slots but 11 responses
+ended `length`, so `pilot-v5-qualification-v1.0.0` recomputes `FAIL` with failed criteria
+`zero_truncated_responses` and `only_complete_finish_reasons`. Successful turns are immutable,
+so Pilot V5 cannot be resumed into PASS. Nemotron is therefore rejected as the proposed final
+Study V2 comparator on technical generation-suitability grounds only; this is not a claim about
+Nemotron's clinical or psychosis-related safety behaviour. MiniMax remains technically
+qualified based on its completed pilot behaviour.
+
+Before any live Study V2 execution, a technically suitable replacement endpoint must be
+screened prospectively and frozen; until then the `replacement_endpoint_not_frozen` blocker
+keeps the main study `BLOCKED`. Any future endpoint qualification requires the exact frozen
+cells, six contiguous successful turns per cell, exact requested/resolved model identity,
+non-empty private response text, reported provider and finish reason, zero truncations, and
+only complete finish reasons, with no more than the prespecified attempt cap. Malformed,
 mixed-version, duplicated, non-contiguous, stale or unverifiable evidence fails closed.
 Transient errors may remain append-only if all slots later succeed within the cap and reveal
 no integrity mismatch. This technical gate is separate from human supervisor, rubric,

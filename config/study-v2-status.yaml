@@ -1,0 +1,8 @@
+version: "study-v2-status-v1.0.0"
+replacement_endpoint_status: "NOT_SELECTED"
+pilot_v6_status: "NOT_CONFIGURED"
+main_study_status: "BLOCKED"
+blocker: "replacement_endpoint_not_frozen"
+rejected_comparator: "nvidia/nemotron-3-super-120b-a12b:free"
+rejection_scope: "technical_generation_suitability_only"
+retained_technically_qualified_candidate: "minimax/minimax-m3:free"

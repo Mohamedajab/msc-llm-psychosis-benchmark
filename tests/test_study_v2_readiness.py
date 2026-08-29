@@ -12,7 +12,7 @@ import pytest
 from scripts import analyse_study, run_pilot_v4, run_pilot_v5, run_study
 from scripts.check_documentation_links import broken_links
 from scripts.check_repository_safety import audit_tracked_files
-from scripts.protocol_bundle import verify_bundle
+from scripts.protocol_bundle import verify_historical_bundle
 from src.config_loader import load_histories, load_models, load_scripts
 from src.provider_client import (
     DeterministicFixtureProvider,
@@ -245,7 +245,10 @@ def test_main_study_default_preflight_is_zero_network_and_bundle_verified(
     assert report["network_called"] is False
     assert report["planned_conversations"] == 72
     assert report["planned_response_slots"] == 432
-    assert verify_bundle()["study_version"] == "study-v2.0.0"
+    assert report["replacement_endpoint_status"] == "NOT_SELECTED"
+    assert report["pilot_v6_status"] == "NOT_CONFIGURED"
+    assert report["main_study_status"] == "BLOCKED"
+    assert verify_historical_bundle()["study_version"] == "study-v2.0.0"
 
 
 def test_repository_safety_and_documentation_links() -> None:
@@ -295,6 +298,11 @@ def _fingerprint(paths: list[Path]) -> str:
             28,
             "679034620c7d73ba84195bb57317b06db5a1168795feb3875ab27ead33ed750a",
         ),
+        (
+            "technical-pilot-v5",
+            28,
+            "c8b597a08085ea053faaeb89e802bae62a428aebe63e75ee82d7b61b1cba28d1",
+        ),
     ],
 )
 def test_local_historical_pilot_evidence_is_immutable(
@@ -331,3 +339,36 @@ def test_local_pilot_v4_assessment_records_are_immutable() -> None:
         pytest.skip("Private qualification records are excluded from a fresh clone")
     assert len(paths) == 5
     assert _fingerprint(paths) == "965694b364a8a3ef9a017e6452824ff10ae08aba4c18435df14ae168736629c9"
+
+
+def test_local_pilot_v5_assessment_records_are_immutable() -> None:
+    paths = sorted((ROOT / "data" / "raw" / "pilot-v5-qualification").glob("*.json"))
+    if not paths:
+        pytest.skip("Private qualification records are excluded from a fresh clone")
+    assert len(paths) == 4
+    assert _fingerprint(paths) == "945ade153e419339a7f22d793a5ffc843470a917fd1c315e2a95dd0864d4e1f2"
+
+
+def test_scenarios_histories_and_rubric_are_immutable() -> None:
+    scenarios = sorted((ROOT / "config" / "scenarios").glob("*.json"))
+    histories = sorted((ROOT / "config" / "histories").glob("*.json"))
+    rubric = [ROOT / "config" / "rubric.yaml"]
+    assert len(scenarios) == 9
+    assert len(histories) == 3
+    assert _fingerprint(scenarios) == (
+        "8c730208b66f08bc9f1a71911b3895cb14202280f412a7a4b96667fc288147b6"
+    )
+    assert _fingerprint(histories) == (
+        "895748698d6faaffcedda72e740ff5b50f8de8ba4a3701550bd3d3d06ade4ee9"
+    )
+    assert _fingerprint(rubric) == (
+        "c371afadebf59f6ae0f51f62564bedbda534e510deff3ef8c333dc3bc3f91a41"
+    )
+
+
+def test_historical_protocol_bundle_is_byte_identical() -> None:
+    from scripts.protocol_bundle import historical_bundle_fingerprint
+
+    assert historical_bundle_fingerprint() == (
+        "1ac2fcb151c6cac1d6f59464fc2074dc6ecc15ac1df9a98480224c509bcfb97b"
+    )

@@ -416,6 +416,44 @@ def pilot_v4_safe_cross_tab(*, output_root: str | Path) -> list[dict[str, Any]]:
     ]
 
 
+def pilot_v5_safe_cross_tab(*, output_root: str | Path) -> list[dict[str, Any]]:
+    """Return content-free V5 model/provider/finish/truncation response counts."""
+
+    from scripts.run_pilot_v5 import pilot_rows
+
+    store = RawRunStore(output_root)
+    counts: Counter[tuple[str, str, str, str, bool]] = Counter()
+    for row in pilot_rows():
+        run_path = store.run_directory(row.run_id) / "run.json"
+        if not run_path.is_file():
+            continue
+        record = store.load(row.run_id)
+        for event in record.turns:
+            result = event.result
+            counts[
+                (
+                    row.requested_model_id,
+                    result.resolved_model_id or "unreported",
+                    result.provider_name or "unreported",
+                    result.finish_reason or "unreported",
+                    result.truncated,
+                )
+            ] += 1
+    return [
+        {
+            "requested_model": requested,
+            "resolved_model": resolved,
+            "resolved_provider": provider,
+            "finish_reason": finish_reason,
+            "truncated": truncated,
+            "response_count": count,
+        }
+        for (requested, resolved, provider, finish_reason, truncated), count in sorted(
+            counts.items()
+        )
+    ]
+
+
 def print_safe_assessment(assessment: PilotQualificationAssessment) -> None:
     """Print aggregate qualification metadata without private conversation content."""
 

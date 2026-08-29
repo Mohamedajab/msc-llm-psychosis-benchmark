@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from scripts.protocol_bundle import verify_bundle
+from scripts.protocol_bundle import verify_historical_bundle
 from src.config_loader import (
     load_histories,
     load_models,
@@ -40,6 +40,7 @@ from src.study_execution import (
     execute_manifest_rows,
     print_execution_summary,
 )
+from src.study_status import load_study_v2_status, replacement_endpoint_not_frozen
 
 STUDY_VERSION = "study-v2.0.0"
 MANIFEST_PATH = ROOT / "outputs" / "experiment_manifest.csv"
@@ -79,9 +80,10 @@ def build_offline_preflight(
     *, pilot_output_root: Path = TECHNICAL_PILOT_OUTPUT_ROOT
 ) -> dict[str, Any]:
     scripts, histories, models, rows = load_frozen_study()
-    bundle = verify_bundle()
+    bundle = verify_historical_bundle()
     pilot_v4 = assess_pilot_v4(output_root=pilot_output_root, persist=False)
     pilot_v5 = assess_pilot_v5(output_root=pilot_output_root, persist=False)
+    status = load_study_v2_status()
     return {
         "status": "offline_preflight",
         "network_called": False,
@@ -95,11 +97,17 @@ def build_offline_preflight(
         "histories": len(histories),
         "protocol_bundle_commit": bundle["software_commit"],
         "protocol_bundle_items": len(bundle["items"]),
+        "historical_bundle_verified": True,
         "pilot_v4_qualification": pilot_v4.verdict.value,
         "pilot_v4_failed_criteria": list(pilot_v4.failed_criteria),
         "pilot_v5_qualification": pilot_v5.verdict.value,
         "pilot_v5_failed_criteria": list(pilot_v5.failed_criteria),
-        "main_study_live_blocked": pilot_v5.main_study_blocked,
+        "replacement_endpoint_status": status.replacement_endpoint_status,
+        "pilot_v6_status": status.pilot_v6_status,
+        "main_study_status": status.main_study_status,
+        "replacement_blocker": status.blocker,
+        "main_study_live_blocked": replacement_endpoint_not_frozen(status)
+        or pilot_v5.main_study_blocked,
     }
 
 
@@ -161,6 +169,13 @@ def execute_live_study(
         raise StudyPreflightError("max_new_conversations must be positive")
     if request_interval_seconds < MINIMUM_REQUEST_INTERVAL_SECONDS:
         raise StudyPreflightError("Study request pacing must be at least five seconds")
+    status = load_study_v2_status()
+    if replacement_endpoint_not_frozen(status):
+        raise StudyPreflightError(
+            "Main Study V2 is blocked: replacement_endpoint_not_frozen "
+            f"(replacement_endpoint_status={status.replacement_endpoint_status}, "
+            f"pilot_v6_status={status.pilot_v6_status})"
+        )
     key = require_live_gate(
         live_requested=live_requested,
         live_confirmed=live_confirmed,
@@ -168,7 +183,7 @@ def execute_live_study(
         environ=environ,
     )
     scripts, histories, models, rows = load_frozen_study()
-    verify_bundle()
+    verify_historical_bundle()
     qualification = assess_pilot_v5(output_root=pilot_output_root, persist=True)
     if qualification.verdict != QualificationVerdict.PASS:
         raise StudyPreflightError(
@@ -219,11 +234,13 @@ def _print_offline(summary: dict[str, Any]) -> None:
     )
     for slot, model_id in summary["models"].items():
         print(f"{slot}: {model_id}")
-    print("Protocol bundle verified; live execution remains disabled.")
-    print(f"Pilot V4 qualification: {summary['pilot_v4_qualification']}")
-    print(f"Pilot V4 failed criteria: {summary['pilot_v4_failed_criteria']}")
-    print(f"Pilot V5 qualification: {summary['pilot_v5_qualification']}")
-    print(f"Pilot V5 failed criteria: {summary['pilot_v5_failed_criteria']}")
+    print("Historical protocol bundle verified; active collection is superseded/pending.")
+    print(f"Pilot V4: {summary['pilot_v4_qualification']}")
+    print(f"Pilot V5: {summary['pilot_v5_qualification']}")
+    print(f"replacement endpoint: {summary['replacement_endpoint_status']}")
+    print(f"Pilot V6: {summary['pilot_v6_status']}")
+    print(f"main study: {summary['main_study_status']}")
+    print(f"blocker: {summary['replacement_blocker']}")
     print(
         "Main-study live collection blocked: "
         f"{'yes' if summary['main_study_live_blocked'] else 'no'}"
