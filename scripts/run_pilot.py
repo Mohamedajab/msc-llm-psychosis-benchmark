@@ -63,7 +63,7 @@ class PilotPreflightError(RuntimeError):
 def _configuration(script_id: str) -> tuple[Any, Any, Any, list[Any], list[Any]]:
     scripts = load_scripts(ROOT / "config" / "scenarios")
     histories = load_histories(ROOT / "config" / "histories")
-    models = load_models(ROOT / "config" / "models.yaml")
+    models = load_models(ROOT / "config" / "archive" / "models-pilot-v3.yaml")
     try:
         script = next(item for item in scripts if item.script_id == script_id)
     except StopIteration as error:

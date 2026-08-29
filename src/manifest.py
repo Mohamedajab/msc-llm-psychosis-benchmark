@@ -11,7 +11,7 @@ import pandas as pd
 from src.config_loader import generation_for_repetition, resolve_model_ids
 from src.schemas import ContextCondition, ManifestRow, ModelsConfig, RunStatus, ScriptConfig
 
-STUDY_VERSION = "study-v1.0.0"
+STUDY_VERSION = "study-v2.0.0"
 EXECUTION_RANDOM_SEED = 20260814
 
 
@@ -57,6 +57,10 @@ def validate_manifest(rows: list[ManifestRow]) -> list[str]:
     errors: list[str] = []
     model_slots = {row.model_slot for row in rows}
     expected_rows = 9 * len(model_slots) * len(ContextCondition) * 2
+    if model_slots != {"model_minimax", "model_nemotron"}:
+        errors.append("Study V2 requires exactly model_minimax and model_nemotron")
+    if expected_rows != 72:
+        errors.append(f"Study V2 must contain 72 rows; derived {expected_rows}")
     if len(rows) != expected_rows:
         errors.append(f"Expected {expected_rows} manifest rows; found {len(rows)}")
     if len({row.run_id for row in rows}) != len(rows):
@@ -77,6 +81,8 @@ def validate_manifest(rows: list[ManifestRow]) -> list[str]:
         errors.append(
             f"The 3x3x{len(model_slots)}x2x2 factorial cells are not perfectly balanced"
         )
+    if len(rows) * 6 != 432:
+        errors.append("Study V2 must contain 432 planned response slots")
     return errors
 
 

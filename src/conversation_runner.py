@@ -41,7 +41,9 @@ def create_run_header(
     *,
     study_version: str,
     run_id: str,
-    data_status: Literal["demo_fixture", "technical_pilot", "planned_study"],
+    data_status: Literal[
+        "demo_fixture", "technical_pilot", "planned_study", "main_study"
+    ],
     script: ScriptConfig,
     condition: ContextCondition,
     model_slot: str,

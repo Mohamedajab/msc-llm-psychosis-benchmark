@@ -134,6 +134,11 @@ def validate_catalogue(scripts: list[ScriptConfig], histories: list[HistoryPrefi
 def configuration_bundle_hash(
     scripts: list[ScriptConfig], histories: list[HistoryPrefix], models: ModelsConfig
 ) -> str:
+    model_payload = models.model_dump(mode="json")
+    # Provider routing was introduced for Study V2. Historical configuration hashes
+    # must remain reproducible without rewriting Pilot V1-V3 evidence.
+    if models.version.startswith("1."):
+        model_payload.pop("provider_routing", None)
     return canonical_hash(
         {
             "scripts": [
@@ -144,6 +149,6 @@ def configuration_bundle_hash(
                 history.model_dump(mode="json")
                 for history in sorted(histories, key=lambda x: x.history_id)
             ],
-            "models": models.model_dump(mode="json"),
+            "models": model_payload,
         }
     )

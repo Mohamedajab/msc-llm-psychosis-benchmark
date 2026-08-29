@@ -63,7 +63,19 @@ ROWS = [
     ),
     ("raw_turn", "result.provider_name", "string|null", "Resolved provider when supplied"),
     ("raw_turn", "result.finish_reason", "string|null", "Provider completion reason"),
+    (
+        "raw_turn",
+        "result.truncated",
+        "boolean",
+        "Derived true exactly when finish_reason is length",
+    ),
     ("raw_turn", "result.retry_count", "integer", "Retries before final observation"),
+    (
+        "raw_turn",
+        "result.http_attempts",
+        "integer|null",
+        "HTTP POST attempts represented by this event; zero for a request blocked before POST",
+    ),
     ("raw_turn", "result.http_status", "integer|null", "Final HTTP status when available"),
     ("raw_turn", "result.error_type", "string|null", "Typed provider or transport error"),
     (

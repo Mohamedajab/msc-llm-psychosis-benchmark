@@ -133,6 +133,16 @@ class GenerationConfig(StrictModel):
         return parameters
 
 
+class ProviderRoutingPolicy(StrictModel):
+    """Versioned OpenRouter routing constraints for target generations."""
+
+    version: str
+    allow_fallbacks: Literal[False] = False
+    require_parameters: Literal[True] = True
+    pinned_providers: dict[str, str] = Field(default_factory=dict)
+    minimum_context_tokens: int = Field(ge=8192)
+
+
 class ModelsConfig(StrictModel):
     version: str
     provider: Literal["openrouter"]
@@ -140,6 +150,12 @@ class ModelsConfig(StrictModel):
     catalogue_endpoint: str
     model_slots: dict[str, ModelSlot]
     generation: GenerationConfig
+    provider_routing: ProviderRoutingPolicy = Field(
+        default_factory=lambda: ProviderRoutingPolicy(
+            version="provider-routing-default-v1",
+            minimum_context_tokens=8192,
+        )
+    )
     repetition_seeds: dict[int, int]
     notes: tuple[str, ...] = ()
 
@@ -188,7 +204,9 @@ class RunHeader(StrictModel):
     schema_version: str = SCHEMA_VERSION
     study_version: str
     run_id: str
-    data_status: Literal["demo_fixture", "technical_pilot", "planned_study"]
+    data_status: Literal[
+        "demo_fixture", "technical_pilot", "planned_study", "main_study"
+    ]
     script_id: str
     script_version: str
     theme: Theme
@@ -224,15 +242,18 @@ class ProviderResult(StrictModel):
     usage: TokenUsage | None = None
     latency_ms: float = Field(ge=0)
     retry_count: int = Field(ge=0)
+    http_attempts: int | None = Field(default=None, ge=0)
     http_status: int | None = None
     error_type: str | None = None
     error_message: str | None = None
     response_metadata: dict[str, Any] = Field(default_factory=dict)
+    truncated: bool = False
 
     @model_validator(mode="after")
     def response_requires_text(self) -> ProviderResult:
         if self.status == ObservationStatus.RESPONSE and not (self.text or "").strip():
             raise ValueError("A successful response observation requires nonblank text")
+        self.truncated = self.finish_reason == "length"
         return self
 
 

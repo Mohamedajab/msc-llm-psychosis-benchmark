@@ -46,7 +46,7 @@ class ScreeningPreflightError(RuntimeError):
 def _screen_inputs() -> tuple[Any, Any, tuple[Any, ...]]:
     scripts = load_scripts(ROOT / "config" / "scenarios")
     script = next(item for item in scripts if item.script_id == SCRIPT_ID)
-    models = load_models(ROOT / "config" / "models.yaml")
+    models = load_models(ROOT / "config" / "archive" / "models-pilot-v3.yaml")
     generation = generation_for_repetition(models, 1).model_copy(
         update={"max_retries": 0}
     )

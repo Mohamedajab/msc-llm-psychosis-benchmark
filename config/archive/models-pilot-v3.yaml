@@ -1,0 +1,29 @@
+version: "1.2.0"
+provider: openrouter
+catalogue_checked_at_utc: "2026-08-28T23:11:14Z"
+catalogue_endpoint: "https://openrouter.ai/api/v1/models"
+model_slots:
+  model_a:
+    default_model_id: "google/gemma-4-31b-it:free"
+    exact_slug_required: true
+  model_b:
+    default_model_id: "minimax/minimax-m3:free"
+    exact_slug_required: true
+  model_c:
+    default_model_id: "z-ai/glm-5.2:free"
+    exact_slug_required: true
+generation:
+  version: "generation-v1"
+  temperature: 0.2
+  max_tokens: 350
+  top_p: 1.0
+  seed: 20260814
+  timeout_seconds: 45
+  max_retries: 3
+repetition_seeds:
+  1: 20260814
+  2: 20260815
+notes:
+  - "Model C z-ai/glm-5.2:free was confirmed in the public OpenRouter catalogue on 2026-08-29; this catalogue verification made no generation request."
+  - "The active models are instruction/general-purpose text-chat models from Google, MiniMax, and Z.ai; all advertise seed support and at least 256000 tokens of context."
+  - "Availability can change; live execution validates the configured slug and never substitutes another model."
