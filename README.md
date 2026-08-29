@@ -148,7 +148,24 @@ $env:RUN_LIVE_PILOT='1'
 & .\.venv\Scripts\python.exe scripts\run_pilot.py --live --confirm-live --request-interval-seconds 5
 ```
 
-`OPENROUTER_API_KEY` must also be available to that process. Technical-pilot-v1 and technical-pilot-v2 have already run and remain preserved technical evidence; the distinct pilot-v3 namespace has not been executed.
+`OPENROUTER_API_KEY` must also be available to that process. Technical-pilot-v1, technical-pilot-v2 and technical-pilot-v3 have run and remain preserved technical evidence in distinct namespaces.
+
+## One-attempt endpoint screening
+
+`scripts/screen_model.py` is isolated from the active model configuration, manifest and pilot namespaces. It screens only `nvidia/nemotron-3-super-120b-a12b:free`, using the frozen pilot scenario's first no-context turn. The default command is an offline zero-network plan:
+
+```powershell
+& .\.venv\Scripts\python.exe scripts\screen_model.py
+```
+
+One live attempt requires all deliberate gates. The script first verifies the exact public-catalogue entry is zero-priced, text-to-text, seed-compatible and has adequate context; it then permits one generation POST with no retry or fallback:
+
+```powershell
+$env:RUN_LIVE_PILOT='1'
+& .\.venv\Scripts\python.exe scripts\screen_model.py --live --confirm-live
+```
+
+Records are append-only under `data/raw/screens/technical-endpoint-screen-v1_nvidia-nemotron-super/` and labelled **TECHNICAL ENDPOINT SCREEN - NOT RESEARCH DATA**. Terminal summaries exclude prompts, generated text, hidden reasoning, payloads and secrets.
 
 ## Experimental design at a glance
 

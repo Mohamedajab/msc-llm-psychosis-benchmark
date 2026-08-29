@@ -165,8 +165,8 @@ class OpenRouterProvider(TargetProvider):
     def set_request_attempt_budget(self, maximum: int) -> None:
         """Apply a shared hard cap across calls, including retries.
 
-        The technical pilot uses this to ensure transient retries can never
-        consume more than its stated 24 generation-request allowance.
+        Bounded technical workflows use this so transient retries cannot
+        exceed their stated generation-request allowance.
         """
 
         if maximum < 1:
@@ -217,6 +217,25 @@ class OpenRouterProvider(TargetProvider):
         """Compatibility wrapper for a one-model catalogue preflight."""
 
         self.validate_exact_models((model_id,), timeout_seconds)
+
+    def get_exact_model_catalogue_entry(
+        self, model_id: str, timeout_seconds: float = 20
+    ) -> dict[str, Any]:
+        """Return one exact public-catalogue entry without selecting a substitute."""
+
+        try:
+            with httpx.Client(transport=self._transport, timeout=timeout_seconds) as client:
+                response = client.get(self.catalogue_endpoint)
+                response.raise_for_status()
+                data = response.json().get("data", [])
+        except (httpx.HTTPError, ValueError, AttributeError) as error:
+            raise RuntimeError("OpenRouter catalogue preflight failed") from error
+        matches = [item for item in data if item.get("id") == model_id]
+        if len(matches) != 1:
+            raise RuntimeError(
+                f"Exact OpenRouter model unavailable: {model_id}. No substitute was selected."
+            )
+        return dict(matches[0])
 
     def generate(
         self,
@@ -339,6 +358,7 @@ class OpenRouterProvider(TargetProvider):
                 )
             text = (choice.get("message") or {}).get("content")
             if not isinstance(text, str) or not text.strip():
+                usage_raw = body.get("usage") or {}
                 return self._error_result(
                     model_id=model_id,
                     started=started,
@@ -349,6 +369,16 @@ class OpenRouterProvider(TargetProvider):
                     http_status=response.status_code,
                     request_id=request_id,
                     response_metadata=self._empty_response_diagnostics(body, choice),
+                    resolved_model_id=body.get("model"),
+                    provider_name=(body.get("provider") or {}).get("name")
+                    if isinstance(body.get("provider"), dict)
+                    else body.get("provider"),
+                    finish_reason=choice.get("finish_reason"),
+                    usage=TokenUsage(
+                        prompt_tokens=usage_raw.get("prompt_tokens"),
+                        completion_tokens=usage_raw.get("completion_tokens"),
+                        total_tokens=usage_raw.get("total_tokens"),
+                    ),
                 )
             resolved_model = body.get("model")
             if resolved_model and resolved_model != model_id:
@@ -364,6 +394,7 @@ class OpenRouterProvider(TargetProvider):
                     ),
                     http_status=response.status_code,
                     request_id=request_id,
+                    resolved_model_id=resolved_model,
                 )
             usage_raw = body.get("usage") or {}
             return ProviderResult(
@@ -405,11 +436,18 @@ class OpenRouterProvider(TargetProvider):
         http_status: int | None = None,
         request_id: str | None = None,
         response_metadata: dict[str, Any] | None = None,
+        resolved_model_id: str | None = None,
+        provider_name: str | None = None,
+        finish_reason: str | None = None,
+        usage: TokenUsage | None = None,
     ) -> ProviderResult:
         return ProviderResult(
             status=status,
             requested_model_id=model_id,
-            provider_name=self.provider_name,
+            resolved_model_id=resolved_model_id,
+            provider_name=provider_name or self.provider_name,
+            finish_reason=finish_reason,
+            usage=usage,
             latency_ms=(time.perf_counter() - started) * 1000,
             retry_count=retry_count,
             http_status=http_status,
