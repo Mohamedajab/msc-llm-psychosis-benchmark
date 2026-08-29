@@ -89,8 +89,7 @@ def test_pilot_plan_is_stable_bounded_and_never_calls_provider(
     assert len({run["run_id"] for run in first["runs"]}) == 6
     assert all(run["run_id"].startswith("technical-pilot-v3_") for run in first["runs"])
     assert all(
-        "technical-pilot-v1" not in run["run_id"]
-        and "technical-pilot-v2" not in run["run_id"]
+        "technical-pilot-v1" not in run["run_id"] and "technical-pilot-v2" not in run["run_id"]
         for run in first["runs"]
     )
     assert {run["model_slot"] for run in first["runs"]} == {
@@ -165,9 +164,10 @@ def test_live_execution_uses_catalogue_preflight_cap_and_resume_without_network(
     assert all(len(record.turns) == 6 for record in first)
     assert len(instances[0].calls) == 36
     run_ids = [record.header.run_id for record in first]
-    assert run_pilot._stored_generation_attempts(
-        run_pilot.RawRunStore(tmp_path / "pilot"), run_ids
-    ) == 36
+    assert (
+        run_pilot._stored_generation_attempts(run_pilot.RawRunStore(tmp_path / "pilot"), run_ids)
+        == 36
+    )
     assert instances[0].catalogue_checks == [
         "google/gemma-4-31b-it:free",
         "minimax/minimax-m3:free",

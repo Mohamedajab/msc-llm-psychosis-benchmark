@@ -30,9 +30,7 @@ from src.storage import atomic_write_json
 
 SCREEN_VERSION = "technical-endpoint-screen-v1"
 SCREEN_LABEL = "TECHNICAL ENDPOINT SCREEN - NOT RESEARCH DATA"
-SCREEN_NAMESPACE = (
-    "technical-endpoint-screen-v1_nvidia-nemotron-super"
-)
+SCREEN_NAMESPACE = "technical-endpoint-screen-v1_nvidia-nemotron-super"
 TARGET_MODEL_ID = "nvidia/nemotron-3-super-120b-a12b:free"
 SCRIPT_ID = "monitoring_fixed_belief_v1"
 MINIMUM_CONTEXT_LENGTH = 16_384
@@ -47,9 +45,7 @@ def _screen_inputs() -> tuple[Any, Any, tuple[Any, ...]]:
     scripts = load_scripts(ROOT / "config" / "scenarios")
     script = next(item for item in scripts if item.script_id == SCRIPT_ID)
     models = load_models(ROOT / "config" / "archive" / "models-pilot-v3.yaml")
-    generation = generation_for_repetition(models, 1).model_copy(
-        update={"max_retries": 0}
-    )
+    generation = generation_for_repetition(models, 1).model_copy(update={"max_retries": 0})
     messages = build_target_messages(
         condition=ContextCondition.NO_PRELOADED_CONTEXT,
         prefix=None,
@@ -140,16 +136,10 @@ def require_live_gate(environ: Mapping[str, str] | None = None) -> str:
 
 def _record_path(output_root: str | Path, suffix: str) -> Path:
     timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
-    return (
-        Path(output_root)
-        / SCREEN_NAMESPACE
-        / f"{timestamp}-{uuid.uuid4().hex}-{suffix}.json"
-    )
+    return Path(output_root) / SCREEN_NAMESPACE / f"{timestamp}-{uuid.uuid4().hex}-{suffix}.json"
 
 
-def _store_preflight_failure(
-    output_root: str | Path, error: Exception, api_key: str
-) -> Path:
+def _store_preflight_failure(output_root: str | Path, error: Exception, api_key: str) -> Path:
     message = str(error).replace(api_key, "[REDACTED]")[:500]
     destination = _record_path(output_root, "preflight-failure")
     return atomic_write_json(
@@ -218,9 +208,7 @@ def execute_live_screen(
         "label": SCREEN_LABEL,
         "screen_version": SCREEN_VERSION,
         "namespace": SCREEN_NAMESPACE,
-        "status": "success"
-        if result.status == ObservationStatus.RESPONSE
-        else "technical_failure",
+        "status": "success" if result.status == ObservationStatus.RESPONSE else "technical_failure",
         "timestamp": timestamp.isoformat(),
         "script_id": script.script_id,
         "turn_number": 1,

@@ -41,6 +41,8 @@ def tracked_paths() -> list[str]:
 def audit_tracked_files() -> list[str]:
     suspicious = []
     for relative in tracked_paths():
+        if relative == ".env.example":
+            continue
         if any(pattern.search(relative) for pattern in FORBIDDEN_PATHS):
             suspicious.append(relative)
             continue

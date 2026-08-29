@@ -45,9 +45,7 @@ def resume_or_new_header(store: RawRunStore, candidate: RunHeader) -> RunHeader:
     if not path.exists():
         return candidate
     existing = RunHeader.model_validate_json(path.read_text(encoding="utf-8"))
-    if existing.model_dump(exclude={"created_at"}) != candidate.model_dump(
-        exclude={"created_at"}
-    ):
+    if existing.model_dump(exclude={"created_at"}) != candidate.model_dump(exclude={"created_at"}):
         raise RuntimeError(f"Resume blocked: immutable metadata changed for {candidate.run_id}")
     return existing
 
@@ -76,8 +74,7 @@ def execute_manifest_rows(
     selected = [
         row
         for row in ordered
-        if stop_after_execution_order is None
-        or row.execution_order <= stop_after_execution_order
+        if stop_after_execution_order is None or row.execution_order <= stop_after_execution_order
     ]
     provider.set_request_attempt_budget(maximum_http_attempts)
     records: list[ConversationRecord] = []
@@ -139,14 +136,10 @@ def build_execution_summary(
     successes = sum(len(record.turns) for record in records)
     errors = [event for record in records for event in record.errors]
     finish_reasons = Counter(
-        event.result.finish_reason or "unreported"
-        for record in records
-        for event in record.turns
+        event.result.finish_reason or "unreported" for record in records for event in record.turns
     )
     providers = Counter(
-        (event.result.provider_name or "unreported")
-        for record in records
-        for event in record.turns
+        (event.result.provider_name or "unreported") for record in records for event in record.turns
     )
     models = Counter(
         (event.result.resolved_model_id or "unreported")
@@ -154,9 +147,7 @@ def build_execution_summary(
         for event in record.turns
     )
     requested_models = Counter(row.requested_model_id for row in planned_rows)
-    mismatch_count = sum(
-        event.result.error_type == "resolved_model_mismatch" for event in errors
-    )
+    mismatch_count = sum(event.result.error_type == "resolved_model_mismatch" for event in errors)
     missing = len(planned_rows) * 6 - successes
     next_order = next(
         (

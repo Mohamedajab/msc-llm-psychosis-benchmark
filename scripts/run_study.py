@@ -108,9 +108,7 @@ def require_live_gate(
     return key
 
 
-def _store_preflight_failure(
-    model_ids: dict[str, str], error: Exception, key: str
-) -> Path:
+def _store_preflight_failure(model_ids: dict[str, str], error: Exception, key: str) -> Path:
     timestamp = datetime.now(UTC)
     return atomic_write_json(
         PREFLIGHT_FAILURE_ROOT
@@ -220,9 +218,7 @@ def main(argv: list[str] | None = None) -> int:
             _print_offline(build_offline_preflight())
             return 0
         if args.max_http_attempts is None:
-            raise StudyPreflightError(
-                "Live study requires an explicit --max-http-attempts value"
-            )
+            raise StudyPreflightError("Live study requires an explicit --max-http-attempts value")
         load_dotenv(ROOT / ".env", override=False)
         summary = execute_live_study(
             maximum_http_attempts=args.max_http_attempts,

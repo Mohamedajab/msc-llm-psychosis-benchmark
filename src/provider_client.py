@@ -72,9 +72,7 @@ def qualify_catalogue_entry(
         raise RuntimeError("Target endpoint does not advertise seed support")
     context_length = entry.get("context_length")
     if not isinstance(context_length, int) or context_length < minimum_context_tokens:
-        raise RuntimeError(
-            f"Target endpoint context is below {minimum_context_tokens} tokens"
-        )
+        raise RuntimeError(f"Target endpoint context is below {minimum_context_tokens} tokens")
     return {
         "model_id": model_id,
         "prompt_price": str(prompt_price),
@@ -275,9 +273,7 @@ class OpenRouterProvider(TargetProvider):
             for model_id in requested
         }
 
-    def validate_exact_models(
-        self, model_ids: Sequence[str], timeout_seconds: float = 20
-    ) -> None:
+    def validate_exact_models(self, model_ids: Sequence[str], timeout_seconds: float = 20) -> None:
         """Check all configured IDs using one catalogue response."""
 
         requested = tuple(model_ids)
@@ -559,9 +555,8 @@ class OpenRouterProvider(TargetProvider):
 
         now = self._monotonic()
         if self._last_request_started_at is not None:
-            remaining = (
-                self._minimum_request_interval_seconds
-                - (now - self._last_request_started_at)
+            remaining = self._minimum_request_interval_seconds - (
+                now - self._last_request_started_at
             )
             if remaining > 0:
                 self._sleep(remaining)

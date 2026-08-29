@@ -71,11 +71,7 @@ def test_catalogue_failure_stores_separate_record_and_sends_no_generation(
         assert request.method == "GET"
         return httpx.Response(
             200,
-            json={
-                "data": [
-                    _catalogue_entry(pricing={"prompt": "1", "completion": "0"})
-                ]
-            },
+            json={"data": [_catalogue_entry(pricing={"prompt": "1", "completion": "0"})]},
         )
 
     def factory(*, api_key: str) -> OpenRouterProvider:

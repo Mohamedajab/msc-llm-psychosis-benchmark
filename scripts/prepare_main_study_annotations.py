@@ -47,9 +47,7 @@ def main(argv: list[str] | None = None) -> int:
             )
         key = os.environ.get("ANNOTATION_BLINDING_KEY", "").strip()
         if not key:
-            raise ValueError(
-                "ANNOTATION_BLINDING_KEY is required and is never written or printed"
-            )
+            raise ValueError("ANNOTATION_BLINDING_KEY is required and is never written or printed")
         items, mapping = build_blinded_items(records, blinding_key=key)
         save_blinded_items(args.items_output, items)
         save_blinding_map(args.map_output, mapping)

@@ -83,9 +83,7 @@ def _configuration(script_id: str) -> tuple[Any, Any, Any, list[Any], list[Any]]
 def _validated_model_ids(models: Any) -> dict[str, str]:
     model_ids = resolve_model_ids(models)
     if len(model_ids) > MAX_CONVERSATIONS // len(ContextCondition):
-        raise PilotPreflightError(
-            "Pilot configuration exceeds the persistent six-conversation cap"
-        )
+        raise PilotPreflightError("Pilot configuration exceeds the persistent six-conversation cap")
     for slot, model_id in model_ids.items():
         if not model_id.endswith(":free"):
             raise PilotPreflightError(
@@ -146,9 +144,7 @@ def build_pilot_plan(
     with tempfile.TemporaryDirectory(prefix="msc-pilot-dry-run-") as temporary:
         no_call_provider = DeterministicFixtureProvider()
         runner = ConversationRunner(no_call_provider, RawRunStore(Path(temporary) / "unused-store"))
-        for execution_order, (slot, condition) in enumerate(
-            _ordered_cells(model_ids), start=1
-        ):
+        for execution_order, (slot, condition) in enumerate(_ordered_cells(model_ids), start=1):
             header = create_run_header(
                 study_version=PILOT_VERSION,
                 run_id=_run_id(script_id, slot, condition),
@@ -334,8 +330,7 @@ def execute_live_pilot(
         header = _resume_or_new_header(store, candidate)
         if (
             incomplete
-            and getattr(provider, "request_attempt_count", 0)
-            >= invocation_attempt_budget
+            and getattr(provider, "request_attempt_count", 0) >= invocation_attempt_budget
         ):
             store.initialise(header)
             records.append(store.load(header.run_id))
@@ -419,9 +414,7 @@ def build_live_summary(
     run_ids = [record.header.run_id for record in records]
     attempts_used = _stored_generation_attempts(store, run_ids)
     successful_responses = sum(len(record.turns) for record in records)
-    required_responses_remaining = max(
-        0, PLANNED_RESPONSE_SLOTS - successful_responses
-    )
+    required_responses_remaining = max(0, PLANNED_RESPONSE_SLOTS - successful_responses)
     remaining_attempt_allowance = max(0, MAX_GENERATION_CALLS - attempts_used)
     http_errors = Counter(
         event.result.error_type
@@ -471,17 +464,19 @@ def _print_live_summary(summary: Mapping[str, Any]) -> None:
         f"{summary['planned_conversations']}"
     )
     for cell in summary["cells"]:
-        http_types = ", ".join(
-            f"{name}={count}" for name, count in cell["http_error_types"].items()
-        ) or "none"
+        http_types = (
+            ", ".join(f"{name}={count}" for name, count in cell["http_error_types"].items())
+            or "none"
+        )
         print(
             f"{cell['model_slot']} | {cell['context_condition']} | {cell['status']} | "
             f"responses={cell['successful_responses']} | errors={cell['technical_errors']} | "
             f"HTTP errors={http_types}"
         )
-    all_http_types = ", ".join(
-        f"{name}={count}" for name, count in summary["http_error_types"].items()
-    ) or "none"
+    all_http_types = (
+        ", ".join(f"{name}={count}" for name, count in summary["http_error_types"].items())
+        or "none"
+    )
     print(f"Successful responses: {summary['successful_responses']}")
     print(f"Technical errors: {summary['technical_errors']}")
     print(f"HTTP error types: {all_http_types}")

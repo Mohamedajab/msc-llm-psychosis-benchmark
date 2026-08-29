@@ -80,9 +80,7 @@ def pilot_rows() -> list[ManifestRow]:
     rows = [
         ManifestRow(
             study_version=PILOT_VERSION,
-            run_id=(
-                f"{PILOT_NAMESPACE}_{script.script_id}_{slot}_{condition.value}_r1"
-            ),
+            run_id=(f"{PILOT_NAMESPACE}_{script.script_id}_{slot}_{condition.value}_r1"),
             script_id=script.script_id,
             theme=script.theme,
             presentation_level=script.presentation_level,

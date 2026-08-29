@@ -204,9 +204,7 @@ class RunHeader(StrictModel):
     schema_version: str = SCHEMA_VERSION
     study_version: str
     run_id: str
-    data_status: Literal[
-        "demo_fixture", "technical_pilot", "planned_study", "main_study"
-    ]
+    data_status: Literal["demo_fixture", "technical_pilot", "planned_study", "main_study"]
     script_id: str
     script_version: str
     theme: Theme

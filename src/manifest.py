@@ -78,9 +78,7 @@ def validate_manifest(rows: list[ManifestRow]) -> list[str]:
         for row in rows
     )
     if len(counts) != expected_rows or set(counts.values()) != {1}:
-        errors.append(
-            f"The 3x3x{len(model_slots)}x2x2 factorial cells are not perfectly balanced"
-        )
+        errors.append(f"The 3x3x{len(model_slots)}x2x2 factorial cells are not perfectly balanced")
     if len(rows) * 6 != 432:
         errors.append("Study V2 must contain 432 planned response slots")
     return errors

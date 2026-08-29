@@ -10,6 +10,9 @@ import httpx
 import pytest
 
 from scripts import analyse_study, run_pilot_v4, run_study
+from scripts.check_documentation_links import broken_links
+from scripts.check_repository_safety import audit_tracked_files
+from scripts.protocol_bundle import verify_bundle
 from src.config_loader import load_histories, load_models, load_scripts
 from src.provider_client import (
     DeterministicFixtureProvider,
@@ -94,9 +97,7 @@ def test_routing_policy_and_truncation_are_recorded_without_reasoning() -> None:
             json={
                 "model": "model/test:free",
                 "provider": "Example",
-                "choices": [
-                    {"message": {"content": "Observed text."}, "finish_reason": "length"}
-                ],
+                "choices": [{"message": {"content": "Observed text."}, "finish_reason": "length"}],
             },
         )
 
@@ -187,6 +188,26 @@ def test_analysis_is_honestly_unavailable_without_real_ratings(tmp_path: Path) -
     assert not (tmp_path / "out").exists()
 
 
+def test_main_study_default_preflight_is_zero_network_and_bundle_verified(
+    monkeypatch,
+) -> None:
+    class NetworkForbidden:
+        def __init__(self, *args, **kwargs):  # noqa: ANN002, ANN003
+            raise AssertionError("network provider constructed in offline mode")
+
+    monkeypatch.setattr(run_study, "OpenRouterProvider", NetworkForbidden)
+    report = run_study.build_offline_preflight()
+    assert report["network_called"] is False
+    assert report["planned_conversations"] == 72
+    assert report["planned_response_slots"] == 432
+    assert verify_bundle()["study_version"] == "study-v2.0.0"
+
+
+def test_repository_safety_and_documentation_links() -> None:
+    assert audit_tracked_files() == []
+    assert broken_links() == []
+
+
 def test_study_audit_rejects_pilot_mixing(tmp_path: Path) -> None:
     scripts = load_scripts(ROOT / "config" / "scenarios")
     models = load_models(ROOT / "config" / "models.yaml")
@@ -244,9 +265,7 @@ def test_local_historical_pilot_evidence_is_immutable(
 def test_local_endpoint_screen_is_immutable() -> None:
     paths = sorted(
         path
-        for directory in (ROOT / "data" / "raw" / "screens").glob(
-            "technical-endpoint-screen-v1_*"
-        )
+        for directory in (ROOT / "data" / "raw" / "screens").glob("technical-endpoint-screen-v1_*")
         for path in directory.rglob("*")
         if path.is_file()
     )

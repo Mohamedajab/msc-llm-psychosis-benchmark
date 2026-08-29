@@ -125,9 +125,7 @@ def test_request_starts_are_paced_without_real_sleep() -> None:
                 200,
                 json={
                     "model": "openai/gpt-oss-20b:free",
-                    "choices": [
-                        {"message": {"content": "Done."}, "finish_reason": "stop"}
-                    ],
+                    "choices": [{"message": {"content": "Done."}, "finish_reason": "stop"}],
                 },
             )
         ),
@@ -337,12 +335,8 @@ def test_catalogue_preflight_checks_multiple_exact_slugs_in_one_get() -> None:
             json={"data": [{"id": f"example/model-{letter}:free"} for letter in "abc"]},
         )
 
-    provider = OpenRouterProvider(
-        api_key="secret", transport=httpx.MockTransport(handler)
-    )
-    provider.validate_exact_models(
-        tuple(f"example/model-{letter}:free" for letter in "abc")
-    )
+    provider = OpenRouterProvider(api_key="secret", transport=httpx.MockTransport(handler))
+    provider.validate_exact_models(tuple(f"example/model-{letter}:free" for letter in "abc"))
     assert len(requests) == 1
     assert requests[0].method == "GET"
 
@@ -364,6 +358,7 @@ def test_shared_request_budget_counts_retries_and_blocks_before_network() -> Non
         model_id="openai/gpt-oss-20b:free", messages=MESSAGES, generation=GENERATION
     )
     assert result.error_type == "request_budget_exhausted"
+    assert result.http_attempts == 2
     assert calls == 2
     assert provider.request_attempt_count == 2
 
@@ -371,6 +366,7 @@ def test_shared_request_budget_counts_retries_and_blocks_before_network() -> Non
         model_id="openai/gpt-oss-20b:free", messages=MESSAGES, generation=GENERATION
     )
     assert again.error_type == "request_budget_exhausted"
+    assert again.http_attempts == 0
     assert calls == 2
 
 

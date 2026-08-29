@@ -42,9 +42,7 @@ def _real_turn_lookup(rows: list, store: RawRunStore) -> dict[tuple[str, int], o
     return lookup
 
 
-def build_analysis(
-    *, annotations_path: Path, map_path: Path, output_directory: Path
-) -> dict:
+def build_analysis(*, annotations_path: Path, map_path: Path, output_directory: Path) -> dict:
     _, _, _, rows = load_frozen_study()
     if not annotations_path.is_file() or not map_path.is_file():
         return {
@@ -167,7 +165,9 @@ def main(argv: list[str] | None = None) -> int:
         print(f"ERROR: {error}", file=sys.stderr)
         return 2
     print(json.dumps(report, indent=2, sort_keys=True))
-    return 0 if report["availability"] == "available" else 3
+    # An honest unavailable state is expected before data collection and is not a
+    # software failure. Invalid or mixed evidence still raises and returns 2 above.
+    return 0
 
 
 if __name__ == "__main__":
