@@ -14,8 +14,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from dotenv import load_dotenv
-
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
@@ -32,17 +30,13 @@ from src.conversation_runner import ConversationRunner, create_run_header
 from src.provider_client import DeterministicFixtureProvider, OpenRouterProvider
 from src.schemas import ContextCondition, ManifestRow, RunStatus
 from src.storage import RawRunStore, atomic_write_json
-from src.study_execution import (
-    build_execution_summary,
-    execute_manifest_rows,
-    print_execution_summary,
-    stored_http_attempts,
-)
+from src.study_execution import print_execution_summary
 
 PILOT_VERSION = "technical-pilot-v4.0.0"
 PILOT_NAMESPACE = "technical-pilot-v4"
 DEFAULT_SCRIPT_ID = "monitoring_fixed_belief_v1"
 DEFAULT_OUTPUT_ROOT = ROOT / "data" / "raw" / "runs"
+ARCHIVED_MODELS_PATH = ROOT / "config" / "archive" / "models-study-v2-generation-v2.yaml"
 PLANNED_CONVERSATIONS = 4
 PLANNED_RESPONSE_SLOTS = 24
 FAILURE_ATTEMPT_ALLOWANCE = 8
@@ -59,7 +53,7 @@ class PilotV4PreflightError(RuntimeError):
 def _configuration() -> tuple[Any, Any, Any, list[Any], list[Any]]:
     scripts = load_scripts(ROOT / "config" / "scenarios")
     histories = load_histories(ROOT / "config" / "histories")
-    models = load_models(ROOT / "config" / "models.yaml")
+    models = load_models(ARCHIVED_MODELS_PATH)
     script = next((item for item in scripts if item.script_id == DEFAULT_SCRIPT_ID), None)
     if script is None or script.presentation_level.value != "fixed_belief":
         raise PilotV4PreflightError("Pilot V4 requires the frozen fixed-belief scenario")
@@ -189,65 +183,22 @@ def execute_live_pilot_v4(
     provider_factory: Callable[..., Any] = OpenRouterProvider,
     request_interval_seconds: float = MINIMUM_REQUEST_INTERVAL_SECONDS,
 ) -> dict[str, Any]:
-    if not live_requested or not live_confirmed:
-        raise PilotV4PreflightError("Live Pilot V4 requires --live and --confirm-live")
-    if request_interval_seconds < MINIMUM_REQUEST_INTERVAL_SECONDS:
-        raise PilotV4PreflightError("Pilot V4 pacing must be at least five seconds")
-    key = require_live_gate(environ)
-    _, _, models, scripts, histories = _configuration()
-    rows = pilot_rows()
-    model_ids = resolve_model_ids(models)
-    store = RawRunStore(output_root)
-    prior_attempts = stored_http_attempts(store, [row.run_id for row in rows])
-    missing = PLANNED_RESPONSE_SLOTS - sum(
-        len(store.successful_turns(row.run_id))
-        if (store.run_directory(row.run_id) / "run.json").is_file()
-        else 0
-        for row in rows
+    del (
+        output_root,
+        live_requested,
+        live_confirmed,
+        environ,
+        provider_factory,
+        request_interval_seconds,
     )
-    remaining = MAX_HTTP_ATTEMPTS - prior_attempts
-    if missing and (remaining <= 0 or remaining < missing):
-        raise PilotV4PreflightError(
-            "Pilot V4 has insufficient remaining allowance to complete its missing slots"
-        )
-    provider = provider_factory(api_key=key)
-    provider.set_retry_rate_limits(False)
-    provider.set_minimum_request_interval(request_interval_seconds)
-    provider.set_provider_routing(models.provider_routing)
-    try:
-        provider.validate_exact_models_strict(
-            tuple(model_ids.values()),
-            minimum_context_tokens=models.provider_routing.minimum_context_tokens,
-            timeout_seconds=min(20, models.generation.timeout_seconds),
-        )
-    except (OSError, RuntimeError, ValueError) as error:
-        path = _store_preflight_failure(output_root, model_ids, error, key)
-        raise PilotV4PreflightError(
-            f"Pilot V4 catalogue preflight failed before POST; record: {path}"
-        ) from error
-    execute_manifest_rows(
-        rows=rows,
-        scripts=scripts,
-        histories=histories,
-        models=models,
-        provider=provider,
-        store=store,
-        data_status="technical_pilot",
-        maximum_http_attempts=remaining,
+    raise PilotV4PreflightError(
+        "Pilot V4 is closed as immutable failed technical evidence; it cannot be rerun or "
+        "resumed. A new versioned pilot is required."
     )
-    summary = build_execution_summary(
-        planned_rows=rows, store=store, maximum_total_attempts=MAX_HTTP_ATTEMPTS
-    )
-    from src.pilot_qualification import assess_pilot_v4
-
-    qualification = assess_pilot_v4(output_root=output_root, persist=True)
-    summary["pilot_v4_qualification"] = qualification.verdict.value
-    summary["qualification_failed_criteria"] = list(qualification.failed_criteria)
-    return summary
 
 
 def _print_offline(plan: dict[str, Any]) -> None:
-    print("PILOT V4 OFFLINE PREFLIGHT - NO NETWORK CALL OCCURRED")
+    print("PILOT V4 ARCHIVED OFFLINE INSPECTION - NO NETWORK CALL OCCURRED")
     print(
         f"{plan['planned_conversations']} conversations; "
         f"{plan['planned_response_slots']} planned successful responses; "
@@ -258,7 +209,7 @@ def _print_offline(plan: dict[str, Any]) -> None:
             f"{run['execution_order']}. {run['model_slot']} | "
             f"{run['context_condition']} | {run['requested_model_id']}"
         )
-    print("Live execution requires --live --confirm-live, RUN_LIVE_PILOT=1 and the API key.")
+    print("Pilot V4 is closed and cannot be rerun or resumed; use the versioned Pilot V5.")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -274,7 +225,6 @@ def main(argv: list[str] | None = None) -> int:
         if not args.live:
             _print_offline(build_offline_plan())
             return 0
-        load_dotenv(ROOT / ".env", override=False)
         summary = execute_live_pilot_v4(
             output_root=args.output_root,
             live_requested=True,
