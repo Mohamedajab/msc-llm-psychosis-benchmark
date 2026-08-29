@@ -10,6 +10,7 @@ import time
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
+from decimal import Decimal, InvalidOperation
 from email.utils import parsedate_to_datetime
 from typing import Any
 
@@ -20,6 +21,7 @@ from src.schemas import (
     GenerationConfig,
     ObservationStatus,
     ProviderResult,
+    ProviderRoutingPolicy,
     TokenUsage,
 )
 
@@ -38,6 +40,50 @@ class TargetProvider(ABC):
         generation: GenerationConfig,
     ) -> ProviderResult:
         """Return a structured response or typed missing/error observation."""
+
+
+def qualify_catalogue_entry(
+    model_id: str, entry: Mapping[str, Any], *, minimum_context_tokens: int
+) -> dict[str, Any]:
+    """Fail closed unless one exact catalogue entry meets the study contract."""
+
+    if entry.get("id") != model_id:
+        raise RuntimeError(f"Catalogue did not return the exact requested slug: {model_id}")
+    if model_id in {"openrouter/free", "openrouter/auto"} or "latest" in model_id:
+        raise RuntimeError("Routers, aliases and latest endpoints are prohibited")
+    pricing = entry.get("pricing")
+    if not isinstance(pricing, Mapping):
+        raise RuntimeError("Catalogue pricing is unavailable")
+    try:
+        prompt_price = Decimal(str(pricing.get("prompt")))
+        completion_price = Decimal(str(pricing.get("completion")))
+    except (InvalidOperation, TypeError) as error:
+        raise RuntimeError("Catalogue pricing is invalid") from error
+    if prompt_price != 0 or completion_price != 0:
+        raise RuntimeError("Paid prompt or completion pricing is prohibited")
+    architecture = entry.get("architecture")
+    if not isinstance(architecture, Mapping):
+        raise RuntimeError("Catalogue architecture is unavailable")
+    if "text" not in (architecture.get("input_modalities") or []):
+        raise RuntimeError("Target endpoint does not advertise text input")
+    if "text" not in (architecture.get("output_modalities") or []):
+        raise RuntimeError("Target endpoint does not advertise text output")
+    if "seed" not in (entry.get("supported_parameters") or []):
+        raise RuntimeError("Target endpoint does not advertise seed support")
+    context_length = entry.get("context_length")
+    if not isinstance(context_length, int) or context_length < minimum_context_tokens:
+        raise RuntimeError(
+            f"Target endpoint context is below {minimum_context_tokens} tokens"
+        )
+    return {
+        "model_id": model_id,
+        "prompt_price": str(prompt_price),
+        "completion_price": str(completion_price),
+        "input_text": True,
+        "output_text": True,
+        "seed_supported": True,
+        "context_length": context_length,
+    }
 
 
 class DeterministicFixtureProvider(TargetProvider):
@@ -125,6 +171,7 @@ class DeterministicFixtureProvider(TargetProvider):
             usage=TokenUsage(),
             latency_ms=latency,
             retry_count=0,
+            http_attempts=0,
         )
 
 
@@ -155,6 +202,7 @@ class OpenRouterProvider(TargetProvider):
         self._retry_rate_limits = True
         self._minimum_request_interval_seconds = 0.0
         self._last_request_started_at: float | None = None
+        self._provider_routing: ProviderRoutingPolicy | None = None
 
     @property
     def request_attempt_count(self) -> int:
@@ -190,6 +238,42 @@ class OpenRouterProvider(TargetProvider):
         if self._request_attempt_count:
             raise RuntimeError("Request pacing must be set before generation")
         self._minimum_request_interval_seconds = seconds
+
+    def set_provider_routing(self, policy: ProviderRoutingPolicy) -> None:
+        """Apply documented provider preferences before any generation request."""
+
+        if self._request_attempt_count:
+            raise RuntimeError("Provider routing must be set before generation")
+        self._provider_routing = policy
+
+    def validate_exact_models_strict(
+        self,
+        model_ids: Sequence[str],
+        *,
+        minimum_context_tokens: int,
+        timeout_seconds: float = 20,
+    ) -> dict[str, dict[str, Any]]:
+        """Validate identity, free pricing, modality, seed and context in one GET."""
+
+        requested = tuple(model_ids)
+        if not requested:
+            raise ValueError("At least one exact model ID is required")
+        try:
+            with httpx.Client(transport=self._transport, timeout=timeout_seconds) as client:
+                response = client.get(self.catalogue_endpoint)
+                response.raise_for_status()
+                entries = response.json().get("data", [])
+        except (httpx.HTTPError, ValueError, AttributeError) as error:
+            raise RuntimeError("OpenRouter catalogue preflight failed") from error
+        by_id = {item.get("id"): item for item in entries if isinstance(item, Mapping)}
+        return {
+            model_id: qualify_catalogue_entry(
+                model_id,
+                by_id.get(model_id, {}),
+                minimum_context_tokens=minimum_context_tokens,
+            )
+            for model_id in requested
+        }
 
     def validate_exact_models(
         self, model_ids: Sequence[str], timeout_seconds: float = 20
@@ -250,6 +334,15 @@ class OpenRouterProvider(TargetProvider):
             **generation.request_parameters(),
             "stream": False,
         }
+        if self._provider_routing is not None:
+            provider_preferences: dict[str, Any] = {
+                "allow_fallbacks": self._provider_routing.allow_fallbacks,
+                "require_parameters": self._provider_routing.require_parameters,
+            }
+            pinned = self._provider_routing.pinned_providers.get(model_id)
+            if pinned:
+                provider_preferences["only"] = [pinned]
+            payload["provider"] = provider_preferences
         headers = {
             "Authorization": f"Bearer {self._api_key}",
             "Content-Type": "application/json",
@@ -271,6 +364,7 @@ class OpenRouterProvider(TargetProvider):
                         "Generation request was not sent because the configured "
                         "technical-pilot HTTP-attempt cap was reached"
                     ),
+                    http_attempts=attempt,
                 )
             self._request_attempt_count += 1
             self._pace_request_start()
@@ -415,6 +509,7 @@ class OpenRouterProvider(TargetProvider):
                 ),
                 latency_ms=(time.perf_counter() - started) * 1000,
                 retry_count=attempt,
+                http_attempts=attempt + 1,
                 http_status=response.status_code,
                 response_metadata={
                     "created": body.get("created"),
@@ -440,6 +535,7 @@ class OpenRouterProvider(TargetProvider):
         provider_name: str | None = None,
         finish_reason: str | None = None,
         usage: TokenUsage | None = None,
+        http_attempts: int | None = None,
     ) -> ProviderResult:
         return ProviderResult(
             status=status,
@@ -450,6 +546,7 @@ class OpenRouterProvider(TargetProvider):
             usage=usage,
             latency_ms=(time.perf_counter() - started) * 1000,
             retry_count=retry_count,
+            http_attempts=retry_count + 1 if http_attempts is None else http_attempts,
             http_status=http_status,
             request_id=request_id,
             error_type=error_type,

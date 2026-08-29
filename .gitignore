@@ -17,6 +17,10 @@ data/raw/runs/*
 !data/raw/runs/.gitkeep
 data/raw/screens/*
 !data/raw/screens/.gitkeep
+data/raw/study-v2/*
+!data/raw/study-v2/.gitkeep
+data/raw/study-preflight/*
+!data/raw/study-preflight/.gitkeep
 data/annotations/*
 !data/annotations/.gitkeep
 data/derived/*
