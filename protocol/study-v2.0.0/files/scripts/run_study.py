@@ -28,7 +28,11 @@ from src.config_loader import (
     validate_catalogue,
 )
 from src.manifest import generate_manifest, manifest_dataframe, validate_manifest
-from src.pilot_qualification import QualificationVerdict, assess_pilot_v4
+from src.pilot_qualification import (
+    QualificationVerdict,
+    assess_pilot_v4,
+    assess_pilot_v5,
+)
 from src.provider_client import OpenRouterProvider
 from src.storage import RawRunStore, atomic_write_json
 from src.study_execution import (
@@ -42,7 +46,7 @@ MANIFEST_PATH = ROOT / "outputs" / "experiment_manifest.csv"
 DEFAULT_OUTPUT_ROOT = ROOT / "data" / "raw" / "study-v2"
 PREFLIGHT_FAILURE_ROOT = ROOT / "data" / "raw" / "study-preflight"
 MINIMUM_REQUEST_INTERVAL_SECONDS = 5.0
-PILOT_V4_OUTPUT_ROOT = ROOT / "data" / "raw" / "runs"
+TECHNICAL_PILOT_OUTPUT_ROOT = ROOT / "data" / "raw" / "runs"
 
 
 class StudyPreflightError(RuntimeError):
@@ -71,10 +75,13 @@ def load_frozen_study() -> tuple[list[Any], list[Any], Any, list[Any]]:
     return scripts, histories, models, rows
 
 
-def build_offline_preflight(*, pilot_output_root: Path = PILOT_V4_OUTPUT_ROOT) -> dict[str, Any]:
+def build_offline_preflight(
+    *, pilot_output_root: Path = TECHNICAL_PILOT_OUTPUT_ROOT
+) -> dict[str, Any]:
     scripts, histories, models, rows = load_frozen_study()
     bundle = verify_bundle()
-    qualification = assess_pilot_v4(output_root=pilot_output_root, persist=False)
+    pilot_v4 = assess_pilot_v4(output_root=pilot_output_root, persist=False)
+    pilot_v5 = assess_pilot_v5(output_root=pilot_output_root, persist=False)
     return {
         "status": "offline_preflight",
         "network_called": False,
@@ -88,9 +95,11 @@ def build_offline_preflight(*, pilot_output_root: Path = PILOT_V4_OUTPUT_ROOT) -
         "histories": len(histories),
         "protocol_bundle_commit": bundle["software_commit"],
         "protocol_bundle_items": len(bundle["items"]),
-        "pilot_v4_qualification": qualification.verdict.value,
-        "pilot_v4_failed_criteria": list(qualification.failed_criteria),
-        "main_study_live_blocked": qualification.main_study_blocked,
+        "pilot_v4_qualification": pilot_v4.verdict.value,
+        "pilot_v4_failed_criteria": list(pilot_v4.failed_criteria),
+        "pilot_v5_qualification": pilot_v5.verdict.value,
+        "pilot_v5_failed_criteria": list(pilot_v5.failed_criteria),
+        "main_study_live_blocked": pilot_v5.main_study_blocked,
     }
 
 
@@ -144,7 +153,7 @@ def execute_live_study(
     request_interval_seconds: float = MINIMUM_REQUEST_INTERVAL_SECONDS,
     environ: Mapping[str, str] | None = None,
     provider_factory: Callable[..., Any] = OpenRouterProvider,
-    pilot_output_root: Path = PILOT_V4_OUTPUT_ROOT,
+    pilot_output_root: Path = TECHNICAL_PILOT_OUTPUT_ROOT,
 ) -> dict[str, Any]:
     if maximum_http_attempts < 1:
         raise StudyPreflightError("Live study requires a positive explicit attempt cap")
@@ -160,10 +169,10 @@ def execute_live_study(
     )
     scripts, histories, models, rows = load_frozen_study()
     verify_bundle()
-    qualification = assess_pilot_v4(output_root=pilot_output_root, persist=True)
+    qualification = assess_pilot_v5(output_root=pilot_output_root, persist=True)
     if qualification.verdict != QualificationVerdict.PASS:
         raise StudyPreflightError(
-            "Main Study V2 is blocked: internally recomputed Pilot V4 "
+            "Main Study V2 is blocked: internally recomputed Pilot V5 "
             f"qualification={qualification.verdict.value}"
         )
     model_ids = resolve_model_ids(models)
@@ -213,6 +222,8 @@ def _print_offline(summary: dict[str, Any]) -> None:
     print("Protocol bundle verified; live execution remains disabled.")
     print(f"Pilot V4 qualification: {summary['pilot_v4_qualification']}")
     print(f"Pilot V4 failed criteria: {summary['pilot_v4_failed_criteria']}")
+    print(f"Pilot V5 qualification: {summary['pilot_v5_qualification']}")
+    print(f"Pilot V5 failed criteria: {summary['pilot_v5_failed_criteria']}")
     print(
         "Main-study live collection blocked: "
         f"{'yes' if summary['main_study_live_blocked'] else 'no'}"
@@ -232,7 +243,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--max-new-conversations", type=int)
     parser.add_argument("--stop-after-execution-order", type=int)
     parser.add_argument("--output-root", type=Path, default=DEFAULT_OUTPUT_ROOT)
-    parser.add_argument("--pilot-output-root", type=Path, default=PILOT_V4_OUTPUT_ROOT)
+    parser.add_argument("--pilot-output-root", type=Path, default=TECHNICAL_PILOT_OUTPUT_ROOT)
     parser.add_argument(
         "--request-interval-seconds", type=float, default=MINIMUM_REQUEST_INTERVAL_SECONDS
     )

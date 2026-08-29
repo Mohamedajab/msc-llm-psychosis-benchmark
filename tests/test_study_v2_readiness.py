@@ -9,7 +9,7 @@ from pathlib import Path
 import httpx
 import pytest
 
-from scripts import analyse_study, run_pilot_v4, run_study
+from scripts import analyse_study, run_pilot_v4, run_pilot_v5, run_study
 from scripts.check_documentation_links import broken_links
 from scripts.check_repository_safety import audit_tracked_files
 from scripts.protocol_bundle import verify_bundle
@@ -52,6 +52,25 @@ def test_pilot_v4_offline_shape_namespace_and_zero_network(monkeypatch) -> None:
     assert plan["maximum_http_attempts"] == 32
     assert all(run["run_id"].startswith("technical-pilot-v4_") for run in plan["runs"])
     assert not any("technical-pilot-v3_" in run["run_id"] for run in plan["runs"])
+    assert plan["pilot_version"] == "technical-pilot-v4.0.0"
+
+
+def test_pilot_v5_offline_shape_namespace_generation_and_zero_network(monkeypatch) -> None:
+    class NetworkForbidden:
+        def __init__(self, *args, **kwargs):  # noqa: ANN002, ANN003
+            raise AssertionError("network provider constructed in offline mode")
+
+    monkeypatch.setattr(run_pilot_v5, "OpenRouterProvider", NetworkForbidden)
+    plan = run_pilot_v5.build_offline_plan()
+    assert plan["network_called"] is False
+    assert plan["pilot_version"] == "technical-pilot-v5.0.0"
+    assert plan["generation_version"] == "generation-v3"
+    assert plan["max_tokens"] == 1024
+    assert plan["planned_conversations"] == 4
+    assert plan["planned_response_slots"] == 24
+    assert plan["maximum_http_attempts"] == 32
+    assert all(run["run_id"].startswith("technical-pilot-v5_") for run in plan["runs"])
+    assert not any("technical-pilot-v4_" in run["run_id"] for run in plan["runs"])
 
 
 def test_all_live_gates_fail_closed() -> None:
@@ -59,12 +78,38 @@ def test_all_live_gates_fail_closed() -> None:
         run_pilot_v4.execute_live_pilot_v4()
     with pytest.raises(run_pilot_v4.PilotV4PreflightError):
         run_pilot_v4.require_live_gate({})
+    with pytest.raises(run_pilot_v5.PilotV5PreflightError):
+        run_pilot_v5.execute_live_pilot_v5()
+    with pytest.raises(run_pilot_v5.PilotV5PreflightError):
+        run_pilot_v5.require_live_gate({})
     with pytest.raises(run_study.StudyPreflightError):
         run_study.require_live_gate(
             live_requested=True,
             live_confirmed=True,
             protocol_confirmed=False,
             environ={"RUN_LIVE_STUDY": "1", "OPENROUTER_API_KEY": "fake"},
+        )
+
+
+@pytest.mark.parametrize(
+    ("live_requested", "live_confirmed", "environ"),
+    [
+        (False, False, {}),
+        (True, False, {"RUN_LIVE_PILOT": "1", "OPENROUTER_API_KEY": "test"}),
+        (True, True, {}),
+        (True, True, {"RUN_LIVE_PILOT": "1"}),
+    ],
+)
+def test_every_pilot_v5_live_gate_is_required(
+    live_requested: bool,
+    live_confirmed: bool,
+    environ: dict[str, str],
+) -> None:
+    with pytest.raises(run_pilot_v5.PilotV5PreflightError):
+        run_pilot_v5.execute_live_pilot_v5(
+            live_requested=live_requested,
+            live_confirmed=live_confirmed,
+            environ=environ,
         )
 
 
@@ -245,6 +290,11 @@ def _fingerprint(paths: list[Path]) -> str:
             26,
             "dab2e3aafe0a65273aeec9e174ff089181c59db28c80b8673c3f8467042d3952",
         ),
+        (
+            "technical-pilot-v4",
+            28,
+            "679034620c7d73ba84195bb57317b06db5a1168795feb3875ab27ead33ed750a",
+        ),
     ],
 )
 def test_local_historical_pilot_evidence_is_immutable(
@@ -273,3 +323,11 @@ def test_local_endpoint_screen_is_immutable() -> None:
         pytest.skip("Screen evidence is deliberately excluded from a fresh clone")
     assert len(paths) == 1
     assert _fingerprint(paths) == "dae8db55367fc1f8f8c92e1ec231801ef5f58f6d89fb221aed8f867edc81837b"
+
+
+def test_local_pilot_v4_assessment_records_are_immutable() -> None:
+    paths = sorted((ROOT / "data" / "raw" / "pilot-v4-qualification").glob("*.json"))
+    if not paths:
+        pytest.skip("Private qualification records are excluded from a fresh clone")
+    assert len(paths) == 5
+    assert _fingerprint(paths) == "965694b364a8a3ef9a017e6452824ff10ae08aba4c18435df14ae168736629c9"

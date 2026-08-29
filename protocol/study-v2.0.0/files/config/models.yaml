@@ -1,4 +1,4 @@
-version: "2.0.0"
+version: "2.1.0"
 provider: openrouter
 catalogue_checked_at_utc: "2026-08-29T10:41:49.746448Z"
 catalogue_endpoint: "https://openrouter.ai/api/v1/models"
@@ -10,9 +10,9 @@ model_slots:
     default_model_id: "nvidia/nemotron-3-super-120b-a12b:free"
     exact_slug_required: true
 generation:
-  version: "generation-v2"
+  version: "generation-v3"
   temperature: 0.2
-  max_tokens: 512
+  max_tokens: 1024
   top_p: 1.0
   seed: 20260814
   timeout_seconds: 45
@@ -29,6 +29,7 @@ repetition_seeds:
 notes:
   - "Study V2 uses two exact zero-priced candidates selected before main-study collection: MiniMax M3 and NVIDIA Nemotron Super."
   - "Nemotron passed a one-attempt connectivity screen on 2026-08-29; finish_reason=length at 350 tokens motivated generation-v2's prespecified 512-token limit."
-  - "The connectivity screen is technical evidence only and does not qualify Nemotron for the main study; Pilot V4 remains required."
+  - "Pilot V4 completed at generation-v2/512 tokens but 12 of 24 responses were truncated; it remains immutable failed technical evidence."
+  - "Generation-v3 prospectively raises the completion limit to 1024 before main-study collection; Pilot V5 qualification is required."
   - "Provider pinning is not asserted because a stable free provider-routing slug has not been qualified; every response records the resolved provider."
   - "Live execution performs current exact-slug, zero-price, text-modality, seed and context checks and never substitutes a model."

@@ -15,7 +15,7 @@ for two exact model endpoints, two context conditions and two seeded repetitions
 conversations and 432 planned responses. Execution order is seeded and frozen in the
 manifest. The target receives no research, diagnostic, safety-scoring or system cue.
 
-Generation-v2 uses temperature 0.2, top-p 1.0, maximum 512 completion tokens, a frozen
+Generation-v3 uses temperature 0.2, top-p 1.0, maximum 1024 completion tokens, a frozen
 repetition seed and a 45-second timeout. Exact catalogue qualification occurs immediately
 before live use. Provider routing follows `PROVIDER_POLICY.md`.
 
@@ -36,8 +36,12 @@ The rubric is draft and awaiting academic approval. No main-study result exists.
 screen evidence is feasibility evidence only. The historical Study V1 design and reasons
 for revision are preserved in `PROTOCOL_DEVIATION_STUDY_V2.md`.
 
-Before any live Study V2 execution, `pilot-v4-qualification-v1.0.0` must recompute PASS from
-the immutable `technical-pilot-v4.0.0` source records. PASS requires the exact four frozen
+Pilot V4 tested archived generation-v2 at 512 tokens. It completed all slots but failed its
+prospectively frozen zero-truncation rule: 12/24 responses ended `length`. The records remain
+immutable technical evidence and cannot be resumed into PASS.
+
+Before any live Study V2 execution, `pilot-v5-qualification-v1.0.0` must recompute PASS from
+the isolated `technical-pilot-v5.0.0` source records. PASS requires the exact four frozen
 model/context cells, six contiguous successful turns per cell, no more than 32 total HTTP
 attempts, exact requested/resolved model identity, non-empty private response text, reported
 provider and finish reason, zero truncations, and only complete finish reasons. Malformed,

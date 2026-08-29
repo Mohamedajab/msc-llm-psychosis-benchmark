@@ -1,13 +1,18 @@
 {
   "bundle_version": "protocol-bundle-v1",
   "study_version": "study-v2.0.0",
-  "model_configuration_version": "2.0.0",
-  "generation_version": "generation-v2",
+  "model_configuration_version": "2.1.0",
+  "generation_version": "generation-v3",
   "rubric_status": "draft_pending_supervisor_research_group_approval",
-  "software_commit": "c9aa2b0f42a9ab5e6e1cdcd2f14ccbf03fe1b52d",
-  "created_at_utc": "2026-08-29T15:55:45.218489+00:00",
+  "software_commit": "7750c18e5115f804ae48a9b68699267ac5b98dce",
+  "created_at_utc": "2026-08-29T16:30:07.804812+00:00",
   "contains_sensitive_or_observed_data": false,
   "items": [
+    {
+      "source_path": "config/archive/models-study-v2-generation-v2.yaml",
+      "bundle_path": "files/config/archive/models-study-v2-generation-v2.yaml",
+      "sha256": "f738623b11f677dfc7e56fd650b199b7060ab5074387d41eef2a3e4d6fcc2539"
+    },
     {
       "source_path": "config/histories/ai_relationship_prefix.json",
       "bundle_path": "files/config/histories/ai_relationship_prefix.json",
@@ -26,7 +31,7 @@
     {
       "source_path": "config/models.yaml",
       "bundle_path": "files/config/models.yaml",
-      "sha256": "f738623b11f677dfc7e56fd650b199b7060ab5074387d41eef2a3e4d6fcc2539"
+      "sha256": "0289108e98dafaf7d3f2af4de9f6d1533fe1d5f6700662f739aab1c00201e957"
     },
     {
       "source_path": "config/rubric.yaml",
@@ -81,12 +86,12 @@
     {
       "source_path": "docs/EXECUTION_POLICY.md",
       "bundle_path": "files/docs/EXECUTION_POLICY.md",
-      "sha256": "53339c4c48384b07b03fd02dd67a731832d99a2694299fe7686acbe88a0e8b0b"
+      "sha256": "643e62440c79e1d8f1937aebbeb1342f758814992eac2c000f2b34f0bc68cdac"
     },
     {
       "source_path": "docs/PROTOCOL_DEVIATION_STUDY_V2.md",
       "bundle_path": "files/docs/PROTOCOL_DEVIATION_STUDY_V2.md",
-      "sha256": "b96a83f919722b4b54340b9d7e1b58de44cf9f9a702bfa89742bdab821ed8c3b"
+      "sha256": "4306a915d112a4e1166878ebbac0f7c68ca5c7b12d976d0767bb685245645c52"
     },
     {
       "source_path": "docs/PROVIDER_POLICY.md",
@@ -96,7 +101,7 @@
     {
       "source_path": "docs/RESEARCH_PROTOCOL.md",
       "bundle_path": "files/docs/RESEARCH_PROTOCOL.md",
-      "sha256": "266935a617f530e22cc6df5f055451667c0492a16065640685ca4c04f41143de"
+      "sha256": "40a26e97273414b9e085ea9cb99c9d350077ff9b2b9588f5add54dfded0d757a"
     },
     {
       "source_path": "outputs/data_dictionary.csv",
@@ -106,7 +111,7 @@
     {
       "source_path": "outputs/experiment_manifest.csv",
       "bundle_path": "files/outputs/experiment_manifest.csv",
-      "sha256": "13baa68609968805236b6b085a4302b8cdd1c3d43f7f4f8b4bf77cace7a2099e"
+      "sha256": "6b6296176577ee582e5d0a28d133455806457c076c0704c243009d621c892788"
     },
     {
       "source_path": "scripts/assess_pilot_v4.py",
@@ -114,14 +119,29 @@
       "sha256": "7ee95134eb02b7c66982f9bd0d8498c017dbe1be7f3597a0788cf88743287ccf"
     },
     {
+      "source_path": "scripts/assess_pilot_v5.py",
+      "bundle_path": "files/scripts/assess_pilot_v5.py",
+      "sha256": "a5a422beddd99fe39494eb4e469681d35cc204c0f0fd3ae42dd5c1bccced4655"
+    },
+    {
+      "source_path": "scripts/audit_pilot_v4.py",
+      "bundle_path": "files/scripts/audit_pilot_v4.py",
+      "sha256": "854caf69d60d9d1b4ad1ad17cf6f7fc09c0a0c7eea16b9b8bc7ca8c6bc438212"
+    },
+    {
       "source_path": "scripts/run_pilot_v4.py",
       "bundle_path": "files/scripts/run_pilot_v4.py",
-      "sha256": "45ad90af5f158a3f9c4f355ef556784773a27d5f5f48caa1b01c931eb2c3291e"
+      "sha256": "60477903aa2d7f7fe24d8067da048233feaa6563509f3b7d70707352b40f5046"
+    },
+    {
+      "source_path": "scripts/run_pilot_v5.py",
+      "bundle_path": "files/scripts/run_pilot_v5.py",
+      "sha256": "0e3c69acd4243784dcf75412f2b7e61970fe0f55637c9724f0a39c66b8eba085"
     },
     {
       "source_path": "scripts/run_study.py",
       "bundle_path": "files/scripts/run_study.py",
-      "sha256": "184ef8dda92d65df4f19014560ee8c0e1461e1d32b3129ecdb8f8f675fd1ea11"
+      "sha256": "c83c0bf9f6b4b7f309935d3c3e35af1066c7c7c8daef92addec7c846926fae9d"
     },
     {
       "source_path": "src/config_loader.py",
@@ -146,7 +166,7 @@
     {
       "source_path": "src/pilot_qualification.py",
       "bundle_path": "files/src/pilot_qualification.py",
-      "sha256": "e551da0fcd5fedc466e8cdb94cd472de10386efd487861bdc399de1a6b765a7c"
+      "sha256": "1723d0057b9c84731c14c097dcc3a8c8c4fee77b4f02d7559d4e90b37db3f5fb"
     },
     {
       "source_path": "src/provider_client.py",
@@ -166,7 +186,7 @@
     {
       "source_path": "src/study_execution.py",
       "bundle_path": "files/src/study_execution.py",
-      "sha256": "53cf1a92ab66dcc48fa93ab867ae7b7776a3ca7625143f5bbd33fa908d6cd295"
+      "sha256": "ef4fd368588c22356368c213662bac88f1fcf6eff632d529c4591788e65fd68b"
     }
   ]
 }

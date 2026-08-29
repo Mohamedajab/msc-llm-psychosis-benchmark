@@ -19,6 +19,7 @@ FORBIDDEN_PATHS = (
     re.compile(r"^data/raw/study-v2/(?!\.gitkeep$)"),
     re.compile(r"^data/raw/study-preflight/(?!\.gitkeep$)"),
     re.compile(r"^data/raw/pilot-v4-qualification/"),
+    re.compile(r"^data/raw/pilot-v5-qualification/"),
     re.compile(r"^data/annotations/(?!\.gitkeep$)"),
     re.compile(r"^data/derived/(?!\.gitkeep$)"),
     re.compile(r"^data/private/"),

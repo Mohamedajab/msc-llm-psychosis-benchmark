@@ -23,6 +23,21 @@ draft rubric still requires supervisor/research-group approval before primary an
 Governance clarification (pre-collection): four completed Pilot V4 conversations do not by
 themselves qualify the endpoints. A versioned, deterministic assessor must return PASS from
 the immutable V4 records. In particular, a length-limited or otherwise incomplete finish is
-retained as technical evidence but disqualifies Pilot V4. Study V2 recomputes this gate before
-provider construction. This clarification changes no model, scenario, history, seed,
+retained as technical evidence but disqualifies Pilot V4. That V4 gate was frozen before its
+execution and is retained for historical interpretation. This clarification changed no model,
+scenario, history, seed,
 generation parameter, manifest row or factorial-design decision.
+
+## Generation-v3 correction after Pilot V4
+
+Pilot V4 subsequently tested generation-v2 at 512 completion tokens. It completed 24/24
+technical response slots with exact model resolution and no transport errors, but 12/24
+responses—all from the Nemotron endpoint through Nvidia—ended `finish_reason=length` and
+were truncated. MiniMax through GMICloud produced 12/12 `stop` responses. Pilot V4 therefore
+remains permanently `FAIL` under its frozen prospective criteria.
+
+Before any main-study data collection, generation-v3 raises only the completion limit from
+512 to 1024 tokens. Temperature, top-p, timeout, retry policy, models, seeds, scripts,
+histories, rubric and the 72-conversation factorial design are unchanged. This is a
+prospective feasibility correction, not a reinterpretation of V4. The exact generation-v2
+configuration is archived, and separately versioned Pilot V5 must qualify generation-v3.

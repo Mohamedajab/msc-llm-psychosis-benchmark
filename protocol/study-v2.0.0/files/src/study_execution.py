@@ -1,4 +1,4 @@
-"""Shared guarded execution and no-content summaries for Pilot V4 and Study V2."""
+"""Shared guarded execution and no-content summaries for technical pilots and Study V2."""
 
 from __future__ import annotations
 
@@ -192,8 +192,10 @@ def build_execution_summary(
         "provider_mismatches": mismatch_count,
         "remaining_attempt_allowance": remaining,
         "remaining_allowance_sufficient": sufficient,
+        "missing_slots_can_be_filled": bool(missing and sufficient),
         "next_execution_order": next_order,
-        "can_resume_safely": mismatch_count == 0 and (next_order is not None or missing == 0),
+        "resume_would_perform_useful_work": bool(missing and next_order is not None),
+        "can_resume_safely": mismatch_count == 0 and missing > 0 and next_order is not None,
         "output_directory": str(store.root.resolve()),
     }
 
@@ -223,10 +225,17 @@ def print_execution_summary(label: str, summary: dict[str, Any]) -> None:
     print(f"Provider/model mismatches: {summary['provider_mismatches']}")
     if summary["remaining_attempt_allowance"] is not None:
         print(f"Remaining attempt allowance: {summary['remaining_attempt_allowance']}")
-        print(
-            "Mathematically sufficient to finish: "
-            f"{'yes' if summary['remaining_allowance_sufficient'] else 'no'}"
-        )
+        if summary["missing_response_slots"]:
+            print(
+                "Remaining allowance sufficient to fill missing slots: "
+                f"{'yes' if summary['missing_slots_can_be_filled'] else 'no'}"
+            )
+        else:
+            print("Remaining allowance sufficient to fill missing slots: not applicable")
     print(f"Next execution order: {summary['next_execution_order'] or 'complete'}")
+    print(
+        "Resume would perform useful work: "
+        f"{'yes' if summary['resume_would_perform_useful_work'] else 'no'}"
+    )
     print(f"Safe resume available: {'yes' if summary['can_resume_safely'] else 'no'}")
     print(f"Output directory: {summary['output_directory']}")

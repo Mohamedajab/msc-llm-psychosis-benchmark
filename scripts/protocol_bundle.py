@@ -23,6 +23,7 @@ METADATA_PATH = BUNDLE_ROOT / "bundle.json"
 STUDY_VERSION = "study-v2.0.0"
 INCLUDED_PATHS = (
     "config/models.yaml",
+    "config/archive/models-study-v2-generation-v2.yaml",
     "config/rubric.yaml",
     "outputs/experiment_manifest.csv",
     "outputs/data_dictionary.csv",
@@ -41,6 +42,9 @@ INCLUDED_PATHS = (
     "src/study_execution.py",
     "scripts/run_pilot_v4.py",
     "scripts/assess_pilot_v4.py",
+    "scripts/audit_pilot_v4.py",
+    "scripts/run_pilot_v5.py",
+    "scripts/assess_pilot_v5.py",
     "scripts/run_study.py",
 )
 

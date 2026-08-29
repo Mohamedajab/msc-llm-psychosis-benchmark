@@ -1,4 +1,4 @@
-"""Deterministic, fail-closed qualification of immutable Pilot V4 evidence."""
+"""Deterministic, fail-closed qualification of versioned technical-pilot evidence."""
 
 from __future__ import annotations
 
@@ -17,14 +17,17 @@ from src.schemas import ObservationStatus, StrictModel
 from src.storage import RawRunStore, atomic_write_json
 from src.study_execution import result_http_attempts
 
-ASSESSMENT_VERSION = "pilot-v4-qualification-v1.0.0"
-PILOT_VERSION = "technical-pilot-v4.0.0"
-PILOT_NAMESPACE = "technical-pilot-v4"
+V4_ASSESSMENT_VERSION = "pilot-v4-qualification-v1.0.0"
+V4_PILOT_VERSION = "technical-pilot-v4.0.0"
+V4_PILOT_NAMESPACE = "technical-pilot-v4"
+V5_ASSESSMENT_VERSION = "pilot-v5-qualification-v1.0.0"
+V5_PILOT_VERSION = "technical-pilot-v5.0.0"
+V5_PILOT_NAMESPACE = "technical-pilot-v5"
 MAX_HTTP_ATTEMPTS = 32
 EXPECTED_CONVERSATIONS = 4
 EXPECTED_RESPONSES = 24
 ALLOWED_COMPLETE_FINISH_REASONS = frozenset({"stop"})
-FROZEN_CRITERIA = (
+BASE_FROZEN_CRITERIA = (
     "exactly_four_frozen_model_context_cells",
     "twenty_four_contiguous_successful_turns",
     "persisted_http_attempts_at_most_32",
@@ -34,7 +37,7 @@ FROZEN_CRITERIA = (
     "provider_and_finish_reason_reported",
     "zero_truncated_responses",
     "only_complete_finish_reasons",
-    "technical_pilot_v4_evidence_only",
+    "versioned_technical_pilot_evidence_only",
     "frozen_study_v2_configuration_matches",
     "evidence_is_well_formed_unique_and_verifiable",
 )
@@ -48,14 +51,14 @@ class QualificationVerdict(StrEnum):
 
 
 class PilotQualificationAssessment(StrictModel):
-    assessment_version: str = ASSESSMENT_VERSION
+    assessment_version: str
     assessment_id: str
     assessed_at: datetime
-    pilot_version: str = PILOT_VERSION
+    pilot_version: str
     study_version: str = "study-v2.0.0"
     configuration_version: str
     generation_version: str
-    frozen_criteria: tuple[str, ...] = FROZEN_CRITERIA
+    frozen_criteria: tuple[str, ...] = BASE_FROZEN_CRITERIA
     verdict: QualificationVerdict
     failed_criteria: tuple[str, ...] = ()
     main_study_blocked: bool
@@ -64,13 +67,13 @@ class PilotQualificationAssessment(StrictModel):
     source_file_hashes: dict[str, str] = Field(default_factory=dict)
 
 
-def _source_files(output_root: Path) -> list[Path]:
+def _source_files(output_root: Path, pilot_namespace: str) -> list[Path]:
     if not output_root.exists():
         return []
     return sorted(
         path
         for directory in output_root.iterdir()
-        if directory.is_dir() and directory.name.startswith(f"{PILOT_NAMESPACE}_")
+        if directory.is_dir() and directory.name.startswith(f"{pilot_namespace}_")
         for path in directory.rglob("*")
         if path.is_file()
     )
@@ -95,23 +98,26 @@ def _safe_failure(failures: set[str], criterion: str) -> None:
     failures.add(criterion)
 
 
-def assess_pilot_v4(
+def _assess_pilot(
     *,
     output_root: str | Path,
+    pilot_version: str,
+    pilot_namespace: str,
+    assessment_version: str,
+    assessment_directory: str,
+    configuration_loader: Any,
+    rows_loader: Any,
     assessment_root: str | Path | None = None,
     persist: bool = False,
     assessed_at: datetime | None = None,
 ) -> PilotQualificationAssessment:
     """Recompute qualification from private raw evidence; never trust a prior verdict."""
 
-    # Local import avoids coupling core storage to a command-line module at import time.
-    from scripts.run_pilot_v4 import _configuration, pilot_rows
-
     root = Path(output_root)
-    files = _source_files(root)
+    files = _source_files(root, pilot_namespace)
     source_hash, source_file_hashes = _hashes(root, files)
-    _, _, models, scripts, histories = _configuration()
-    rows = pilot_rows()
+    _, _, models, scripts, histories = configuration_loader()
+    rows = rows_loader()
     expected = {row.run_id: row for row in rows}
     configuration_hash = configuration_bundle_hash(scripts, histories, models)
     failures: set[str] = set()
@@ -120,11 +126,11 @@ def assess_pilot_v4(
     actual_directories = {
         directory.name
         for directory in root.iterdir()
-        if directory.is_dir() and directory.name.startswith(f"{PILOT_NAMESPACE}_")
+        if directory.is_dir() and directory.name.startswith(f"{pilot_namespace}_")
     }
     unexpected = actual_directories - set(expected)
     if unexpected:
-        integrity_failures.add("unexpected_or_mixed_pilot_v4_run")
+        integrity_failures.add("unexpected_or_mixed_versioned_pilot_run")
 
     successful_responses = 0
     technical_errors = 0
@@ -158,7 +164,7 @@ def assess_pilot_v4(
         header = record.header
         expected_generation = generation_for_repetition(models, row.repetition)
         if (
-            header.study_version != PILOT_VERSION
+            header.study_version != pilot_version
             or header.data_status != "technical_pilot"
             or header.run_id != run_id
             or header.script_id != row.script_id
@@ -250,7 +256,7 @@ def assess_pilot_v4(
 
     if not files and present_cells == 0 and not unexpected:
         verdict = QualificationVerdict.NOT_RUN
-        failures = {"pilot_v4_evidence_not_present"}
+        failures = {f"{pilot_namespace.replace('-', '_')}_evidence_not_present"}
     elif integrity_failures or any(
         criterion in failures
         for criterion in (
@@ -276,8 +282,10 @@ def assess_pilot_v4(
         verdict = QualificationVerdict.FAIL
 
     assessment = PilotQualificationAssessment(
+        assessment_version=assessment_version,
         assessment_id=uuid.uuid4().hex,
         assessed_at=assessed_at or datetime.now(UTC),
+        pilot_version=pilot_version,
         configuration_version=models.version,
         generation_version=models.generation.version,
         verdict=verdict,
@@ -310,21 +318,110 @@ def assess_pilot_v4(
         destination_root = (
             Path(assessment_root)
             if assessment_root is not None
-            else root.parent / "pilot-v4-qualification"
+            else root.parent / assessment_directory
         )
         timestamp = assessment.assessed_at.strftime("%Y%m%dT%H%M%S%fZ")
         atomic_write_json(
-            destination_root / f"{ASSESSMENT_VERSION}_{timestamp}_{assessment.assessment_id}.json",
+            destination_root / f"{assessment_version}_{timestamp}_{assessment.assessment_id}.json",
             assessment.model_dump(mode="json"),
         )
     return assessment
+
+
+def assess_pilot_v4(
+    *,
+    output_root: str | Path,
+    assessment_root: str | Path | None = None,
+    persist: bool = False,
+    assessed_at: datetime | None = None,
+) -> PilotQualificationAssessment:
+    """Recompute the frozen Pilot V4 verdict using archived generation-v2 metadata."""
+
+    from scripts.run_pilot_v4 import _configuration, pilot_rows
+
+    return _assess_pilot(
+        output_root=output_root,
+        pilot_version=V4_PILOT_VERSION,
+        pilot_namespace=V4_PILOT_NAMESPACE,
+        assessment_version=V4_ASSESSMENT_VERSION,
+        assessment_directory="pilot-v4-qualification",
+        configuration_loader=_configuration,
+        rows_loader=pilot_rows,
+        assessment_root=assessment_root,
+        persist=persist,
+        assessed_at=assessed_at,
+    )
+
+
+def assess_pilot_v5(
+    *,
+    output_root: str | Path,
+    assessment_root: str | Path | None = None,
+    persist: bool = False,
+    assessed_at: datetime | None = None,
+) -> PilotQualificationAssessment:
+    """Recompute Pilot V5 qualification from its isolated generation-v3 evidence."""
+
+    from scripts.run_pilot_v5 import _configuration, pilot_rows
+
+    return _assess_pilot(
+        output_root=output_root,
+        pilot_version=V5_PILOT_VERSION,
+        pilot_namespace=V5_PILOT_NAMESPACE,
+        assessment_version=V5_ASSESSMENT_VERSION,
+        assessment_directory="pilot-v5-qualification",
+        configuration_loader=_configuration,
+        rows_loader=pilot_rows,
+        assessment_root=assessment_root,
+        persist=persist,
+        assessed_at=assessed_at,
+    )
+
+
+def pilot_v4_safe_cross_tab(*, output_root: str | Path) -> list[dict[str, Any]]:
+    """Return content-free V4 model/provider/finish/truncation response counts."""
+
+    from scripts.run_pilot_v4 import pilot_rows
+
+    store = RawRunStore(output_root)
+    counts: Counter[tuple[str, str, str, str, bool]] = Counter()
+    for row in pilot_rows():
+        run_path = store.run_directory(row.run_id) / "run.json"
+        if not run_path.is_file():
+            continue
+        record = store.load(row.run_id)
+        for event in record.turns:
+            result = event.result
+            counts[
+                (
+                    row.requested_model_id,
+                    result.resolved_model_id or "unreported",
+                    result.provider_name or "unreported",
+                    result.finish_reason or "unreported",
+                    result.truncated,
+                )
+            ] += 1
+    return [
+        {
+            "requested_model": requested,
+            "resolved_model": resolved,
+            "resolved_provider": provider,
+            "finish_reason": finish_reason,
+            "truncated": truncated,
+            "response_count": count,
+        }
+        for (requested, resolved, provider, finish_reason, truncated), count in sorted(
+            counts.items()
+        )
+    ]
 
 
 def print_safe_assessment(assessment: PilotQualificationAssessment) -> None:
     """Print aggregate qualification metadata without private conversation content."""
 
     stats = assessment.statistics
-    print("PILOT V4 TECHNICAL QUALIFICATION - NOT RESEARCH DATA")
+    pilot_label = assessment.pilot_version.replace("technical-pilot-", "").split(".")[0].upper()
+    print(f"PILOT {pilot_label} TECHNICAL QUALIFICATION - NOT RESEARCH DATA")
     print(f"verdict={assessment.verdict.value}")
     print(
         f"cells={stats['present_cells']}/{stats['expected_cells']}; "
