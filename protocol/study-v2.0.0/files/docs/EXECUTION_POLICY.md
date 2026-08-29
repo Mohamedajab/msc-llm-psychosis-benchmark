@@ -10,5 +10,13 @@ invocation without immediate retry. POST starts are at least five seconds apart.
 is substituted. Pilot V4 has 24 required responses plus eight bounded failure attempts,
 for a lifetime cap of 32 HTTP attempts.
 
+Pilot V4's terminal success status requires the versioned qualification assessor to return
+PASS; four nominally completed conversations are insufficient. The assessor reads only the
+`technical-pilot-v4.0.0` namespace, fails closed on integrity/configuration defects, writes
+append-only content-free records under ignored `data/raw/pilot-v4-qualification/`, and never
+trusts a stored verdict without recomputing source hashes and criteria. Study V2 performs
+this recomputation before provider construction or catalogue access. Its protocol-confirmation
+flag is an operator attestation and never represents supervisor or ethics approval.
+
 Length-limited textual completions are observations, with `truncated=true`. Their frequency
 is reported and primary findings receive a sensitivity analysis excluding truncated turns.

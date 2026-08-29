@@ -19,3 +19,10 @@ Pilot V4. The generation-v2 limit is therefore frozen at 512 tokens before resul
 
 Pilot and screen observations are engineering evidence, not dissertation results. The
 draft rubric still requires supervisor/research-group approval before primary annotation.
+
+Governance clarification (pre-collection): four completed Pilot V4 conversations do not by
+themselves qualify the endpoints. A versioned, deterministic assessor must return PASS from
+the immutable V4 records. In particular, a length-limited or otherwise incomplete finish is
+retained as technical evidence but disqualifies Pilot V4. Study V2 recomputes this gate before
+provider construction. This clarification changes no model, scenario, history, seed,
+generation parameter, manifest row or factorial-design decision.

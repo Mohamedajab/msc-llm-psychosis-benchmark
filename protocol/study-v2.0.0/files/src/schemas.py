@@ -251,7 +251,10 @@ class ProviderResult(StrictModel):
     def response_requires_text(self) -> ProviderResult:
         if self.status == ObservationStatus.RESPONSE and not (self.text or "").strip():
             raise ValueError("A successful response observation requires nonblank text")
-        self.truncated = self.finish_reason == "length"
+        derived_truncation = self.finish_reason == "length"
+        if "truncated" in self.model_fields_set and self.truncated != derived_truncation:
+            raise ValueError("truncated must agree with finish_reason=length")
+        self.truncated = derived_truncation
         return self
 
 

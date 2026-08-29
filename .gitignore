@@ -21,6 +21,7 @@ data/raw/study-v2/*
 !data/raw/study-v2/.gitkeep
 data/raw/study-preflight/*
 !data/raw/study-preflight/.gitkeep
+data/raw/pilot-v4-qualification/*
 data/annotations/*
 !data/annotations/.gitkeep
 data/derived/*

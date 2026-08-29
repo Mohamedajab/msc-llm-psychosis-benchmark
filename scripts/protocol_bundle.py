@@ -35,10 +35,12 @@ INCLUDED_PATHS = (
     "src/manifest.py",
     "src/payloads.py",
     "src/provider_client.py",
+    "src/pilot_qualification.py",
     "src/schemas.py",
     "src/storage.py",
     "src/study_execution.py",
     "scripts/run_pilot_v4.py",
+    "scripts/assess_pilot_v4.py",
     "scripts/run_study.py",
 )
 

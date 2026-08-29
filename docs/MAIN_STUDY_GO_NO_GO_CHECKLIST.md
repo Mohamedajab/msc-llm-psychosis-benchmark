@@ -3,7 +3,9 @@
 - [ ] Revised two-model protocol reviewed by the supervisor.
 - [ ] Draft rubric and annotation procedure approved or revised by the research group.
 - [ ] Ethics/data-management requirements confirmed by the student and supervisor.
-- [ ] Pilot V4 completes all four conversations without disqualifying model/provider drift.
+- [ ] `pilot-v4-qualification-v1.0.0` independently returns PASS from current immutable V4
+  evidence: 24/24 contiguous responses, zero truncations, complete finish reasons, exact
+  model identity, reported providers and no more than 32 persisted HTTP attempts.
 - [ ] Both exact endpoints remain free and meet catalogue capabilities immediately before use.
 - [ ] Protocol bundle, manifest and execution-code hashes verify.
 - [ ] Pilot V1-V3 and screen fingerprints remain unchanged.
@@ -11,3 +13,4 @@
 - [ ] A deliberately bounded live batch has been explicitly authorised.
 
 Any unchecked item is a no-go for main-study generation.
+The machine PASS does not satisfy or replace any human approval item above.

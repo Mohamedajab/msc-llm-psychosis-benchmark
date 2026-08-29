@@ -35,3 +35,13 @@ observations. Missing responses and technical errors are never imputed.
 The rubric is draft and awaiting academic approval. No main-study result exists. Pilot and
 screen evidence is feasibility evidence only. The historical Study V1 design and reasons
 for revision are preserved in `PROTOCOL_DEVIATION_STUDY_V2.md`.
+
+Before any live Study V2 execution, `pilot-v4-qualification-v1.0.0` must recompute PASS from
+the immutable `technical-pilot-v4.0.0` source records. PASS requires the exact four frozen
+model/context cells, six contiguous successful turns per cell, no more than 32 total HTTP
+attempts, exact requested/resolved model identity, non-empty private response text, reported
+provider and finish reason, zero truncations, and only complete finish reasons. Malformed,
+mixed-version, duplicated, non-contiguous, stale or unverifiable evidence fails closed.
+Transient errors may remain append-only if all slots later succeed within the cap and reveal
+no integrity mismatch. This technical gate is separate from human supervisor, rubric,
+annotation, ethics and data-management approval.

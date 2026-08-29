@@ -31,6 +31,7 @@ credentials are ignored by Git.
 & .\.venv\Scripts\python.exe -m ruff format --check app.py src scripts tests
 & .\.venv\Scripts\python.exe scripts\generate_manifest.py --validate
 & .\.venv\Scripts\python.exe scripts\run_pilot_v4.py
+& .\.venv\Scripts\python.exe scripts\assess_pilot_v4.py # expected non-zero until Pilot V4 runs
 & .\.venv\Scripts\python.exe scripts\run_study.py
 & .\.venv\Scripts\python.exe scripts\protocol_bundle.py --verify
 ```
@@ -38,6 +39,12 @@ credentials are ignored by Git.
 Offline runner invocations make zero network calls. Model identities come exclusively from
 versioned configuration; `.env` cannot override them. Live commands require deliberate
 independent gates and current exact catalogue qualification.
+
+Pilot V4 completion is not qualification by itself. The versioned offline assessor requires
+24/24 non-empty, non-truncated responses across the four frozen cells, exact resolved-model
+identity, reported provider/finish reason, valid frozen metadata, and no more than 32 stored
+HTTP attempts. Study V2 recomputes that assessment from immutable evidence before it can
+construct a live provider. A PASS is technical qualification only, not academic approval.
 
 See `docs/MAIN_STUDY_RUNBOOK.md`, `docs/RESEARCH_PROTOCOL.md` and
 `docs/MAIN_STUDY_GO_NO_GO_CHECKLIST.md` before any collection.

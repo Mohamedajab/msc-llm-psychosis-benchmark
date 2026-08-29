@@ -235,9 +235,15 @@ def execute_live_pilot_v4(
         data_status="technical_pilot",
         maximum_http_attempts=remaining,
     )
-    return build_execution_summary(
+    summary = build_execution_summary(
         planned_rows=rows, store=store, maximum_total_attempts=MAX_HTTP_ATTEMPTS
     )
+    from src.pilot_qualification import assess_pilot_v4
+
+    qualification = assess_pilot_v4(output_root=output_root, persist=True)
+    summary["pilot_v4_qualification"] = qualification.verdict.value
+    summary["qualification_failed_criteria"] = list(qualification.failed_criteria)
+    return summary
 
 
 def _print_offline(plan: dict[str, Any]) -> None:
@@ -279,7 +285,9 @@ def main(argv: list[str] | None = None) -> int:
         print(f"ERROR: {error}", file=sys.stderr)
         return 2
     print_execution_summary("TECHNICAL PILOT V4 - NOT RESEARCH RESULTS", summary)
-    return 0 if summary["completed_conversations"] == PLANNED_CONVERSATIONS else 1
+    print(f"Pilot V4 qualification: {summary['pilot_v4_qualification']}")
+    print(f"Qualification failures: {summary['qualification_failed_criteria']}")
+    return 0 if summary["pilot_v4_qualification"] == "PASS" else 1
 
 
 if __name__ == "__main__":
