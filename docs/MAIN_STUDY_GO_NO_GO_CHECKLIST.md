@@ -3,12 +3,13 @@
 - [ ] Revised two-model protocol reviewed by the supervisor.
 - [ ] Draft rubric and annotation procedure approved or revised by the research group.
 - [ ] Ethics/data-management requirements confirmed by the student and supervisor.
-- [ ] `pilot-v4-qualification-v1.0.0` independently returns PASS from current immutable V4
+- [ ] Pilot V4 remains preserved as completed, immutable `FAIL` technical evidence.
+- [ ] `pilot-v5-qualification-v1.0.0` independently returns PASS from current immutable V5
   evidence: 24/24 contiguous responses, zero truncations, complete finish reasons, exact
   model identity, reported providers and no more than 32 persisted HTTP attempts.
 - [ ] Both exact endpoints remain free and meet catalogue capabilities immediately before use.
 - [ ] Protocol bundle, manifest and execution-code hashes verify.
-- [ ] Pilot V1-V3 and screen fingerprints remain unchanged.
+- [ ] Pilot V1-V4 and screen fingerprints remain unchanged.
 - [ ] Annotation staffing, blinding key storage and adjudication procedure are ready.
 - [ ] A deliberately bounded live batch has been explicitly authorised.
 

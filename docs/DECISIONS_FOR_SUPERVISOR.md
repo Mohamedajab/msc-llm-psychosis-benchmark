@@ -7,7 +7,8 @@
 - Approve or revise the draft A1-A3 primary and B1-B3/C1 exploratory rubric anchors.
 - Confirm annotation staffing, adjudication, rerating proportion and reliability thresholds.
 - Confirm ethics/data-management expectations for model outputs, private mappings and notes.
-- Agree the Pilot V4 endpoint/provider/truncation criteria that constitute qualification.
+- Review Pilot V4's frozen technical failure and approve or revise the decision process around
+  Pilot V5 and the main-study go/no-go; the software does not infer approval.
 
 ## Already fixed in the candidate protocol
 

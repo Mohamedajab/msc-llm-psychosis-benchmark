@@ -4,8 +4,10 @@
 - Free availability, rate limits and provider routing can change during collection.
 - Exact model identity does not guarantee identical backend infrastructure; provider
   distributions and changes must be reported.
-- Nemotron has connectivity evidence but not yet a successful six-turn Pilot V4 qualification.
-- A 512-token cap can still truncate responses; truncation is retained and audited.
+- Pilot V4 established endpoint accessibility but failed generation suitability: all 12
+  Nemotron responses reached the archived 512-token cap. Pilot V5 has not run.
+- Generation-v3's 1024-token cap may still truncate responses; Pilot V5 retains and audits
+  truncation and must return zero truncations to qualify.
 - Fixed scripts improve control but reduce ecological validity and conversational diversity.
 - The standardised history is synthetic and may not generalise to organic prior dialogue.
 - The draft rubric requires academic review; human ordinal judgement remains subjective.

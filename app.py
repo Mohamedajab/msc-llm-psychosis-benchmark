@@ -19,7 +19,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from scripts.run_pilot_v4 import DEFAULT_SCRIPT_ID, PILOT_VERSION, execute_live_pilot_v4
+from scripts.run_pilot_v5 import DEFAULT_SCRIPT_ID, PILOT_VERSION, execute_live_pilot_v5
 from src.annotation import (
     AnnotationError,
     AnnotationPersistenceError,
@@ -303,7 +303,7 @@ def render_overview(configuration: LocalConfiguration) -> None:
             ),
             (
                 "Technical pilot",
-                "Pilot V1-V3 preserved; Pilot V4 plans four conversations / 24 responses / 32 attempts",
+                "Pilot V1-V3 preserved; Pilot V4 failed immutably; Pilot V5 plans four conversations / 24 responses / 32 attempts",
                 "Engineering and feasibility evidence; descriptive only",
             ),
             (
@@ -518,7 +518,7 @@ def render_runner(configuration: LocalConfiguration) -> None:
                 _render_run_result(record)
 
     else:
-        st.info(f"TECHNICAL PILOT V4 - DESCRIPTIVE ONLY · {PILOT_VERSION}")
+        st.info(f"TECHNICAL PILOT V5 - DESCRIPTIVE ONLY · {PILOT_VERSION}")
         st.write("The bounded pilot will use these exact configured model IDs:")
         for model_id in resolved_models.values():
             st.code(model_id, language=None)
@@ -531,7 +531,7 @@ def render_runner(configuration: LocalConfiguration) -> None:
         if not environment_gate:
             st.warning("RUN_LIVE_PILOT is not 1. Live execution remains disabled.")
         live_confirmation = st.checkbox(
-            "I give final confirmation to contact OpenRouter for the fixed four-conversation, 24-response-slot, maximum 32-attempt Pilot V4."
+            "I give final confirmation to contact OpenRouter for the fixed four-conversation, 24-response-slot, maximum 32-attempt Pilot V5."
         )
         live_button = st.button(
             "Run or resume live technical pilot",
@@ -544,7 +544,7 @@ def render_runner(configuration: LocalConfiguration) -> None:
         if live_button:
             try:
                 with st.spinner("Checking all exact slugs, then running the bounded pilot…"):
-                    summary = execute_live_pilot_v4(
+                    summary = execute_live_pilot_v5(
                         output_root=RAW_RUN_DIR,
                         live_requested=True,
                         live_confirmed=True,
@@ -555,7 +555,7 @@ def render_runner(configuration: LocalConfiguration) -> None:
                 st.success(
                     "Completed/resumed "
                     f"{summary['completed_conversations']}/{summary['planned_conversations']} "
-                    "Pilot V4 conversations."
+                    "Pilot V5 conversations."
                 )
                 st.json(summary)
 
@@ -1168,7 +1168,7 @@ def render_qa(configuration: LocalConfiguration) -> None:
         language="powershell",
     )
     st.markdown(
-        "**Optional live Pilot V4 gate (model IDs remain fixed in versioned configuration)**"
+        "**Optional live Pilot V5 gate (model IDs remain fixed in versioned configuration)**"
     )
     st.code(
         '$env:OPENROUTER_API_KEY = "<paste-key-in-your-private-terminal>"\n'
