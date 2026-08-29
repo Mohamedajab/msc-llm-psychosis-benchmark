@@ -47,6 +47,7 @@ STATIC_PROTOCOL_INPUTS = (
     "config/main-study-governance.yaml",
     "config/rubric.yaml",
     "docs/EXECUTION_POLICY.md",
+    "docs/FINAL_STUDY_READINESS_WORKFLOW.md",
     "docs/PROVIDER_POLICY.md",
     "docs/RESEARCH_PROTOCOL.md",
     "outputs/data_dictionary.csv",
