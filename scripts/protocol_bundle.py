@@ -21,6 +21,7 @@ from src.config_loader import load_models
 BUNDLE_ROOT = ROOT / "protocol" / "study-v2.0.0"
 METADATA_PATH = BUNDLE_ROOT / "bundle.json"
 STUDY_VERSION = "study-v2.0.0"
+HISTORICAL_BUNDLE_FINGERPRINT = "1ac2fcb151c6cac1d6f59464fc2074dc6ecc15ac1df9a98480224c509bcfb97b"
 INCLUDED_PATHS = (
     "config/models.yaml",
     "config/archive/models-study-v2-generation-v2.yaml",
@@ -47,6 +48,15 @@ INCLUDED_PATHS = (
     "scripts/assess_pilot_v5.py",
     "scripts/run_study.py",
 )
+HISTORICAL_TEXT_SUFFIXES = {
+    ".csv",
+    ".json",
+    ".md",
+    ".py",
+    ".txt",
+    ".yaml",
+    ".yml",
+}
 
 
 def sha256_file(path: Path) -> str:
@@ -55,6 +65,51 @@ def sha256_file(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _sha256_bytes(value: bytes) -> str:
+    return hashlib.sha256(value).hexdigest()
+
+
+def _historical_text_bytes(path: Path, value: bytes) -> bytes | None:
+    """Return validated UTF-8 text bytes, or None for byte-exact binary items."""
+
+    if path.suffix.casefold() not in HISTORICAL_TEXT_SUFFIXES:
+        return None
+    try:
+        value.decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise RuntimeError(f"Historical text artifact is not valid UTF-8: {path.name}") from error
+    return value
+
+
+def _canonical_lf(value: bytes) -> bytes:
+    """Normalise only CRLF pairs; lone carriage returns remain substantive bytes."""
+
+    return value.replace(b"\r\n", b"\n")
+
+
+def _canonical_crlf(value: bytes) -> bytes:
+    return _canonical_lf(value).replace(b"\n", b"\r\n")
+
+
+def _historical_recorded_bytes(path: Path, expected: str) -> bytes | None:
+    """Reconstruct the exact recorded bytes from an EOL-equivalent checkout."""
+
+    value = path.read_bytes()
+    text = _historical_text_bytes(path, value)
+    if text is None:
+        return value if _sha256_bytes(value) == expected else None
+    for candidate in (text, _canonical_lf(text), _canonical_crlf(text)):
+        if _sha256_bytes(candidate) == expected:
+            return candidate
+    return None
+
+
+def _historical_hash_matches(path: Path, expected: str) -> bool:
+    """Match the recorded hash across legitimate Git text EOL representations."""
+
+    return _historical_recorded_bytes(path, expected) is not None
 
 
 def _source_files() -> list[Path]:
@@ -120,23 +175,66 @@ def _read_bundle_metadata() -> dict:
         raise RuntimeError("Protocol bundle study version mismatch")
     if metadata.get("contains_sensitive_or_observed_data") is not False:
         raise RuntimeError("Protocol bundle safety declaration is invalid")
-    if not metadata.get("items"):
+    items = metadata.get("items")
+    if not isinstance(items, list) or not items:
         raise RuntimeError("Protocol bundle contains no items")
+    bundle_paths: list[str] = []
+    source_paths: list[str] = []
+    for item in items:
+        if not isinstance(item, dict) or not {"source_path", "bundle_path", "sha256"} <= set(item):
+            raise RuntimeError("Protocol bundle item metadata is malformed")
+        source_path = item["source_path"]
+        bundle_path = item["bundle_path"]
+        expected_hash = item["sha256"]
+        if not all(isinstance(value, str) for value in (source_path, bundle_path, expected_hash)):
+            raise RuntimeError("Protocol bundle item metadata is malformed")
+        if bundle_path != f"files/{source_path}" or Path(source_path).is_absolute():
+            raise RuntimeError("Protocol bundle item path mapping is invalid")
+        if ".." in Path(source_path).parts or "\\" in source_path:
+            raise RuntimeError("Protocol bundle item path is unsafe")
+        if len(expected_hash) != 64 or any(
+            value not in "0123456789abcdef" for value in expected_hash
+        ):
+            raise RuntimeError("Protocol bundle item hash is malformed")
+        source_paths.append(source_path)
+        bundle_paths.append(bundle_path)
+    if len(set(source_paths)) != len(source_paths) or len(set(bundle_paths)) != len(bundle_paths):
+        raise RuntimeError("Protocol bundle contains duplicate item paths")
     return metadata
 
 
 def historical_bundle_fingerprint() -> str:
-    """Return a SHA-256 over the entire frozen historical bundle tree.
+    """Return an EOL-portable SHA-256 over the frozen historical bundle tree.
 
     This proves the historical bundle (the superseded MiniMax/Nemotron candidate
-    design) remains byte-identical, independent of the current working tree.
+    design) remains substantively identical, independent of Git's LF/CRLF text
+    checkout representation. Non-text artifacts remain byte-exact.
     """
 
+    metadata = _read_bundle_metadata()
+    items = {item["bundle_path"]: item for item in metadata["items"]}
+    expected_paths = set(items) | {"bundle.json"}
+    actual_paths = {
+        path.relative_to(BUNDLE_ROOT).as_posix()
+        for path in BUNDLE_ROOT.rglob("*")
+        if path.is_file()
+    }
+    if actual_paths != expected_paths:
+        raise RuntimeError("Historical bundle file set differs from its recorded items")
     digest = hashlib.sha256()
-    for path in sorted(value for value in BUNDLE_ROOT.rglob("*") if value.is_file()):
+    for relative in sorted(actual_paths):
+        path = BUNDLE_ROOT / relative
         digest.update(path.relative_to(ROOT).as_posix().encode("utf-8"))
         digest.update(b"\0")
-        digest.update(path.read_bytes())
+        if relative == "bundle.json":
+            value = _canonical_crlf(path.read_bytes())
+        else:
+            value = _historical_recorded_bytes(path, items[relative]["sha256"])
+            if value is None:
+                raise RuntimeError(
+                    f"Historical bundle hash mismatch: {items[relative]['source_path']}"
+                )
+        digest.update(value)
         digest.update(b"\0")
     return digest.hexdigest()
 
@@ -161,8 +259,12 @@ def verify_historical_bundle() -> dict:
         raise RuntimeError("Historical bundle file set differs from its recorded items")
     for item in metadata["items"]:
         bundled = BUNDLE_ROOT / item["bundle_path"]
-        if sha256_file(bundled) != item["sha256"]:
+        if not bundled.is_file():
+            raise RuntimeError(f"Historical bundle file is missing: {item['source_path']}")
+        if not _historical_hash_matches(bundled, item["sha256"]):
             raise RuntimeError(f"Historical bundle hash mismatch: {item['source_path']}")
+    if historical_bundle_fingerprint() != HISTORICAL_BUNDLE_FINGERPRINT:
+        raise RuntimeError("Historical bundle tree fingerprint mismatch")
     return metadata
 
 
@@ -183,7 +285,9 @@ def verify_bundle() -> dict:
     for item in metadata["items"]:
         source = ROOT / item["source_path"]
         expected = item["sha256"]
-        if sha256_file(source) != expected:
+        if not source.is_file():
+            raise RuntimeError(f"Protocol bundle source is missing: {item['source_path']}")
+        if not _historical_hash_matches(source, expected):
             raise RuntimeError(f"Protocol bundle source hash mismatch: {item['source_path']}")
     return metadata
 
