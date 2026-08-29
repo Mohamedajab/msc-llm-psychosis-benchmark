@@ -19,7 +19,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from scripts.run_pilot import DEFAULT_SCRIPT_ID, PILOT_VERSION, execute_live_pilot
+from scripts.run_pilot_v4 import DEFAULT_SCRIPT_ID, PILOT_VERSION, execute_live_pilot_v4
 from src.annotation import (
     AnnotationError,
     AnnotationPersistenceError,
@@ -260,19 +260,19 @@ def render_global_header(view: str) -> None:
 def render_overview(configuration: LocalConfiguration) -> None:
     st.header("Study Overview")
     st.write(
-        "This prototype evaluates how three fixed language-model slots respond across six controlled turns when synthetic users express increasingly certain unsupported interpretations. The contribution is the controlled, auditable research pipeline—not an automated clinical judgement."
+        "This prototype evaluates two exact language-model endpoints across six controlled turns when synthetic users express increasingly certain unsupported interpretations. The contribution is the controlled, auditable research pipeline—not an automated clinical judgement."
     )
 
     metric_columns = st.columns(4)
-    metric_columns[0].metric("Planned conversations", "108")
+    metric_columns[0].metric("Planned conversations", "72")
     metric_columns[1].metric("Frozen scripts", len(configuration.scripts))
     metric_columns[2].metric("Turns per conversation", "6")
-    metric_columns[3].metric("Planned responses", "648")
+    metric_columns[3].metric("Planned responses", "432")
 
     st.subheader("Research questions")
     questions = (
         "RQ1 — How does presentation level affect belief-confirming and harm-enabling responses across a six-turn exchange?",
-        "RQ2 — How do the three fixed target-model slots differ on the primary A1, A2, and A3 outcomes?",
+        "RQ2 — How do MiniMax M3 and NVIDIA Nemotron Super differ on the primary A1, A2, and A3 outcomes?",
         "RQ3 — Does standardised preloaded context change response trajectories compared with no preloaded context?",
         "RQ4 — At what turn do high-risk confirmation or protective safety intervention first appear, persist, or recover?",
     )
@@ -283,7 +283,7 @@ def render_overview(configuration: LocalConfiguration) -> None:
         [
             ("Presentation level", "3", "control, ambiguous, fixed-belief"),
             ("Scenario theme", "3", "monitoring, personal messages, AI relationship"),
-            ("Target model slot", "3", "three exact configured model identifiers"),
+            ("Target model slot", "2", "two exact configured model identifiers"),
             ("Context condition", "2", "none or one frozen standardised prefix"),
             ("Repetition", "2", "two planned repetitions"),
             ("Conversation length", "6 turns", "fixed for every script"),
@@ -298,12 +298,12 @@ def render_overview(configuration: LocalConfiguration) -> None:
         [
             (
                 "Planned study",
-                "108 manifest rows",
+                "72 Study V2 manifest rows / 432 planned responses",
                 "Design coverage only; no claim that collection is complete",
             ),
             (
                 "Technical pilot",
-                "Six conversations / 36 responses / maximum 48 attempts in pilot v3",
+                "Pilot V1-V3 preserved; Pilot V4 plans four conversations / 24 responses / 32 attempts",
                 "Engineering and feasibility evidence; descriptive only",
             ),
             (
@@ -518,7 +518,7 @@ def render_runner(configuration: LocalConfiguration) -> None:
                 _render_run_result(record)
 
     else:
-        st.info(f"TECHNICAL PILOT V3 - DESCRIPTIVE ONLY · {PILOT_VERSION}")
+        st.info(f"TECHNICAL PILOT V4 - DESCRIPTIVE ONLY · {PILOT_VERSION}")
         st.write("The bounded pilot will use these exact configured model IDs:")
         for model_id in resolved_models.values():
             st.code(model_id, language=None)
@@ -531,7 +531,7 @@ def render_runner(configuration: LocalConfiguration) -> None:
         if not environment_gate:
             st.warning("RUN_LIVE_PILOT is not 1. Live execution remains disabled.")
         live_confirmation = st.checkbox(
-            "I give final confirmation to contact OpenRouter for the fixed six-conversation, 36-response-slot, maximum 48-attempt technical pilot."
+            "I give final confirmation to contact OpenRouter for the fixed four-conversation, 24-response-slot, maximum 32-attempt Pilot V4."
         )
         live_button = st.button(
             "Run or resume live technical pilot",
@@ -544,7 +544,7 @@ def render_runner(configuration: LocalConfiguration) -> None:
         if live_button:
             try:
                 with st.spinner("Checking all exact slugs, then running the bounded pilot…"):
-                    records = execute_live_pilot(
+                    summary = execute_live_pilot_v4(
                         output_root=RAW_RUN_DIR,
                         live_requested=True,
                         live_confirmed=True,
@@ -552,11 +552,12 @@ def render_runner(configuration: LocalConfiguration) -> None:
             except (FileExistsError, OSError, RuntimeError, ValueError) as error:
                 st.error(str(error))
             else:
-                st.session_state.current_run_id = records[-1].header.run_id
-                completed = sum(len(record.turns) == 6 for record in records)
-                st.success(f"Completed/resumed {completed}/{len(records)} pilot conversations.")
-                for record in records:
-                    st.write(f"{record.header.run_id}: {record.status.value}")
+                st.success(
+                    "Completed/resumed "
+                    f"{summary['completed_conversations']}/{summary['planned_conversations']} "
+                    "Pilot V4 conversations."
+                )
+                st.json(summary)
 
 
 def _metadata_frame(record: ConversationRecord) -> pd.DataFrame:
@@ -1136,7 +1137,7 @@ def render_qa(configuration: LocalConfiguration) -> None:
         validation_columns[1].metric("Unique run IDs", manifest["run_id"].nunique())
         validation_columns[2].metric("Scripts", manifest["script_id"].nunique())
         validation_columns[3].metric("Balanced cells", "Yes")
-        st.success("The locally generated 3×3×3×2×2 manifest contains 108 unique balanced rows.")
+        st.success("The locally generated 3×3×2×2×2 manifest contains 72 unique balanced rows.")
         st.dataframe(manifest, hide_index=True, width="stretch")
         st.download_button(
             "Download generated manifest CSV",
@@ -1167,12 +1168,11 @@ def render_qa(configuration: LocalConfiguration) -> None:
         language="powershell",
     )
     st.markdown(
-        "**Optional live technical pilot environment (never paste a real key into source files)**"
+        "**Optional live Pilot V4 gate (model IDs remain fixed in versioned configuration)**"
     )
     st.code(
         '$env:OPENROUTER_API_KEY = "<paste-key-in-your-private-terminal>"\n'
-        '$env:OPENROUTER_MODEL_A = "<exact-model-a-slug>"\n'
-        '$env:OPENROUTER_MODEL_B = "<exact-model-b-slug>"\n'
+        '$env:RUN_LIVE_PILOT = "1"\n'
         ".\\.venv\\Scripts\\python.exe -m streamlit run app.py",
         language="powershell",
     )

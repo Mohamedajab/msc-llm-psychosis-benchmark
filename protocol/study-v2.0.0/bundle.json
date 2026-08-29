@@ -1,0 +1,162 @@
+{
+  "bundle_version": "protocol-bundle-v1",
+  "study_version": "study-v2.0.0",
+  "model_configuration_version": "2.0.0",
+  "generation_version": "generation-v2",
+  "rubric_status": "draft_pending_supervisor_research_group_approval",
+  "software_commit": "d59b14007fbe0e6b125150ff49ceebc10c5fb289",
+  "created_at_utc": "2026-08-29T15:29:49.591989+00:00",
+  "contains_sensitive_or_observed_data": false,
+  "items": [
+    {
+      "source_path": "config/histories/ai_relationship_prefix.json",
+      "bundle_path": "files/config/histories/ai_relationship_prefix.json",
+      "sha256": "56fb20176265ff25e0856f1fa1f767c16f5853b0c52e6f0b12c83d23993a07eb"
+    },
+    {
+      "source_path": "config/histories/monitoring_prefix.json",
+      "bundle_path": "files/config/histories/monitoring_prefix.json",
+      "sha256": "42b004ec75bda81c4a4dcf34a19a1f78b15cddbf9443f511e8c7c2b78dd5fdd7"
+    },
+    {
+      "source_path": "config/histories/personal_messages_prefix.json",
+      "bundle_path": "files/config/histories/personal_messages_prefix.json",
+      "sha256": "a907ba0b797abefde8e89ff0ed05cad10f56dd51736359d0af581261ad783696"
+    },
+    {
+      "source_path": "config/models.yaml",
+      "bundle_path": "files/config/models.yaml",
+      "sha256": "f738623b11f677dfc7e56fd650b199b7060ab5074387d41eef2a3e4d6fcc2539"
+    },
+    {
+      "source_path": "config/rubric.yaml",
+      "bundle_path": "files/config/rubric.yaml",
+      "sha256": "d8c76f1d12f5ff73741c5cc512a6a41fa458fcc4bb6bde15ae513db0c093f93e"
+    },
+    {
+      "source_path": "config/scenarios/ai_relationship_ambiguous.json",
+      "bundle_path": "files/config/scenarios/ai_relationship_ambiguous.json",
+      "sha256": "ee9545e9cb56a6bcf1b17b0021a9aea40119daa2c0f42e3f465e23e096539d2d"
+    },
+    {
+      "source_path": "config/scenarios/ai_relationship_control.json",
+      "bundle_path": "files/config/scenarios/ai_relationship_control.json",
+      "sha256": "16b96aab801a4d02aea43cf0307e62005d9a2266eba938f647a5753daf71bc18"
+    },
+    {
+      "source_path": "config/scenarios/ai_relationship_fixed_belief.json",
+      "bundle_path": "files/config/scenarios/ai_relationship_fixed_belief.json",
+      "sha256": "1de827743c921cc9bf25adcb39f3c334046a9d40915efbf0d63c3ac265616bec"
+    },
+    {
+      "source_path": "config/scenarios/monitoring_ambiguous.json",
+      "bundle_path": "files/config/scenarios/monitoring_ambiguous.json",
+      "sha256": "22f3a746bc5c3029ca08a384d59554bd31fa62a483f7261a2a38d8eff0b5c937"
+    },
+    {
+      "source_path": "config/scenarios/monitoring_control.json",
+      "bundle_path": "files/config/scenarios/monitoring_control.json",
+      "sha256": "3c378a2146e9055c8ea5498964ee5496417c692e07d448f3de1623fd541a8116"
+    },
+    {
+      "source_path": "config/scenarios/monitoring_fixed_belief.json",
+      "bundle_path": "files/config/scenarios/monitoring_fixed_belief.json",
+      "sha256": "76bdd72537224ce5bec806c49ddbf58bd9f93f6f98a815da5e7def44fb70e8e4"
+    },
+    {
+      "source_path": "config/scenarios/personal_messages_ambiguous.json",
+      "bundle_path": "files/config/scenarios/personal_messages_ambiguous.json",
+      "sha256": "4d01b9feacb5f83f989b6b1012420fe1fd5b0947e58f6c1c3a1070506a5a71d0"
+    },
+    {
+      "source_path": "config/scenarios/personal_messages_control.json",
+      "bundle_path": "files/config/scenarios/personal_messages_control.json",
+      "sha256": "6287f3767d68242afc134b7a7474aa876e2cf17300bdf332ca4b0f464900273a"
+    },
+    {
+      "source_path": "config/scenarios/personal_messages_fixed_belief.json",
+      "bundle_path": "files/config/scenarios/personal_messages_fixed_belief.json",
+      "sha256": "1c1f9944c7586c18a1cc599ca7885882981468d0a4efe8990b840197d2529da1"
+    },
+    {
+      "source_path": "docs/EXECUTION_POLICY.md",
+      "bundle_path": "files/docs/EXECUTION_POLICY.md",
+      "sha256": "7be47ba5621c1c2415b2147c003e6b70cc133b638b3cab113d53345f39ba7d22"
+    },
+    {
+      "source_path": "docs/PROTOCOL_DEVIATION_STUDY_V2.md",
+      "bundle_path": "files/docs/PROTOCOL_DEVIATION_STUDY_V2.md",
+      "sha256": "e50beaa65a6dac536712d836af9626ee7f8d02619995b439640465e1062e5251"
+    },
+    {
+      "source_path": "docs/PROVIDER_POLICY.md",
+      "bundle_path": "files/docs/PROVIDER_POLICY.md",
+      "sha256": "f8e89b5227d7b51d050073ec6edaf1e45d1479a658e0725e0ddcb6837dfc4566"
+    },
+    {
+      "source_path": "docs/RESEARCH_PROTOCOL.md",
+      "bundle_path": "files/docs/RESEARCH_PROTOCOL.md",
+      "sha256": "ee1843c0ffba8b7ceb5571a2e247c3733ad8f3fdc514ad7167e5b39f3d399974"
+    },
+    {
+      "source_path": "outputs/data_dictionary.csv",
+      "bundle_path": "files/outputs/data_dictionary.csv",
+      "sha256": "6c582b1654a594559621416fe74580a5355afe47cb13589c5338c5894d06047d"
+    },
+    {
+      "source_path": "outputs/experiment_manifest.csv",
+      "bundle_path": "files/outputs/experiment_manifest.csv",
+      "sha256": "13baa68609968805236b6b085a4302b8cdd1c3d43f7f4f8b4bf77cace7a2099e"
+    },
+    {
+      "source_path": "scripts/run_pilot_v4.py",
+      "bundle_path": "files/scripts/run_pilot_v4.py",
+      "sha256": "f3dd3e4b39b4069f2b07af142e0c3a16565264b29e557350adfe9a70381d70ad"
+    },
+    {
+      "source_path": "scripts/run_study.py",
+      "bundle_path": "files/scripts/run_study.py",
+      "sha256": "e4f0d5b042f8e0333cafad161380045cb216c05954d50f8374fe9e83a601832c"
+    },
+    {
+      "source_path": "src/config_loader.py",
+      "bundle_path": "files/src/config_loader.py",
+      "sha256": "cc32aaff17cf65c5baadad6a2ce2f7d6ac20b7a8dbbb4510ed5927f37dec815d"
+    },
+    {
+      "source_path": "src/conversation_runner.py",
+      "bundle_path": "files/src/conversation_runner.py",
+      "sha256": "293f2246101e26efcaf0f58da63037374a954ff5b74366dfb9c6b399bdedd15e"
+    },
+    {
+      "source_path": "src/manifest.py",
+      "bundle_path": "files/src/manifest.py",
+      "sha256": "65911c032ae77dba2cff10fcd57f4ca02f5cacf7d175557c90da03c1d3ab1363"
+    },
+    {
+      "source_path": "src/payloads.py",
+      "bundle_path": "files/src/payloads.py",
+      "sha256": "762ab942a4d5419c67f2af0b9c8a2d9c6f5458067e3d5641e5e6406a16922937"
+    },
+    {
+      "source_path": "src/provider_client.py",
+      "bundle_path": "files/src/provider_client.py",
+      "sha256": "016ffa1caca62807c96f4c6b069b4f3b0967550541deed4f63fc6de34750c102"
+    },
+    {
+      "source_path": "src/schemas.py",
+      "bundle_path": "files/src/schemas.py",
+      "sha256": "43c91473043ff957ab4266baa743515cf9ff7b40ef85335a5a332215a613467c"
+    },
+    {
+      "source_path": "src/storage.py",
+      "bundle_path": "files/src/storage.py",
+      "sha256": "e887cfbb029cfc70bd5e5a343cb7fa6ec7d8348bff00f5f65cf05374478384a7"
+    },
+    {
+      "source_path": "src/study_execution.py",
+      "bundle_path": "files/src/study_execution.py",
+      "sha256": "53cf1a92ab66dcc48fa93ab867ae7b7776a3ca7625143f5bbd33fa908d6cd295"
+    }
+  ]
+}
