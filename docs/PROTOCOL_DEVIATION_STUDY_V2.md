@@ -18,7 +18,7 @@ technical screen but exhausted the prior 350-token limit; it remains provisional
 Pilot V4. The generation-v2 limit is therefore frozen at 512 tokens before results exist.
 
 Pilot and screen observations are engineering evidence, not dissertation results. The
-draft rubric still requires supervisor/research-group approval before primary annotation.
+draft rubric still requires review and freeze before primary annotation.
 
 Governance clarification (pre-collection): four completed Pilot V4 conversations do not by
 themselves qualify the endpoints. A versioned, deterministic assessor must return PASS from

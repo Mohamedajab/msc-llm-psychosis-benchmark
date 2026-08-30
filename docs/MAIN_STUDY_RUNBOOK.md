@@ -4,15 +4,34 @@
 2. Run all offline validation and verify the historical protocol bundle and evidence fingerprints.
 3. Confirm immutable Pilot V4 remains FAIL and immutable Pilot V5 remains FAIL; both source
    hashes still verify.
-4. Run original-pair Pilot V6 only after separate authorisation and require its
-   generation-v4 PASS. Until then the study is blocked by `final_model_pair_not_qualified`.
-5. Only if V6 fails, activate replacement-screen v2; a selected replacement requires a new
-   future Pilot V7 and must never overwrite V6.
+4. Recompute the preserved original-pair Pilot V6 PASS and verify its source-evidence hash.
+5. Keep replacement-screen v2 unused; it was only the fallback if V6 failed.
 6. Create and verify the exact final study-v2.1.0 active bundle.
-7. If approved, execute small manifest-ordered batches and retain each terminal summary.
+7. If approved, use the Main Study Collection view or guarded command-line batches. Progress
+   is reconstructed from append-only evidence; a browser session is not authoritative.
 8. Re-run the audit after each batch. Never delete an error or regenerate a successful turn.
 9. After collection, create blinded items using a private blinding key and keep the mapping
    in `data/private/`. Complete human annotation before analysis.
+
+## Streamlit collection steps
+
+Start the local app with:
+
+```powershell
+& .\.venv\Scripts\python.exe -m streamlit run app.py
+```
+
+Open **Main Study Collection**, then:
+
+1. select **Run preflight**;
+2. resolve every displayed blocker outside the app;
+3. confirm that the frozen collection is being started;
+4. select **Start Main Study**.
+
+The app starts one local worker and reads progress from persisted evidence. Closing or
+refreshing the browser does not stop or restart the worker. **Stop safely** writes a stop
+request that is checked between response requests; an in-progress request is allowed to finish
+and save first.
 
 Offline commands:
 
@@ -32,5 +51,6 @@ Future live commands require separate authorisation and are not part of reposito
 The V5 assessor is offline and recomputes `FAIL` from immutable evidence; 11 truncated
 responses cannot be replaced, so resume cannot become PASS. Study V2 requires the prospective
 Pilot V6 and active-bundle evidence chain; an edited assessment file or
-confirmation flag cannot bypass the gate. `--confirm-protocol-frozen` is an operator attestation, not proof of
-supervisor, ethics, rubric, annotation/adjudication or data-management approval.
+confirmation flag cannot bypass the gate. `--confirm-protocol-frozen` is an operator attestation,
+not proof of supervisor review, an ethics determination, a frozen rubric or annotation procedure,
+or confirmed data-management arrangements.

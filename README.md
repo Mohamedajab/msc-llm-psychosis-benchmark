@@ -61,17 +61,20 @@ supports a material contribution to budget exhaustion under the tested endpoint;
 rewrite Pilot V4/V5 or constitute behavioural evidence. See
 `docs/GENERATION_V4_CALIBRATION.md`.
 
-Nemotron failed the frozen generation-v2/v3 technical qualification. The calibration motivates
-a fair prospective requalification without altering those historical verdicts. MiniMax remains
-Model A; both intended endpoints must jointly pass original-pair Pilot V6 under generation-v4.
-Pilot V6 is `NOT_RUN`, the final pair is `NOT_QUALIFIED`, replacement is not yet required, and
-the main study is `BLOCKED` by `final_model_pair_not_qualified`. The 72-conversation factorial
-structure is unchanged.
+Nemotron failed the frozen generation-v2/v3 technical qualification. Pilot V6 subsequently
+qualified the original MiniMax/Nemotron pair under generation-v4: 24/24 responses finished
+with `stop`, with zero truncation. The historical Pilot V4/V5 verdicts remain unchanged.
+The final pair is `QUALIFIED`; the main study remains `BLOCKED` until the active bundle and
+human governance requirements are complete. No main-study responses exist.
 
 The primary Study V2 path requires an original-pair generation-v4 Pilot V6 PASS and a verified
 active study-v2.1.0 bundle before live collection. Only if V6 fails does the preserved governed
 replacement-screen workflow activate, followed by a separately versioned future Pilot V7.
 A future technical PASS is not academic approval.
+
+The Streamlit dashboard includes a separate Main Study Collection view. It reads progress from
+append-only raw evidence and can later launch a guarded background worker after preflight passes.
+It does not bypass the active-bundle or human-governance gates.
 
 See `docs/MAIN_STUDY_RUNBOOK.md`, `docs/RESEARCH_PROTOCOL.md` and
 `docs/MAIN_STUDY_GO_NO_GO_CHECKLIST.md` before any collection.

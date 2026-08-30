@@ -1,8 +1,8 @@
 # ruff: noqa: E501
-"""Professional local dashboard for the controlled six-turn benchmark.
+"""Local dashboard for the controlled six-turn benchmark.
 
 Normal import and Streamlit startup are deliberately offline. Live technical workflows
-remain command-line only so this explanatory dashboard cannot bypass their evidence gates.
+remain behind the same evidence and confirmation gates as the command-line tools.
 """
 
 from __future__ import annotations
@@ -11,12 +11,14 @@ import json
 import os
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
 import plotly.express as px
 import streamlit as st
+from dotenv import load_dotenv
 
 from src.annotation import (
     AnnotationError,
@@ -39,6 +41,15 @@ from src.config_loader import (
     validate_catalogue,
 )
 from src.conversation_runner import ConversationRunner, create_run_header
+from src.main_study import (
+    JobStatus,
+    format_duration,
+    launch_study_worker,
+    load_study_progress,
+    request_safe_stop,
+    run_main_study_preflight,
+    worker_is_active,
+)
 from src.manifest import STUDY_VERSION, generate_manifest, manifest_dataframe, validate_manifest
 from src.nlp_features import (
     conversation_records_to_frame,
@@ -69,10 +80,29 @@ CONFIG_DIR = BASE_DIR / "config"
 DATA_DIR = Path(os.getenv("BENCHMARK_DATA_DIR", str(BASE_DIR / "data")))
 RAW_RUN_DIR = DATA_DIR / "raw" / "runs"
 ANNOTATION_LOG = DATA_DIR / "annotations" / "annotations.jsonl"
+MAIN_STUDY_RAW_DIR = DATA_DIR / "raw" / "study-v2"
+MAIN_STUDY_JOB_DIR = DATA_DIR / "private" / "main-study-job"
+PILOT_V6_DIR = BASE_DIR / "data" / "private" / "technical-pilot-v6.0.0"
+ACTIVE_BUNDLE_DIR = BASE_DIR / "protocol" / "study-v2.1.0"
+GOVERNANCE_PATH = CONFIG_DIR / "main-study-governance.yaml"
+
+MAIN_STUDY_BLOCKER_MESSAGES = {
+    "active_bundle_not_created": "Active study bundle has not been created.",
+    "active_bundle_invalid": "Active study bundle does not match the frozen study files.",
+    "supervisor_review_not_confirmed": "Supervisor review has not yet been recorded.",
+    "ethics_determination_pending": "Ethics determination is still pending.",
+    "rubric_not_frozen": "Rubric has not yet been frozen.",
+    "annotation_procedure_not_frozen": "Annotation procedure has not yet been frozen.",
+    "data_management_not_confirmed": ("Data-management arrangements have not yet been confirmed."),
+    "api_key_not_available": "OpenRouter API key is not available to the app process.",
+    "main_study_worker_already_running": "Another main-study worker is already running.",
+    "pilot_v6_not_pass": "Pilot V6 qualification does not currently recompute to PASS.",
+}
 
 VIEWS: tuple[str, ...] = (
     "Study Overview",
     "Experiment Runner",
+    "Main Study Collection",
     "Transcript & Provenance",
     "Blinded Annotation",
     "NLP Explorer",
@@ -257,7 +287,8 @@ def status_banner(records: Sequence[ConversationRecord] | None = None) -> None:
 def render_global_header(view: str) -> None:
     st.title("Controlled Multi-Turn LLM Safety Benchmark")
     st.caption(f"{view} · MSc Advanced Computer Science research prototype · synthetic inputs only")
-    status_banner()
+    if view != "Main Study Collection":
+        status_banner()
     st.caption(
         "Not a diagnostic, therapeutic, clinical, or patient-facing system. No real patient data are used."
     )
@@ -309,7 +340,7 @@ def render_overview(configuration: LocalConfiguration) -> None:
             ),
             (
                 "Technical pilot",
-                "Pilot V1-V3 preserved; Pilot V4 and V5 failed immutably; generation calibration is technical method evidence; original-pair Pilot V6 is configured but not run",
+                "Pilot V1-V3 preserved; Pilot V4 and V5 failed immutably; original-pair Pilot V6 passed generation-v4 qualification",
                 "Engineering and feasibility evidence; descriptive only",
             ),
             (
@@ -510,6 +541,207 @@ def render_runner(configuration: LocalConfiguration) -> None:
             else:
                 st.session_state.current_run_id = record.header.run_id
                 _render_run_result(record)
+
+
+def _main_study_preflight(environ: dict[str, str] | None = None):  # noqa: ANN202
+    return run_main_study_preflight(
+        repository_root=BASE_DIR,
+        raw_root=MAIN_STUDY_RAW_DIR,
+        job_root=MAIN_STUDY_JOB_DIR,
+        pilot_v6_root=PILOT_V6_DIR,
+        active_bundle_root=ACTIVE_BUNDLE_DIR,
+        governance_path=GOVERNANCE_PATH,
+        environ=environ,
+    )
+
+
+@st.fragment(run_every=5)
+def _render_main_study_progress() -> None:
+    # Streamlit reruns often, so progress is always reconstructed from disk.
+    try:
+        progress = load_study_progress(
+            repository_root=BASE_DIR,
+            raw_root=MAIN_STUDY_RAW_DIR,
+            state_path=MAIN_STUDY_JOB_DIR / "state.json",
+        )
+    except (OSError, RuntimeError, ValueError) as error:
+        st.error(f"Saved main-study progress is not readable: {error}")
+        return
+
+    metrics = st.columns(4)
+    metrics[0].metric(
+        "Conversations", f"{progress.conversations_complete} / {progress.conversations_planned}"
+    )
+    metrics[1].metric("Responses", f"{progress.responses_complete} / {progress.responses_planned}")
+    metrics[2].metric("Technical API errors", progress.technical_errors)
+    metrics[3].metric("Automatic recoveries", progress.automatic_resumes)
+    st.progress(
+        min(1.0, progress.percent_complete / 100), text=f"{progress.percent_complete:.1f}% complete"
+    )
+
+    detail = st.columns(3)
+    detail[0].metric(
+        "Current conversation",
+        (
+            f"{progress.current_execution_order} / {progress.conversations_planned}"
+            if progress.current_execution_order is not None
+            else "—"
+        ),
+    )
+    detail[1].metric(
+        "Current turn", f"{progress.current_turn} / 6" if progress.current_turn else "—"
+    )
+    detail[2].metric(
+        "Current model",
+        (progress.current_model_slot or "—").replace("model_", "").title(),
+    )
+    timing = st.columns(3)
+    timing[0].metric("Elapsed", format_duration(progress.elapsed_seconds))
+    timing[1].metric(
+        "Estimated remaining",
+        (
+            "calculating..."
+            if progress.estimated_remaining_seconds is None
+            else "~" + format_duration(progress.estimated_remaining_seconds)
+        ),
+    )
+    timing[2].metric("Truncations", progress.truncations)
+
+    if progress.status == JobStatus.COMPLETE:
+        st.success("MAIN STUDY COLLECTION COMPLETE")
+        st.write(
+            "Collection is complete. Validate the saved evidence before beginning annotation or analysis."
+        )
+        counts = progress.response_counts_by_model
+        st.write(f"MiniMax responses: {counts.get('minimax/minimax-m3:free', 0)}")
+        st.write(f"Nemotron responses: {counts.get('nvidia/nemotron-3-super-120b-a12b:free', 0)}")
+    elif progress.status == JobStatus.WAITING_TO_RETRY:
+        remaining = None
+        if progress.next_retry_at is not None:
+            remaining = max(0, round((progress.next_retry_at - datetime.now(UTC)).total_seconds()))
+        st.warning(
+            "Temporary API error. "
+            + (
+                f"Automatically resuming in about {remaining} seconds."
+                if remaining is not None
+                else "The worker will resume automatically."
+            )
+        )
+    elif progress.status == JobStatus.BLOCKED:
+        st.error(progress.message or "Collection is blocked and requires review.")
+    elif progress.status == JobStatus.STOPPED:
+        st.info(progress.message or "Collection stopped safely and can resume from disk.")
+    else:
+        st.info(f"Status: {progress.status.value}")
+
+    try:
+        active = worker_is_active(MAIN_STUDY_JOB_DIR)
+    except (OSError, RuntimeError, ValueError):
+        active = False
+    if active and progress.status in {
+        JobStatus.RUNNING,
+        JobStatus.RESUMING,
+        JobStatus.WAITING_TO_RETRY,
+    }:
+        if st.button("Stop safely"):
+            request_safe_stop(MAIN_STUDY_JOB_DIR)
+            st.info("A safe stop was requested. The current request will finish first.")
+
+
+def render_main_study() -> None:
+    st.header("Main Study Collection")
+    st.write(
+        "Run the frozen 72-conversation study and follow progress saved by the background worker."
+    )
+    st.caption(
+        "Refreshing or closing this page does not restart collection. Successful responses are saved to disk before the next turn begins."
+    )
+
+    models = st.columns(2)
+    models[0].metric("Model A", "MiniMax M3")
+    models[0].caption("minimax/minimax-m3:free")
+    models[1].metric("Model B", "Nemotron 3 Super")
+    models[1].caption("nvidia/nemotron-3-super-120b-a12b:free")
+    size = st.columns(3)
+    size[0].metric("Conversations", "72")
+    size[1].metric("Planned responses", "432")
+    size[2].metric("Turns per conversation", "6")
+
+    current = _main_study_preflight(dict(os.environ))
+    st.subheader("Preflight")
+    st.metric("Pilot V6 qualification", current.pilot_v6)
+    if st.button("Run preflight", type="primary"):
+        load_dotenv(BASE_DIR / ".env", override=False)
+        current = _main_study_preflight(dict(os.environ))
+        st.session_state["main_study_preflight"] = current.model_dump(mode="json")
+
+    saved = st.session_state.get("main_study_preflight")
+    if saved:
+        from src.main_study import StudyPreflight
+
+        current = StudyPreflight.model_validate(saved)
+
+    check_labels = {
+        "expected_model_pair": "Exact model pair",
+        "manifest_72_conversations": "72 unique conversations",
+        "manifest_432_responses": "432 planned responses",
+        "pilot_v6_pass": "Pilot V6 PASS",
+        "storage_available": "Storage available",
+        "saved_state_readable": "Saved study state readable",
+        "no_active_worker": "No conflicting worker",
+        "api_key_present": "API key available",
+        "active_bundle_verified": "Active study bundle verified",
+        "governance_complete": "Governance requirements complete",
+        "main_study_ready": "Main-study readiness PASS",
+    }
+    st.dataframe(
+        pd.DataFrame(
+            [
+                {"Check": check_labels.get(name, name), "Status": "PASS" if passed else "BLOCKED"}
+                for name, passed in current.checks.items()
+            ]
+        ),
+        hide_index=True,
+        width="stretch",
+    )
+    if current.ready:
+        st.success("Preflight passed. The frozen main study can be started.")
+    else:
+        st.warning("Main-study collection is still blocked.")
+        if current.blockers:
+            for blocker in current.blockers:
+                st.markdown(f"- {MAIN_STUDY_BLOCKER_MESSAGES.get(blocker, blocker)}")
+
+    confirmed = st.checkbox(
+        "I understand this starts the frozen main-study data collection.",
+        disabled=not current.ready,
+    )
+    if not current.ready:
+        st.caption("Start is disabled until all preflight requirements are complete.")
+    if st.button("Start Main Study", disabled=not (current.ready and confirmed)):
+        load_dotenv(BASE_DIR / ".env", override=False)
+        fresh = _main_study_preflight(dict(os.environ))
+        if not fresh.ready:
+            st.error("Preflight changed. The study was not started.")
+        else:
+            try:
+                pid = launch_study_worker(
+                    repository_root=BASE_DIR,
+                    job_root=MAIN_STUDY_JOB_DIR,
+                    raw_root=MAIN_STUDY_RAW_DIR,
+                    pilot_v6_root=PILOT_V6_DIR,
+                    active_bundle_root=ACTIVE_BUNDLE_DIR,
+                    governance_path=GOVERNANCE_PATH,
+                    environ=dict(os.environ),
+                )
+            except (OSError, RuntimeError, ValueError) as error:
+                st.error(f"The study worker could not start: {error}")
+            else:
+                st.success(f"Main-study worker started (process {pid}).")
+                st.session_state.pop("main_study_preflight", None)
+
+    st.subheader("Collection progress")
+    _render_main_study_progress()
 
 
 def _metadata_frame(record: ConversationRecord) -> pd.DataFrame:
@@ -1129,6 +1361,8 @@ def render_view(view: str, configuration: LocalConfiguration) -> None:
         render_overview(configuration)
     elif view == "Experiment Runner":
         render_runner(configuration)
+    elif view == "Main Study Collection":
+        render_main_study()
     elif view == "Transcript & Provenance":
         render_provenance()
     elif view == "Blinded Annotation":

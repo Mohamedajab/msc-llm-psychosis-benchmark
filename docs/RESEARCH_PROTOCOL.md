@@ -48,7 +48,7 @@ from rubric outcomes.
 
 ## Status and boundaries
 
-The rubric is draft and awaiting academic approval. No main-study result exists. Pilot and
+The rubric is draft and must be reviewed and frozen before annotation. No main-study result exists. Pilot and
 screen evidence is feasibility evidence only. The historical Study V1 design and reasons
 for revision are preserved in `PROTOCOL_DEVIATION_STUDY_V2.md`.
 
@@ -62,9 +62,10 @@ ended `length`, so `pilot-v5-qualification-v1.0.0` recomputes `FAIL` with failed
 so Pilot V5 cannot be resumed into PASS. Nemotron failed the prospectively frozen
 generation-v2/v3 technical qualification. The subsequent content-free calibration found that
 reported reasoning-token allocation materially contributed to budget exhaustion and motivated
-generation-v4; it does not alter either historical verdict. Pilot V6 prospectively requalifies
-the original MiniMax/Nemotron pair under the final protocol. MiniMax demonstrated technical
-completion historically and remains Model A, but both endpoints must jointly pass Pilot V6.
+generation-v4; it does not alter either historical verdict. Pilot V6 prospectively requalified
+the original MiniMax/Nemotron pair under the final protocol. It passed with all 24 responses
+ending `stop` and zero truncation; this technical result does not supply any human governance
+approval.
 
 The stored V4/V5 records do not report reasoning-token usage, so their causal interpretation
 remains inconclusive. A separate benign generation calibration, not research data, found that
@@ -74,14 +75,13 @@ reasoning-disabled 1024-token checks and one native 4096-token check ended `stop
 was prospectively frozen from that technical evidence before any main-study collection. The
 historical Pilot V5 verdict remains `FAIL`.
 
-Before any live Study V2 execution, the exact original pair must pass Pilot V6 under
-generation-v4; until then `final_model_pair_not_qualified` keeps the study `BLOCKED`. If V6
-fails, replacement-screen v2 becomes the governed fallback and any replacement pair requires a
-new future Pilot V7 rather than reusing V6. Any technical qualification requires the exact frozen
+Before any live Study V2 execution, the exact original-pair Pilot V6 PASS must be recomputed
+from its immutable evidence. Replacement-screen v2 remains the unused fallback because V6
+passed. Any technical qualification requires the exact frozen
 cells, six contiguous successful turns per cell, exact requested/resolved model identity,
 non-empty private response text, reported provider and finish reason, zero truncations, and
 only complete finish reasons, with no more than the prespecified attempt cap. Malformed,
 mixed-version, duplicated, non-contiguous, stale or unverifiable evidence fails closed.
 Transient errors may remain append-only if all slots later succeed within the cap and reveal
-no integrity mismatch. This technical gate is separate from human supervisor, rubric,
-annotation, ethics and data-management approval.
+no integrity mismatch. This technical gate is separate from supervisor review, the ethics
+determination, rubric and annotation-procedure freeze, and confirmed data-management arrangements.

@@ -95,6 +95,7 @@ Truncation remains a reportable technical benchmark outcome. It is not a substan
 score and does not make a model intrinsically unbenchmarkable. For the MSc multi-turn matched
 study, truncation remains a strict admission failure because an incomplete assistant turn can
 affect all later turns. A newly truncated trajectory is persisted through that exact turn and
-then closed; resume cannot generate downstream turns. No main-study data exist, the
-replacement screen remains NOT_RUN, Pilot V6 remains NOT_RUN, the active bundle remains
-NOT_CREATED, and the main study remains BLOCKED.
+then closed; resume cannot generate downstream turns. Pilot V6 later passed generation-v4
+qualification with 24/24 `stop` responses and zero truncation. No main-study data exist, the
+replacement screen remains NOT_RUN, the active bundle remains NOT_CREATED, and the main study
+remains BLOCKED.

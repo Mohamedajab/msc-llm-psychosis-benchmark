@@ -1,9 +1,9 @@
 # Study V2 execution policy
 
-Offline is the default. Pilot V5 is closed and cannot be resumed. Pilot V6 and any future
-replacement-screen require their explicit live, confirmation, environment and evidence gates.
-The main study additionally requires `--confirm-protocol-frozen`,
-`RUN_LIVE_STUDY=1`, an explicit per-invocation HTTP-attempt cap, and a verified bundle.
+Offline is the default. Pilot V5 is closed and cannot be resumed. Pilot V6 passed under its
+explicit live, confirmation, environment and evidence gates. Any future replacement screen
+retains its own gates. The main study additionally requires `--confirm-protocol-frozen`,
+`RUN_LIVE_STUDY=1`, a bounded HTTP-attempt allowance, and a verified active bundle.
 
 Successful turns are immutable and resumed in sequence. Errors are append-only. A request
 blocked before POST consumes zero HTTP attempts. HTTP 429 is recorded and stops the current
@@ -31,10 +31,12 @@ retains only safe reasoning presence/length and token counts when reported. Reas
 never copied into assistant content or annotation material. Missing visible-token usage remains
 null rather than being derived from combined completion usage.
 
-Study V2 reads the versioned final-pair status and raises `final_model_pair_not_qualified`
-before provider construction or catalogue access, so no CLI confirmation flag can bypass it.
-Replacement is required only after a failed original-pair V6. The protocol-confirmation flag is
-an operator attestation and never represents supervisor or ethics approval.
+Study V2 recomputes the Pilot V6 PASS before provider construction or catalogue access. The
+Streamlit worker adds bounded automatic resume for recorded transient failures, but never
+replaces a successful response. It waits 30, 60 and then at most 120 seconds between resume
+cycles, with five consecutive cycles allowed. Truncation, model mismatch, malformed evidence,
+non-retryable errors and exhausted limits block collection. The protocol-confirmation flag is
+an operator attestation and never records supervisor review or an ethics determination.
 
 Length-limited textual completions are immutable observations, with `truncated=true`. The first
 truncated response is persisted, the trajectory closes immediately, and resume cannot generate

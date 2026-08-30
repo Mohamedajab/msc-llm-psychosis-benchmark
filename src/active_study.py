@@ -217,6 +217,8 @@ def freeze_active_study_bundle(
         repository_root=repo,
         pilot_output_root=pilot_output_root,
     )
+    rubric_record = yaml.safe_load((repo / "config" / "rubric.yaml").read_text(encoding="utf-8"))
+    rubric_status = str(rubric_record.get("status", "unreported"))
     if any("placeholder" in value.casefold() for value in resolve_model_ids(models).values()):
         raise ActiveStudyError("A placeholder model cannot enter the final study")
     for relative in STATIC_PROTOCOL_INPUTS:
@@ -276,7 +278,7 @@ def freeze_active_study_bundle(
             generation_profile_hash=canonical_hash(models.generation),
             final_pair_source=FINAL_PAIR_SOURCE,
             pilot_v6_source_evidence_hash=assessment.source_evidence_hash,
-            rubric_status="draft_pending_human_approval",
+            rubric_status=rubric_status,
             items=tuple(items),
             evidence_references={
                 "pilot_v6_assessment": "evidence/pilot-v6-assessment.json",

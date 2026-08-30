@@ -145,3 +145,21 @@ verdicts and evidence remain unchanged.
 New generation-v4 trajectories close immediately after persisting a truncated response. Resume
 cannot retry that turn or generate downstream turns conditioned on incomplete output. The
 behavioural-scorability filter remains as a redundant safeguard for historical shapes.
+
+## 30 August 2026 — Pilot V6 qualification and local collection worker
+
+Pilot V6 passed generation-v4 qualification for the original MiniMax/Nemotron pair. The
+independent assessment reports 4/4 conversations, 24/24 successful responses, 26/32 HTTP
+attempts, two preserved transient errors, all finish reasons `stop`, and zero truncation. Its
+source-evidence hash is
+`1c3d8f75e1de85ea6c05972de69304703c9c5b91d7a73ea0fe9c23ac12e08b4e`.
+
+This clears the technical final-pair gate only. The active study bundle and human governance
+decisions remain incomplete, so main-study collection is still blocked and no main-study
+responses exist.
+
+The Streamlit app now has a separate Main Study Collection view. A local background process
+uses the existing manifest runner and append-only raw store. It resumes from the first missing
+turn after a bounded wait for transient errors, while truncation, model mismatch and evidence
+integrity errors stop the workflow. Progress is reconstructed from disk so the browser is not
+authoritative.

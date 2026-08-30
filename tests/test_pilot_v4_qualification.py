@@ -259,9 +259,9 @@ def test_offline_main_study_reports_gate_without_constructing_provider(
     assert report["pilot_v4_qualification"] == "NOT_RUN"
     assert report["pilot_v5_qualification"] == "NOT_RUN"
     assert report["replacement_endpoint_status"] == "NOT_SELECTED"
-    assert report["pilot_v6_status"] == "NOT_RUN"
+    assert report["pilot_v6_status"] == "PASS"
     assert report["main_study_status"] == "BLOCKED"
-    assert report["replacement_blocker"] == "final_model_pair_not_qualified"
+    assert report["replacement_blocker"] == "active_bundle_not_created"
     assert report["main_study_live_blocked"] is True
 
 

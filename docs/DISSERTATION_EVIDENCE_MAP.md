@@ -13,8 +13,8 @@
 Pilots, fixtures and the endpoint screen establish engineering feasibility only. They are not
 main-study observations and must not populate a results chapter.
 
-Pilot V4's and Pilot V5's failed qualifications are machine-verifiable technical QA, not
-supervisor approval and not a research result. Nemotron's generation-v2/v3 qualification
+Pilot V4's and Pilot V5's failed qualifications are machine-verifiable technical QA; they do
+not record supervisor review and are not research results. Nemotron's generation-v2/v3 qualification
 failures are technical evidence only, not a clinical or psychosis-related safety finding.
 A CLI protocol-confirmation flag records operator attestation only.
 

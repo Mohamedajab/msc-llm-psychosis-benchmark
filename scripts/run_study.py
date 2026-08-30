@@ -51,6 +51,7 @@ DEFAULT_OUTPUT_ROOT = ROOT / "data" / "raw" / "study-v2"
 PREFLIGHT_FAILURE_ROOT = ROOT / "data" / "raw" / "study-preflight"
 MINIMUM_REQUEST_INTERVAL_SECONDS = 5.0
 TECHNICAL_PILOT_OUTPUT_ROOT = ROOT / "data" / "raw" / "runs"
+PILOT_V6_OUTPUT_ROOT = ROOT / "data" / "private" / "technical-pilot-v6.0.0"
 GOVERNANCE_PATH = ROOT / "config" / "main-study-governance.yaml"
 
 
@@ -81,7 +82,9 @@ def load_frozen_study() -> tuple[list[Any], list[Any], Any, list[Any]]:
 
 
 def build_offline_preflight(
-    *, pilot_output_root: Path = TECHNICAL_PILOT_OUTPUT_ROOT
+    *,
+    pilot_output_root: Path = TECHNICAL_PILOT_OUTPUT_ROOT,
+    pilot_v6_output_root: Path = PILOT_V6_OUTPUT_ROOT,
 ) -> dict[str, Any]:
     scripts, histories, models, rows = load_frozen_study()
     prospective_models = load_models(ROOT / "config" / "models.yaml")
@@ -92,7 +95,7 @@ def build_offline_preflight(
     readiness = evaluate_main_study_readiness(
         repository_root=ROOT,
         governance_path=GOVERNANCE_PATH,
-        pilot_output_root=pilot_output_root,
+        pilot_output_root=pilot_v6_output_root,
     )
     return {
         "status": "offline_preflight",
@@ -122,7 +125,6 @@ def build_offline_preflight(
         "main_study_status": status.main_study_status,
         "replacement_blocker": status.blocker,
         "main_study_live_blocked": final_model_pair_not_qualified(status)
-        or pilot_v5.main_study_blocked
         or readiness.main_study != "READY",
         "replacement_catalogue": readiness.replacement_catalogue,
         "replacement_screen": readiness.replacement_screen,
@@ -183,13 +185,16 @@ def execute_live_study(
     request_interval_seconds: float = MINIMUM_REQUEST_INTERVAL_SECONDS,
     environ: Mapping[str, str] | None = None,
     provider_factory: Callable[..., Any] = OpenRouterProvider,
-    pilot_output_root: Path = TECHNICAL_PILOT_OUTPUT_ROOT,
+    pilot_output_root: Path = PILOT_V6_OUTPUT_ROOT,
     catalogue_record_path: Path | None = None,
     selection_record_path: Path | None = None,
     screen_output_root: Path | None = None,
     active_bundle_root: Path | None = None,
     final_artifact_root: Path = ROOT,
     governance_path: Path = GOVERNANCE_PATH,
+    on_turn_start: Callable[[Any, int], None] | None = None,
+    should_stop: Callable[[], bool] | None = None,
+    stop_on_error: bool = False,
 ) -> dict[str, Any]:
     if maximum_http_attempts < 1:
         raise StudyPreflightError("Live study requires a positive explicit attempt cap")
@@ -284,6 +289,10 @@ def execute_live_study(
         maximum_http_attempts=maximum_http_attempts,
         max_new_conversations=max_new_conversations,
         stop_after_execution_order=stop_after_execution_order,
+        on_turn_start=on_turn_start,
+        should_stop=should_stop,
+        stop_on_error=stop_on_error,
+        require_stop_finish_reason=True,
     )
     return build_execution_summary(planned_rows=rows, store=store)
 
@@ -324,7 +333,7 @@ def _print_offline(summary: dict[str, Any]) -> None:
     )
     print(
         "Protocol confirmation is an operator attestation; it is not evidence of "
-        "supervisor, ethics, rubric or data-management approval."
+        "supervisor review, an ethics determination or method readiness."
     )
 
 
@@ -337,7 +346,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--max-new-conversations", type=int)
     parser.add_argument("--stop-after-execution-order", type=int)
     parser.add_argument("--output-root", type=Path, default=DEFAULT_OUTPUT_ROOT)
-    parser.add_argument("--pilot-output-root", type=Path, default=TECHNICAL_PILOT_OUTPUT_ROOT)
+    parser.add_argument("--pilot-output-root", type=Path, default=PILOT_V6_OUTPUT_ROOT)
     parser.add_argument("--catalogue-record", type=Path)
     parser.add_argument("--selection-record", type=Path)
     parser.add_argument("--screen-output-root", type=Path)
@@ -350,7 +359,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         if not args.live:
-            _print_offline(build_offline_preflight(pilot_output_root=args.pilot_output_root))
+            _print_offline(build_offline_preflight(pilot_v6_output_root=args.pilot_output_root))
             return 0
         if args.max_http_attempts is None:
             raise StudyPreflightError("Live study requires an explicit --max-http-attempts value")

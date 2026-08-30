@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
@@ -140,6 +141,9 @@ class ConversationRunner:
         header: RunHeader,
         script: ScriptConfig,
         prefix: HistoryPrefix,
+        on_turn_start: Callable[[RunHeader, int], None] | None = None,
+        should_stop: Callable[[], bool] | None = None,
+        require_stop_finish_reason: bool = False,
     ):
         self._validate_inputs(header, script, prefix)
         self.store.initialise(header)
@@ -148,6 +152,11 @@ class ConversationRunner:
             return self.store.load(header.run_id)
         exchanges = [(event.user_message, event.result.text or "") for event in previous]
         for turn_number in range(len(previous) + 1, 7):
+            # Stop requests are checked between requests, never during a write.
+            if should_stop is not None and should_stop():
+                return self.store.load(header.run_id)
+            if on_turn_start is not None:
+                on_turn_start(header, turn_number)
             user_message = script.turns[turn_number - 1]
             messages = build_target_messages(
                 condition=header.context_condition,
@@ -197,7 +206,8 @@ class ConversationRunner:
                 result=result,
             )
             self.store.append_success(event)
-            if result.truncated or (result.finish_reason or "").strip().casefold() == "length":
+            finish_reason = (result.finish_reason or "").strip().casefold()
+            if result.truncated or (require_stop_finish_reason and finish_reason != "stop"):
                 return self.store.load(header.run_id)
             exchanges.append((user_message, result.text or ""))
         return self.store.load(header.run_id)

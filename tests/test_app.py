@@ -1,4 +1,4 @@
-"""Streamlit smoke and interaction tests for the seven-view research dashboard."""
+"""Streamlit smoke and interaction tests for the research dashboard."""
 
 from __future__ import annotations
 
@@ -14,6 +14,7 @@ APP_PATH = PROJECT_ROOT / "app.py"
 EXPECTED_VIEWS = (
     "Study Overview",
     "Experiment Runner",
+    "Main Study Collection",
     "Transcript & Provenance",
     "Blinded Annotation",
     "NLP Explorer",
@@ -100,6 +101,43 @@ def test_dashboard_exposes_no_live_execution_control(monkeypatch, tmp_path) -> N
         "Deterministic fixture (offline execution)",
     )
     assert all("live" not in button.label.casefold() for button in app.button)
+    assert network_attempts == []
+
+
+def test_main_study_page_reads_zero_progress_without_network(monkeypatch, tmp_path) -> None:
+    app, network_attempts = _offline_app(monkeypatch, tmp_path)
+    _navigate(app, "Main Study Collection")
+    _assert_no_exceptions(app)
+    assert any(metric.label == "Responses" and metric.value == "0 / 432" for metric in app.metric)
+    assert any(
+        metric.label == "Pilot V6 qualification" and metric.value == "PASS" for metric in app.metric
+    )
+    assert any(
+        metric.label == "Current conversation" and metric.value == "—" for metric in app.metric
+    )
+    assert any(metric.label == "Current turn" and metric.value == "—" for metric in app.metric)
+    assert any(metric.label == "Current model" and metric.value == "—" for metric in app.metric)
+    assert not any("DEMO FIXTURE" in warning.value for warning in app.warning)
+    assert not any("TECHNICAL PILOT" in info.value for info in app.info)
+    assert any(
+        "Active study bundle has not been created." in markdown.value for markdown in app.markdown
+    )
+    expected_blockers = (
+        "Supervisor review has not yet been recorded.",
+        "Ethics determination is still pending.",
+        "Rubric has not yet been frozen.",
+        "Annotation procedure has not yet been frozen.",
+        "Data-management arrangements have not yet been confirmed.",
+    )
+    assert all(
+        any(message in markdown.value for markdown in app.markdown) for message in expected_blockers
+    )
+    assert not any("_not_" in markdown.value for markdown in app.markdown)
+    assert any(
+        "Start is disabled until all preflight requirements are complete." in caption.value
+        for caption in app.caption
+    )
+    assert _button(app, "Start Main Study").disabled is True
     assert network_attempts == []
 
 

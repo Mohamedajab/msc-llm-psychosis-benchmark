@@ -2,7 +2,7 @@
 
 1. Read `STATUS.md`, the Study V2 deviation record, runbook and go/no-go checklist.
 2. Verify the clean branch, protocol bundle, immutable fingerprints and offline commands.
-3. Resolve supervisor/rubric decisions in writing without fabricating approval.
+3. Record the genuine supervisor review and rubric-freeze decisions in writing.
 4. Confirm archived Pilot V4 remains immutable FAIL technical evidence.
 5. Obtain separate authorisation for original-pair Pilot V6 and require its generation-v4 PASS.
 6. If V6 fails, run the guarded replacement catalogue/screen v2 workflow only after separate

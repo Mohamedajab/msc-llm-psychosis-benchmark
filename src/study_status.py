@@ -8,7 +8,7 @@ from typing import Any
 import yaml
 from pydantic import BaseModel, ConfigDict
 
-STATUS_VERSION = "study-v2-status-v2.0.0"
+STATUS_VERSION = "study-v2-status-v2.1.0"
 STATUS_PATH = Path(__file__).resolve().parents[1] / "config" / "study-v2-status.yaml"
 
 

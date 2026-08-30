@@ -94,20 +94,20 @@ def test_pilot_v5_audit_prints_no_response_content(capsys: pytest.CaptureFixture
     assert "qualification_can_become_pass_via_resume=no" in output
 
 
-def test_original_pair_requalification_status_is_versioned_and_blocked() -> None:
+def test_original_pair_qualification_status_is_versioned_and_blocked() -> None:
     status = load_study_v2_status()
     assert status.version == STATUS_VERSION
     assert status.replacement_endpoint_status == "NOT_SELECTED"
-    assert status.pilot_v6_status == "NOT_RUN"
-    assert status.final_pair_status == "NOT_QUALIFIED"
-    assert status.final_pair_source == "NONE"
+    assert status.pilot_v6_status == "PASS"
+    assert status.final_pair_status == "QUALIFIED"
+    assert status.final_pair_source == "ORIGINAL_PAIR_V6"
     assert status.replacement_required is False
     assert status.main_study_status == "BLOCKED"
-    assert status.blocker == "final_model_pair_not_qualified"
+    assert status.blocker == "active_bundle_not_created"
     assert status.intended_model_a == "minimax/minimax-m3:free"
     assert status.intended_model_b == "nvidia/nemotron-3-super-120b-a12b:free"
     assert replacement_endpoint_not_frozen(status) is False
-    assert final_model_pair_not_qualified(status) is True
+    assert final_model_pair_not_qualified(status) is False
 
 
 def test_study_status_rejects_unknown_fields() -> None:

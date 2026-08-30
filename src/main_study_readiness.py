@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from enum import StrEnum
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 from pydantic import Field
@@ -16,8 +16,8 @@ from src.replacement_selection import (
 )
 from src.schemas import StrictModel
 
-READINESS_VERSION = "main-study-readiness-v1.0.0"
-GOVERNANCE_VERSION = "main-study-governance-v1.0.0"
+READINESS_VERSION = "main-study-readiness-v2.0.0"
+GOVERNANCE_VERSION = "main-study-governance-v2.0.0"
 ORIGINAL_PAIR_SOURCE = "ORIGINAL_PAIR_V6"
 NO_FINAL_PAIR_SOURCE = "NONE"
 
@@ -38,11 +38,11 @@ class ReadinessState(StrEnum):
 
 class MainStudyGovernance(StrictModel):
     version: str = GOVERNANCE_VERSION
-    supervisor_protocol_approval: str
-    ethics_approval: str
-    rubric_approval: str
-    annotation_adjudication_approval: str
-    data_management_approval: str
+    supervisor_review: Literal["PENDING", "CONFIRMED"]
+    ethics_status: Literal["PENDING", "NO_FURTHER_REVIEW_REQUIRED", "FAVOURABLE_REVIEW"]
+    rubric_status: Literal["DRAFT", "FROZEN"]
+    annotation_procedure_status: Literal["DRAFT", "FROZEN"]
+    data_management_status: Literal["DRAFT", "CONFIRMED"]
     notes: tuple[str, ...] = ()
 
 
@@ -75,16 +75,18 @@ def load_governance(path: str | Path) -> MainStudyGovernance:
 
 
 def governance_blockers(governance: MainStudyGovernance) -> tuple[str, ...]:
-    fields = (
-        "supervisor_protocol_approval",
-        "ethics_approval",
-        "rubric_approval",
-        "annotation_adjudication_approval",
-        "data_management_approval",
-    )
-    return tuple(
-        f"{field}_not_approved" for field in fields if getattr(governance, field) != "APPROVED"
-    )
+    blockers: list[str] = []
+    if governance.supervisor_review != "CONFIRMED":
+        blockers.append("supervisor_review_not_confirmed")
+    if governance.ethics_status == "PENDING":
+        blockers.append("ethics_determination_pending")
+    if governance.rubric_status != "FROZEN":
+        blockers.append("rubric_not_frozen")
+    if governance.annotation_procedure_status != "FROZEN":
+        blockers.append("annotation_procedure_not_frozen")
+    if governance.data_management_status != "CONFIRMED":
+        blockers.append("data_management_not_confirmed")
+    return tuple(blockers)
 
 
 def evaluate_main_study_readiness(

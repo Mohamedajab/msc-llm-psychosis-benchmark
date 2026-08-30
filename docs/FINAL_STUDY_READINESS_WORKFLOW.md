@@ -1,8 +1,7 @@
 # Final Study V2 readiness workflow
 
-Status: prospective infrastructure only. This document is not evidence that Pilot V6 ran,
-a replacement endpoint was selected, an approval was granted, or main-study data were
-collected.
+Status: Pilot V6 passed. No replacement endpoint was selected, no approval is inferred, and no
+main-study data have been collected.
 
 ## Current machine state
 
@@ -11,8 +10,8 @@ The current state remains fail closed:
 - replacement catalogue: `NOT_FETCHED`;
 - replacement screen: `NOT_RUN`;
 - replacement selection: `NOT_SELECTED`;
-- Pilot V6: `NOT_RUN`;
-- final pair: `NOT_QUALIFIED`;
+- Pilot V6: `PASS`;
+- final pair: `QUALIFIED` from `ORIGINAL_PAIR_V6`;
 - replacement required: `false`;
 - final active protocol bundle: `NOT_CREATED`;
 - Main Study V2: `BLOCKED`.
@@ -29,13 +28,12 @@ A non-zero exit is expected while the study is blocked.
 
 The primary progression is:
 
-1. run and independently assess original-pair Pilot V6 under generation-v4;
-2. require a 24/24, all-`stop`, zero-truncation Pilot V6 `PASS`;
-3. freeze `final_pair_source=ORIGINAL_PAIR_V6` for MiniMax plus Nemotron;
-4. generate the exact final two-model configuration and 72-row manifest;
-5. create and verify the new `study-v2.1.0` active protocol bundle;
-6. record genuine human governance decisions independently;
-7. permit a guarded main-study invocation only when every machine and human gate passes.
+1. preserve and recompute the 24/24, all-`stop`, zero-truncation Pilot V6 `PASS`;
+2. freeze `final_pair_source=ORIGINAL_PAIR_V6` for MiniMax plus Nemotron;
+3. generate the exact final two-model configuration and 72-row manifest;
+4. create and verify the new `study-v2.1.0` active protocol bundle;
+5. record the genuine supervisor review, ethics determination and method-readiness decisions;
+6. permit a guarded main-study invocation only when every machine and human gate passes.
 
 If and only if original-pair Pilot V6 returns `FAIL`, `replacement_required=true` activates
 the retained fallback: guarded catalogue evidence, replacement-screen v2, deterministic
@@ -83,10 +81,12 @@ placeholder material blocks the main study.
 
 ## Human governance remains independent
 
-`config/main-study-governance.yaml` records the current pending human decisions.
-Technical `PASS` does not imply supervisor, ethics, rubric, annotation/adjudication
-or data-management approval. `--confirm-protocol-frozen` is an operator attestation,
-not proof that any approval occurred.
+`config/main-study-governance.yaml` records the current pending decisions. Supervisor review
+must be confirmed. Ethics must record either `NO_FURTHER_REVIEW_REQUIRED` or
+`FAVOURABLE_REVIEW`. The rubric and annotation procedure must be frozen, and data-management
+arrangements must be confirmed. Technical `PASS` does not satisfy any of these requirements.
+`--confirm-protocol-frozen` is an operator attestation, not evidence that a review or
+determination occurred.
 
 ## Commands that remain prospective
 

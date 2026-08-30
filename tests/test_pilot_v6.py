@@ -19,7 +19,12 @@ from src.active_study import (
     freeze_active_study_bundle,
     verify_active_study_bundle,
 )
-from src.main_study_readiness import evaluate_main_study_readiness
+from src.main_study_readiness import (
+    MainStudyGovernance,
+    evaluate_main_study_readiness,
+    governance_blockers,
+    load_governance,
+)
 from src.pilot_v6 import (
     FINAL_CONFIGURATION_VERSION,
     MAX_HTTP_ATTEMPTS,
@@ -199,24 +204,65 @@ def _mutate(path: Path, transform) -> None:  # noqa: ANN001, ANN202
     path.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
 
 
-def _approved_governance(tmp_path: Path) -> Path:
+def _complete_governance(
+    tmp_path: Path, *, ethics_status: str = "NO_FURTHER_REVIEW_REQUIRED"
+) -> Path:
     path = tmp_path / "governance.yaml"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         yaml.safe_dump(
             {
-                "version": "main-study-governance-v1.0.0",
-                "supervisor_protocol_approval": "APPROVED",
-                "ethics_approval": "APPROVED",
-                "rubric_approval": "APPROVED",
-                "annotation_adjudication_approval": "APPROVED",
-                "data_management_approval": "APPROVED",
+                "version": "main-study-governance-v2.0.0",
+                "supervisor_review": "CONFIRMED",
+                "ethics_status": ethics_status,
+                "rubric_status": "FROZEN",
+                "annotation_procedure_status": "FROZEN",
+                "data_management_status": "CONFIRMED",
                 "notes": ["Synthetic test fixture only."],
             }
         ),
         encoding="utf-8",
     )
     return path
+
+
+def test_current_governance_uses_explicit_pending_and_draft_states() -> None:
+    governance = load_governance(ROOT / "config" / "main-study-governance.yaml")
+    assert governance.supervisor_review == "PENDING"
+    assert governance.ethics_status == "PENDING"
+    assert governance.rubric_status == "DRAFT"
+    assert governance.annotation_procedure_status == "DRAFT"
+    assert governance.data_management_status == "DRAFT"
+    assert governance_blockers(governance) == (
+        "supervisor_review_not_confirmed",
+        "ethics_determination_pending",
+        "rubric_not_frozen",
+        "annotation_procedure_not_frozen",
+        "data_management_not_confirmed",
+    )
+
+
+@pytest.mark.parametrize("ethics_status", ["NO_FURTHER_REVIEW_REQUIRED", "FAVOURABLE_REVIEW"])
+def test_both_completed_ethics_determinations_satisfy_governance(ethics_status: str) -> None:
+    governance = MainStudyGovernance(
+        supervisor_review="CONFIRMED",
+        ethics_status=ethics_status,
+        rubric_status="FROZEN",
+        annotation_procedure_status="FROZEN",
+        data_management_status="CONFIRMED",
+    )
+    assert governance_blockers(governance) == ()
+
+
+def test_pending_ethics_determination_remains_blocking() -> None:
+    governance = MainStudyGovernance(
+        supervisor_review="CONFIRMED",
+        ethics_status="PENDING",
+        rubric_status="FROZEN",
+        annotation_procedure_status="FROZEN",
+        data_management_status="CONFIRMED",
+    )
+    assert governance_blockers(governance) == ("ethics_determination_pending",)
 
 
 def test_current_pilot_v6_is_configured_for_original_pair_and_default_is_zero_network(
@@ -726,17 +772,27 @@ def test_readiness_is_blocked_today_and_ready_only_on_complete_synthetic_chain(
     assert current.replacement_catalogue == "NOT_FETCHED"
     assert current.replacement_screen == "NOT_RUN"
     assert current.replacement_selection == "NOT_SELECTED"
-    assert current.pilot_v6 == "NOT_RUN"
-    assert current.final_pair_status == "NOT_QUALIFIED"
+    assert current.pilot_v6 == "PASS"
+    assert current.final_pair_status == "QUALIFIED"
+    assert current.final_pair_source == "ORIGINAL_PAIR_V6"
     assert current.replacement_required is False
     assert current.active_bundle == "NOT_CREATED"
+    assert current.governance == "BLOCKED"
     assert current.main_study == "BLOCKED"
+    assert current.blockers == (
+        "active_bundle_not_created",
+        "supervisor_review_not_confirmed",
+        "ethics_determination_pending",
+        "rubric_not_frozen",
+        "annotation_procedure_not_frozen",
+        "data_management_not_confirmed",
+    )
     assert current.network_requests == 0
 
     _, _, _, pilot, artifacts, bundle, _ = _freeze_valid_bundle(tmp_path / "ready")
     ready = evaluate_main_study_readiness(
         repository_root=ROOT,
-        governance_path=_approved_governance(tmp_path),
+        governance_path=_complete_governance(tmp_path),
         pilot_output_root=pilot,
         active_bundle_root=bundle,
         final_artifact_root=artifacts,
@@ -814,7 +870,7 @@ def test_main_study_blocks_before_provider_without_chain_and_uses_mock_only_when
         pilot_output_root=pilot,
         active_bundle_root=bundle,
         final_artifact_root=artifacts,
-        governance_path=_approved_governance(tmp_path / "allowed-governance"),
+        governance_path=_complete_governance(tmp_path / "allowed-governance"),
         environ={"RUN_LIVE_STUDY": "1", "OPENROUTER_API_KEY": "test-only"},
         provider_factory=factory,
     )

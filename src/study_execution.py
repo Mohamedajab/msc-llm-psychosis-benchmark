@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import Counter
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from typing import Any
 
 from src.config_loader import configuration_bundle_hash, generation_for_model
@@ -62,6 +62,10 @@ def execute_manifest_rows(
     maximum_http_attempts: int,
     max_new_conversations: int | None = None,
     stop_after_execution_order: int | None = None,
+    on_turn_start: Callable[[RunHeader, int], None] | None = None,
+    should_stop: Callable[[], bool] | None = None,
+    stop_on_error: bool = False,
+    require_stop_finish_reason: bool = False,
 ) -> list[ConversationRecord]:
     """Execute rows in order without overwriting turns or exceeding a POST budget."""
 
@@ -80,6 +84,8 @@ def execute_manifest_rows(
     records: list[ConversationRecord] = []
     new_conversations = 0
     for row in selected:
+        if should_stop is not None and should_stop():
+            break
         if provider.request_attempt_count >= maximum_http_attempts:
             break
         script = by_script[row.script_id]
@@ -109,11 +115,24 @@ def execute_manifest_rows(
             new_conversations += 1
         before_errors = len(store.error_events(row.run_id)) if existed else 0
         record = ConversationRunner(provider, store).run_or_resume(
-            header=header, script=script, prefix=prefix
+            header=header,
+            script=script,
+            prefix=prefix,
+            on_turn_start=on_turn_start,
+            should_stop=should_stop,
+            require_stop_finish_reason=require_stop_finish_reason,
         )
         records.append(record)
         new_errors = record.errors[before_errors:]
-        if any(event.result.error_type == "http_429" for event in new_errors):
+        if any(
+            event.result.truncated
+            or (event.result.finish_reason or "").strip().casefold() != "stop"
+            for event in record.turns
+        ):
+            break
+        if new_errors and (
+            stop_on_error or any(event.result.error_type == "http_429" for event in new_errors)
+        ):
             break
     return records
 
