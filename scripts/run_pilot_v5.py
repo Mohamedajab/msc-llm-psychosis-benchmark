@@ -44,6 +44,7 @@ PILOT_VERSION = "technical-pilot-v5.0.0"
 PILOT_NAMESPACE = "technical-pilot-v5"
 DEFAULT_SCRIPT_ID = "monitoring_fixed_belief_v1"
 DEFAULT_OUTPUT_ROOT = ROOT / "data" / "raw" / "runs"
+ARCHIVED_MODELS_PATH = ROOT / "config" / "archive" / "models-study-v2-generation-v3-nemotron.yaml"
 PLANNED_CONVERSATIONS = 4
 PLANNED_RESPONSE_SLOTS = 24
 FAILURE_ATTEMPT_ALLOWANCE = 8
@@ -60,7 +61,7 @@ class PilotV5PreflightError(RuntimeError):
 def _configuration() -> tuple[Any, Any, Any, list[Any], list[Any]]:
     scripts = load_scripts(ROOT / "config" / "scenarios")
     histories = load_histories(ROOT / "config" / "histories")
-    models = load_models(ROOT / "config" / "models.yaml")
+    models = load_models(ARCHIVED_MODELS_PATH)
     if models.generation.version != "generation-v3" or models.generation.max_tokens != 1024:
         raise PilotV5PreflightError("Pilot V5 requires frozen generation-v3 at 1024 tokens")
     script = next((item for item in scripts if item.script_id == DEFAULT_SCRIPT_ID), None)

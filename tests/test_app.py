@@ -86,28 +86,20 @@ def test_dry_run_previews_exactly_six_offline_payloads(monkeypatch, tmp_path) ->
     assert len(payloads) == 6
     assert [payload["turn_number"] for payload in payloads] == [1, 2, 3, 4, 5, 6]
     assert [len(payload["messages"]) for payload in payloads] == [1, 3, 5, 7, 9, 11]
+    assert all(payload["messages"][0]["role"] == "user" for payload in payloads)
     assert all(payload["network_called"] is False for payload in payloads)
     assert network_attempts == []
 
 
-def test_live_execution_is_disabled_without_key_or_confirmation(monkeypatch, tmp_path) -> None:
+def test_dashboard_exposes_no_live_execution_control(monkeypatch, tmp_path) -> None:
     app, network_attempts = _offline_app(monkeypatch, tmp_path)
     _navigate(app, "Experiment Runner")
-    _selectbox(app, "Execution mode").set_value("OpenRouter (live technical pilot)")
-    app.run(timeout=60)
-    _assert_no_exceptions(app)
-
-    live_button = _button(app, "Run or resume live technical pilot")
-    assert live_button.disabled
-    assert network_attempts == []
-
-    monkeypatch.setenv("OPENROUTER_API_KEY", "not-a-real-key")
-    app.run(timeout=60)
-    assert _button(app, "Run or resume live technical pilot").disabled
-
-    monkeypatch.setenv("RUN_LIVE_PILOT", "1")
-    app.run(timeout=60)
-    assert _button(app, "Run or resume live technical pilot").disabled
+    modes = tuple(_selectbox(app, "Execution mode").options)
+    assert modes == (
+        "Dry run (offline payload preview)",
+        "Deterministic fixture (offline execution)",
+    )
+    assert all("live" not in button.label.casefold() for button in app.button)
     assert network_attempts == []
 
 

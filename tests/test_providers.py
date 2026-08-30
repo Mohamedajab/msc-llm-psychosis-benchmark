@@ -5,8 +5,13 @@ import json
 import httpx
 import pytest
 
-from src.provider_client import OpenRouterProvider
-from src.schemas import ChatMessage, GenerationConfig, ObservationStatus
+from src.provider_client import OpenRouterProvider, qualify_catalogue_entry
+from src.schemas import (
+    ChatMessage,
+    GenerationConfig,
+    ObservationStatus,
+    ReasoningPolicyConfig,
+)
 
 GENERATION = GenerationConfig(
     version="test",
@@ -18,6 +23,62 @@ GENERATION = GenerationConfig(
     max_retries=2,
 )
 MESSAGES = [ChatMessage(role="user", content="Synthetic ordinary question.")]
+
+
+def test_catalogue_can_require_generation_v4_envelope_and_parameter() -> None:
+    model_id = "example/model:free"
+    entry = {
+        "id": model_id,
+        "pricing": {"prompt": "0", "completion": "0"},
+        "architecture": {"input_modalities": ["text"], "output_modalities": ["text"]},
+        "supported_parameters": ["seed", "max_tokens"],
+        "context_length": 65_536,
+        "top_provider": {"max_completion_tokens": 4096},
+    }
+    result = qualify_catalogue_entry(
+        model_id,
+        entry,
+        minimum_context_tokens=8192,
+        required_completion_tokens=4096,
+        completion_limit_parameter="max_tokens",
+    )
+    assert result["required_completion_tokens"] == 4096
+    with pytest.raises(RuntimeError, match="completion-token envelope"):
+        qualify_catalogue_entry(
+            model_id,
+            {**entry, "top_provider": {"max_completion_tokens": 2048}},
+            minimum_context_tokens=8192,
+            required_completion_tokens=4096,
+            completion_limit_parameter="max_tokens",
+        )
+
+
+def test_catalogue_derives_deterministic_completion_parameter_preference() -> None:
+    model_id = "example/model:free"
+    entry = {
+        "id": model_id,
+        "pricing": {"prompt": "0", "completion": "0"},
+        "architecture": {"input_modalities": ["text"], "output_modalities": ["text"]},
+        "supported_parameters": ["seed", "max_tokens", "max_completion_tokens"],
+        "context_length": 65_536,
+        "top_provider": {"max_completion_tokens": 4096},
+    }
+    result = qualify_catalogue_entry(
+        model_id,
+        entry,
+        minimum_context_tokens=8192,
+        required_completion_tokens=4096,
+    )
+    assert result["completion_limit_parameter"] == "max_completion_tokens"
+
+    entry["supported_parameters"] = ["seed"]
+    with pytest.raises(RuntimeError, match="no supported completion-limit"):
+        qualify_catalogue_entry(
+            model_id,
+            entry,
+            minimum_context_tokens=8192,
+            required_completion_tokens=4096,
+        )
 
 
 def test_openrouter_success_captures_provenance_and_usage() -> None:
@@ -51,6 +112,99 @@ def test_openrouter_success_captures_provenance_and_usage() -> None:
     assert result.request_id == "request-123"
     assert result.usage.total_tokens == 14
     assert "secret-test-key" not in result.model_dump_json()
+
+
+def test_reasoning_usage_and_visible_length_are_separate_without_content_leakage() -> None:
+    hidden = "private reasoning that must never enter assistant text"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        assert body["reasoning"] == {"exclude": True}
+        assert body["max_tokens"] == 4096
+        return httpx.Response(
+            200,
+            json={
+                "model": "example/reasoning:free",
+                "provider": "ExampleProvider",
+                "choices": [
+                    {
+                        "message": {
+                            "content": "Visible answer. It has two sentences.",
+                            "reasoning": hidden,
+                            "reasoning_details": [{"type": "reasoning.text", "text": hidden}],
+                        },
+                        "finish_reason": "stop",
+                    }
+                ],
+                "usage": {
+                    "prompt_tokens": 10,
+                    "completion_tokens": 15,
+                    "total_tokens": 25,
+                    "completion_tokens_details": {"reasoning_tokens": 7},
+                    "prompt_tokens_details": {"cached_tokens": 3},
+                },
+            },
+        )
+
+    generation = GenerationConfig(
+        version="generation-v4",
+        temperature=0.2,
+        max_tokens=4096,
+        top_p=1.0,
+        seed=7,
+        timeout_seconds=2,
+        max_retries=0,
+        reasoning_policy=ReasoningPolicyConfig(
+            version="reasoning-policy-v1.0.0",
+            reasoning_control_capability="UNKNOWN",
+            reasoning_control_requested="NATIVE",
+        ),
+    )
+    result = OpenRouterProvider(
+        api_key="secret", transport=httpx.MockTransport(handler), sleep=lambda _: None
+    ).generate(model_id="example/reasoning:free", messages=MESSAGES, generation=generation)
+    assert result.text == "Visible answer. It has two sentences."
+    assert hidden not in result.text
+    assert hidden not in result.model_dump_json()
+    assert result.usage.reasoning_tokens == 7
+    assert result.usage.visible_completion_tokens is None
+    assert result.usage.cached_prompt_tokens == 3
+    assert result.visible_character_count == len(result.text)
+    assert result.visible_word_count == 6
+    assert result.visible_sentence_count == 2
+    assert result.response_metadata["reasoning_present"] is True
+    assert result.response_metadata["reasoning_length"] == len(hidden)
+
+
+def test_reasoning_disabled_shape_and_missing_usage_remains_null() -> None:
+    generation = GENERATION.model_copy(
+        update={
+            "reasoning_policy": ReasoningPolicyConfig(
+                version="test-reasoning",
+                reasoning_control_capability="SUPPORTED",
+                reasoning_control_requested="DISABLED",
+            )
+        }
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        assert body["reasoning"] == {"exclude": True, "effort": "none"}
+        return httpx.Response(
+            200,
+            json={
+                "model": "example/reasoning:free",
+                "choices": [{"message": {"content": "Visible only."}, "finish_reason": "stop"}],
+                "usage": {"prompt_tokens": 2, "completion_tokens": 2, "total_tokens": 4},
+            },
+        )
+
+    result = OpenRouterProvider(
+        api_key="secret", transport=httpx.MockTransport(handler), sleep=lambda _: None
+    ).generate(model_id="example/reasoning:free", messages=MESSAGES, generation=generation)
+    assert result.usage.reasoning_tokens is None
+    assert result.usage.visible_completion_tokens is None
+    assert result.reasoning_control_applied is None
 
 
 def test_rate_limit_honours_retry_after_and_is_bounded() -> None:

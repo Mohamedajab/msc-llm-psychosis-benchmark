@@ -100,6 +100,7 @@ class HistoryPrefix(StrictModel):
 class ModelSlot(StrictModel):
     default_model_id: str
     exact_slug_required: bool = True
+    completion_limit_parameter: Literal["max_tokens", "max_completion_tokens"] | None = None
 
     @field_validator("default_model_id")
     @classmethod
@@ -117,20 +118,69 @@ class GenerationConfig(StrictModel):
     version: str
     temperature: float = Field(ge=0, le=2)
     max_tokens: int = Field(ge=1, le=4096)
+    completion_limit_parameter: Literal["max_tokens", "max_completion_tokens"] | None = "max_tokens"
     top_p: float = Field(gt=0, le=1)
     seed: int | None = None
     timeout_seconds: float = Field(gt=0, le=120)
     max_retries: int = Field(ge=0, le=5)
+    visible_response_instruction: str | None = None
+    reasoning_policy: ReasoningPolicyConfig | None = None
 
-    def request_parameters(self) -> dict[str, int | float]:
-        parameters: dict[str, int | float] = {
+    @property
+    def completion_envelope_tokens(self) -> int:
+        """Return the provider-independent benchmark completion envelope."""
+
+        return self.max_tokens
+
+    def request_parameters(
+        self,
+        *,
+        completion_limit_parameter: Literal["max_tokens", "max_completion_tokens"] | None = None,
+    ) -> dict[str, Any]:
+        parameter = completion_limit_parameter or self.completion_limit_parameter
+        if parameter is None:
+            raise ValueError(
+                "A catalogue-verified completion-limit parameter is required for a request"
+            )
+        parameters: dict[str, Any] = {
             "temperature": self.temperature,
-            "max_tokens": self.max_tokens,
+            parameter: self.completion_envelope_tokens,
             "top_p": self.top_p,
         }
         if self.seed is not None:
             parameters["seed"] = self.seed
+        if (
+            self.reasoning_policy is not None
+            and self.reasoning_policy.reasoning_control_requested != "NONE"
+        ):
+            parameters["reasoning"] = self.reasoning_policy.request_parameter()
         return parameters
+
+
+class ReasoningPolicyConfig(StrictModel):
+    """Model-agnostic handling of optional provider reasoning facilities."""
+
+    version: str
+    reasoning_control_capability: Literal["SUPPORTED", "UNSUPPORTED", "NOT_APPLICABLE", "UNKNOWN"]
+    reasoning_control_requested: Literal["NONE", "DISABLED", "LOW", "NATIVE"]
+    exclude_reasoning_trace: bool = True
+
+    @model_validator(mode="after")
+    def require_supported_explicit_control(self) -> ReasoningPolicyConfig:
+        if (
+            self.reasoning_control_requested in {"DISABLED", "LOW"}
+            and self.reasoning_control_capability != "SUPPORTED"
+        ):
+            raise ValueError("Explicit reasoning control requires verified support")
+        return self
+
+    def request_parameter(self) -> dict[str, Any]:
+        value: dict[str, Any] = {"exclude": self.exclude_reasoning_trace}
+        if self.reasoning_control_requested == "DISABLED":
+            value["effort"] = "none"
+        elif self.reasoning_control_requested == "LOW":
+            value["effort"] = "low"
+        return value
 
 
 class ProviderRoutingPolicy(StrictModel):
@@ -226,6 +276,9 @@ class TokenUsage(StrictModel):
     prompt_tokens: int | None = Field(default=None, ge=0)
     completion_tokens: int | None = Field(default=None, ge=0)
     total_tokens: int | None = Field(default=None, ge=0)
+    reasoning_tokens: int | None = Field(default=None, ge=0)
+    visible_completion_tokens: int | None = Field(default=None, ge=0)
+    cached_prompt_tokens: int | None = Field(default=None, ge=0)
 
 
 class ProviderResult(StrictModel):
@@ -245,17 +298,43 @@ class ProviderResult(StrictModel):
     error_type: str | None = None
     error_message: str | None = None
     response_metadata: dict[str, Any] = Field(default_factory=dict)
+    visible_character_count: int | None = Field(default=None, ge=0)
+    visible_word_count: int | None = Field(default=None, ge=0)
+    visible_sentence_count: int | None = Field(default=None, ge=0)
+    reasoning_control_applied: str | None = None
     truncated: bool = False
 
     @model_validator(mode="after")
     def response_requires_text(self) -> ProviderResult:
         if self.status == ObservationStatus.RESPONSE and not (self.text or "").strip():
             raise ValueError("A successful response observation requires nonblank text")
+        if self.status == ObservationStatus.RESPONSE and self.text is not None:
+            counts = visible_text_metrics(self.text)
+            for field_name, expected in counts.items():
+                current = getattr(self, field_name)
+                if current is not None and current != expected:
+                    raise ValueError(f"{field_name} must match the visible assistant text")
+                setattr(self, field_name, expected)
         derived_truncation = self.finish_reason == "length"
         if "truncated" in self.model_fields_set and self.truncated != derived_truncation:
             raise ValueError("truncated must agree with finish_reason=length")
         self.truncated = derived_truncation
         return self
+
+
+def visible_text_metrics(text: str) -> dict[str, int]:
+    """Return deterministic, content-free visible-response length telemetry."""
+
+    import re
+
+    stripped = text.strip()
+    words = re.findall(r"\b\w+(?:['’-]\w+)*\b", stripped, flags=re.UNICODE)
+    sentences = re.findall(r"[^.!?]+(?:[.!?]+|$)", stripped)
+    return {
+        "visible_character_count": len(text),
+        "visible_word_count": len(words),
+        "visible_sentence_count": sum(bool(value.strip()) for value in sentences),
+    }
 
 
 class TurnEvent(StrictModel):
@@ -268,7 +347,7 @@ class TurnEvent(StrictModel):
     response_timestamp: datetime
     request_model_id: str
     request_messages: tuple[ChatMessage, ...]
-    request_parameters: dict[str, int | float]
+    request_parameters: dict[str, Any]
     request_stream: Literal[False] = False
     request_payload_hash: str
     user_message: str
@@ -284,7 +363,7 @@ class ErrorEvent(StrictModel):
     timestamp: datetime
     request_model_id: str
     request_messages: tuple[ChatMessage, ...]
-    request_parameters: dict[str, int | float]
+    request_parameters: dict[str, Any]
     request_stream: Literal[False] = False
     request_payload_hash: str
     result: ProviderResult

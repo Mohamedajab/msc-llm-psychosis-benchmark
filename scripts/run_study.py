@@ -42,10 +42,11 @@ from src.study_execution import (
     execute_manifest_rows,
     print_execution_summary,
 )
-from src.study_status import load_study_v2_status, replacement_endpoint_not_frozen
+from src.study_status import final_model_pair_not_qualified, load_study_v2_status
 
 STUDY_VERSION = "study-v2.0.0"
 MANIFEST_PATH = ROOT / "outputs" / "experiment_manifest.csv"
+HISTORICAL_MODELS_PATH = ROOT / "config" / "archive" / "models-study-v2-generation-v3-nemotron.yaml"
 DEFAULT_OUTPUT_ROOT = ROOT / "data" / "raw" / "study-v2"
 PREFLIGHT_FAILURE_ROOT = ROOT / "data" / "raw" / "study-preflight"
 MINIMUM_REQUEST_INTERVAL_SECONDS = 5.0
@@ -60,7 +61,7 @@ class StudyPreflightError(RuntimeError):
 def load_frozen_study() -> tuple[list[Any], list[Any], Any, list[Any]]:
     scripts = load_scripts(ROOT / "config" / "scenarios")
     histories = load_histories(ROOT / "config" / "histories")
-    models = load_models(ROOT / "config" / "models.yaml")
+    models = load_models(HISTORICAL_MODELS_PATH)
     catalogue_errors = validate_catalogue(scripts, histories)
     if catalogue_errors:
         raise StudyPreflightError("; ".join(catalogue_errors))
@@ -83,6 +84,7 @@ def build_offline_preflight(
     *, pilot_output_root: Path = TECHNICAL_PILOT_OUTPUT_ROOT
 ) -> dict[str, Any]:
     scripts, histories, models, rows = load_frozen_study()
+    prospective_models = load_models(ROOT / "config" / "models.yaml")
     bundle = verify_historical_bundle()
     pilot_v4 = assess_pilot_v4(output_root=pilot_output_root, persist=False)
     pilot_v5 = assess_pilot_v5(output_root=pilot_output_root, persist=False)
@@ -96,9 +98,11 @@ def build_offline_preflight(
         "status": "offline_preflight",
         "network_called": False,
         "study_version": STUDY_VERSION,
-        "configuration_version": models.version,
-        "generation_version": models.generation.version,
-        "models": resolve_model_ids(models),
+        "configuration_version": prospective_models.version,
+        "generation_version": prospective_models.generation.version,
+        "models": resolve_model_ids(prospective_models),
+        "historical_configuration_version": models.version,
+        "historical_generation_version": models.generation.version,
         "planned_conversations": len(rows),
         "planned_response_slots": len(rows) * 6,
         "scripts": len(scripts),
@@ -111,10 +115,13 @@ def build_offline_preflight(
         "pilot_v5_qualification": pilot_v5.verdict.value,
         "pilot_v5_failed_criteria": list(pilot_v5.failed_criteria),
         "replacement_endpoint_status": status.replacement_endpoint_status,
-        "pilot_v6_status": status.pilot_v6_status,
+        "pilot_v6_status": readiness.pilot_v6,
+        "final_pair_status": readiness.final_pair_status,
+        "final_pair_source": readiness.final_pair_source,
+        "replacement_required": readiness.replacement_required,
         "main_study_status": status.main_study_status,
         "replacement_blocker": status.blocker,
-        "main_study_live_blocked": replacement_endpoint_not_frozen(status)
+        "main_study_live_blocked": final_model_pair_not_qualified(status)
         or pilot_v5.main_study_blocked
         or readiness.main_study != "READY",
         "replacement_catalogue": readiness.replacement_catalogue,
@@ -205,13 +212,8 @@ def execute_live_study(
         raise StudyPreflightError(
             f"Main Study V2 is blocked: {primary}; all blockers={list(readiness.blockers)}"
         )
-    if None in (
-        catalogue_record_path,
-        selection_record_path,
-        screen_output_root,
-        active_bundle_root,
-    ):
-        raise StudyPreflightError("Main Study V2 active evidence paths are incomplete")
+    if active_bundle_root is None:
+        raise StudyPreflightError("Main Study V2 active bundle path is required")
     verify_active_study_bundle(
         bundle_root=active_bundle_root,
         repository_root=ROOT,
@@ -244,6 +246,15 @@ def execute_live_study(
     if list(actual.columns) != list(expected.columns) or not actual.equals(expected):
         raise StudyPreflightError("Final active manifest differs from selected configuration")
     model_ids = resolve_model_ids(models)
+    completion_parameters = {
+        slot.default_model_id: slot.completion_limit_parameter
+        for slot in models.model_slots.values()
+        if slot.completion_limit_parameter is not None
+    }
+    if set(completion_parameters) != set(model_ids.values()):
+        raise StudyPreflightError(
+            "Every final model requires a frozen completion-limit translation"
+        )
     provider = provider_factory(api_key=key)
     provider.set_retry_rate_limits(False)
     provider.set_minimum_request_interval(request_interval_seconds)
@@ -253,6 +264,8 @@ def execute_live_study(
             tuple(model_ids.values()),
             minimum_context_tokens=models.provider_routing.minimum_context_tokens,
             timeout_seconds=min(20, models.generation.timeout_seconds),
+            required_completion_tokens=models.generation.completion_envelope_tokens,
+            completion_limit_parameters=completion_parameters,
         )
     except (OSError, RuntimeError, ValueError) as error:
         path = _store_preflight_failure(model_ids, error, key)
@@ -287,11 +300,19 @@ def _print_offline(summary: dict[str, Any]) -> None:
     )
     for slot, model_id in summary["models"].items():
         print(f"{slot}: {model_id}")
-    print("Historical protocol bundle verified; active collection is superseded/pending.")
+    print(
+        "Historical protocol bundle verified at "
+        f"configuration={summary['historical_configuration_version']}/"
+        f"generation={summary['historical_generation_version']}; "
+        "active collection is superseded/pending."
+    )
     print(f"Pilot V4: {summary['pilot_v4_qualification']}")
     print(f"Pilot V5: {summary['pilot_v5_qualification']}")
     print(f"replacement endpoint: {summary['replacement_endpoint_status']}")
     print(f"Pilot V6: {summary['pilot_v6_status']}")
+    print(f"final pair: {summary['final_pair_status']}")
+    print(f"final pair source: {summary['final_pair_source']}")
+    print(f"replacement required: {'yes' if summary['replacement_required'] else 'no'}")
     print(f"replacement screen: {summary['replacement_screen']}")
     print(f"replacement selection: {summary['replacement_selection']}")
     print(f"active final bundle: {summary['active_bundle']}")

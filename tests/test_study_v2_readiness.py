@@ -154,7 +154,9 @@ def test_routing_policy_and_truncation_are_recorded_without_reasoning() -> None:
     result = provider.generate(
         model_id="model/test:free",
         messages=[],
-        generation=models.generation,
+        generation=models.generation.model_copy(
+            update={"completion_limit_parameter": "max_tokens"}
+        ),
     )
     assert captured["provider"] == {"allow_fallbacks": False, "require_parameters": True}
     assert "models" not in captured
@@ -245,8 +247,14 @@ def test_main_study_default_preflight_is_zero_network_and_bundle_verified(
     assert report["network_called"] is False
     assert report["planned_conversations"] == 72
     assert report["planned_response_slots"] == 432
+    assert report["configuration_version"] == "2.2.0"
+    assert report["generation_version"] == "generation-v4"
+    assert report["historical_configuration_version"] == "2.1.0"
+    assert report["historical_generation_version"] == "generation-v3"
     assert report["replacement_endpoint_status"] == "NOT_SELECTED"
-    assert report["pilot_v6_status"] == "NOT_CONFIGURED"
+    assert report["pilot_v6_status"] == "NOT_RUN"
+    assert report["final_pair_status"] == "NOT_QUALIFIED"
+    assert report["replacement_required"] is False
     assert report["main_study_status"] == "BLOCKED"
     assert verify_historical_bundle()["study_version"] == "study-v2.0.0"
 

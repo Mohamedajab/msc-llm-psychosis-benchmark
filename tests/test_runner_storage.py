@@ -31,7 +31,9 @@ def _inputs(tmp_path: Path, run_id: str = "test-run"):
         model_slot="fixture_safe",
         model_id="fixture/safe",
         repetition=1,
-        generation=models.generation,
+        generation=models.generation.model_copy(
+            update={"completion_limit_parameter": "max_tokens"}
+        ),
         configuration_version="test-config",
         configuration_hash=configuration_bundle_hash(scripts, histories, models),
     )
@@ -81,6 +83,31 @@ class FailOnceAfterTwo(TargetProvider):
         )
 
 
+class TruncateAt(TargetProvider):
+    provider_name = "test"
+
+    def __init__(self, turn: int | None) -> None:
+        self.turn = turn
+        self.calls = 0
+
+    def generate(self, *, model_id, messages, generation):  # noqa: ANN001
+        del messages, generation
+        self.calls += 1
+        truncated = self.calls == self.turn
+        return ProviderResult(
+            status=ObservationStatus.RESPONSE,
+            text=f"answer-{self.calls}",
+            requested_model_id=model_id,
+            resolved_model_id=model_id,
+            provider_name="test",
+            finish_reason="length" if truncated else "stop",
+            truncated=truncated,
+            latency_ms=1,
+            retry_count=0,
+            http_attempts=1,
+        )
+
+
 def test_resume_does_not_duplicate_successful_turns(tmp_path: Path) -> None:
     script, prefix, header, store = _inputs(tmp_path, "resume-test")
     provider = FailOnceAfterTwo()
@@ -96,6 +123,51 @@ def test_resume_does_not_duplicate_successful_turns(tmp_path: Path) -> None:
     assert [path.read_bytes() for path in first_two_paths] == before
     assert provider.calls == 7
     assert len(list(store.run_directory(header.run_id).glob("turn-*-success.json"))) == 6
+
+
+def test_truncation_closes_trajectory_and_resume_makes_no_request(tmp_path: Path) -> None:
+    script, prefix, header, store = _inputs(tmp_path, "truncate-at-three")
+    provider = TruncateAt(3)
+    runner = ConversationRunner(provider, store)
+
+    partial = runner.run_or_resume(header=header, script=script, prefix=prefix)
+    assert provider.calls == 3
+    assert [turn.turn_number for turn in partial.turns] == [1, 2, 3]
+    assert partial.turns[-1].result.truncated is True
+    assert partial.turns[-1].result.finish_reason == "length"
+
+    immutable = [
+        path.read_bytes()
+        for path in sorted(store.run_directory(header.run_id).glob("turn-*-success.json"))
+    ]
+    resumed = runner.run_or_resume(header=header, script=script, prefix=prefix)
+    assert provider.calls == 3
+    assert len(resumed.turns) == 3
+    assert immutable == [
+        path.read_bytes()
+        for path in sorted(store.run_directory(header.run_id).glob("turn-*-success.json"))
+    ]
+
+
+def test_first_turn_truncation_makes_exactly_one_request(tmp_path: Path) -> None:
+    script, prefix, header, store = _inputs(tmp_path, "truncate-at-one")
+    provider = TruncateAt(1)
+    record = ConversationRunner(provider, store).run_or_resume(
+        header=header, script=script, prefix=prefix
+    )
+    assert provider.calls == 1
+    assert len(record.turns) == 1
+    assert record.turns[0].result.truncated is True
+
+
+def test_complete_trajectory_makes_exactly_six_requests(tmp_path: Path) -> None:
+    script, prefix, header, store = _inputs(tmp_path, "complete-six")
+    provider = TruncateAt(None)
+    record = ConversationRunner(provider, store).run_or_resume(
+        header=header, script=script, prefix=prefix
+    )
+    assert provider.calls == 6
+    assert len(record.turns) == 6
 
 
 def test_raw_records_never_contain_api_keys(tmp_path: Path, monkeypatch) -> None:

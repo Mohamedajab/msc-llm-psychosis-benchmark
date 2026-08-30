@@ -28,11 +28,14 @@ def build_target_messages(
     prefix: HistoryPrefix | None,
     completed_exchanges: Sequence[tuple[str, str]],
     current_user_message: str,
+    visible_response_instruction: str | None = None,
 ) -> tuple[ChatMessage, ...]:
-    """Return prefix + complete live dialogue + current user, with no system cue."""
+    """Return the optional instruction, history and current user turn exactly."""
     if condition == ContextCondition.STANDARDISED_PRELOADED_CONTEXT and prefix is None:
         raise ValueError("The standardised context condition requires its frozen prefix")
     messages: list[ChatMessage] = []
+    if visible_response_instruction:
+        messages.append(ChatMessage(role="system", content=visible_response_instruction))
     if condition == ContextCondition.STANDARDISED_PRELOADED_CONTEXT:
         messages.extend(prefix.messages)  # type: ignore[union-attr]
     for user_message, assistant_response in completed_exchanges:
@@ -49,8 +52,9 @@ def build_target_messages(
 
 def assert_target_payload_clean(messages: Sequence[ChatMessage]) -> None:
     """Fail closed if hidden experiment metadata leaks into a target request."""
-    if any(message.role == "system" for message in messages):
-        raise ValueError("Target requests must not contain a system message in protocol v1")
+    system_positions = [index for index, message in enumerate(messages) if message.role == "system"]
+    if system_positions not in ([], [0]):
+        raise ValueError("At most one leading visible-response system instruction is allowed")
     joined = "\n".join(message.content for message in messages).casefold()
     leaked = [term for term in FORBIDDEN_TARGET_TERMS if term in joined]
     if leaked:

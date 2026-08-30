@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import Counter
 from pathlib import Path
+from statistics import median
 from typing import Any
 
 from src.schemas import ManifestRow
@@ -43,6 +44,46 @@ def audit_study_evidence(rows: list[ManifestRow], raw_root: str | Path) -> dict[
         )
         for event in turns
     )
+    model_metrics: dict[str, dict[str, Any]] = {}
+    for model_id in sorted({row.requested_model_id for row in rows}):
+        model_turns = [event for event in turns if event.result.requested_model_id == model_id]
+        planned = sum(row.requested_model_id == model_id for row in rows) * 6
+        reported_reasoning = [
+            event.result.usage.reasoning_tokens
+            for event in model_turns
+            if event.result.usage is not None and event.result.usage.reasoning_tokens is not None
+        ]
+        visible_lengths = [
+            event.result.visible_word_count
+            for event in model_turns
+            if event.result.visible_word_count is not None
+        ]
+        completion_usage = [
+            event.result.usage.completion_tokens
+            for event in model_turns
+            if event.result.usage is not None and event.result.usage.completion_tokens is not None
+        ]
+        latencies = [event.result.latency_ms for event in model_turns]
+        model_metrics[model_id] = {
+            "responses_planned": planned,
+            "responses_complete": len(model_turns),
+            "truncation_count": sum(event.result.truncated for event in model_turns),
+            "truncation_rate": (
+                sum(event.result.truncated for event in model_turns) / len(model_turns)
+                if model_turns
+                else None
+            ),
+            "median_visible_words": median(visible_lengths) if visible_lengths else None,
+            "median_completion_tokens": median(completion_usage) if completion_usage else None,
+            "reasoning_token_reporting_count": len(reported_reasoning),
+            "reasoning_token_reporting_rate": (
+                len(reported_reasoning) / len(model_turns) if model_turns else None
+            ),
+            "median_reported_reasoning_tokens": (
+                median(reported_reasoning) if reported_reasoning else None
+            ),
+            "median_latency_ms": median(latencies) if latencies else None,
+        }
     return {
         "availability": "available" if records else "unavailable",
         "reason": "" if records else "No real Study V2 raw records exist",
@@ -77,4 +118,5 @@ def audit_study_evidence(rows: list[ManifestRow], raw_root: str | Path) -> dict[
             if event.result.usage is not None
         ),
         "latency_ms_total": sum(event.result.latency_ms for event in turns),
+        "model_technical_metrics": model_metrics,
     }

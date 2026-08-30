@@ -15,6 +15,7 @@ from src.pilot_qualification import (
 )
 from src.study_status import (
     STATUS_VERSION,
+    final_model_pair_not_qualified,
     load_study_v2_status,
     replacement_endpoint_not_frozen,
 )
@@ -93,17 +94,20 @@ def test_pilot_v5_audit_prints_no_response_content(capsys: pytest.CaptureFixture
     assert "qualification_can_become_pass_via_resume=no" in output
 
 
-def test_replacement_status_is_versioned_and_blocked() -> None:
+def test_original_pair_requalification_status_is_versioned_and_blocked() -> None:
     status = load_study_v2_status()
     assert status.version == STATUS_VERSION
     assert status.replacement_endpoint_status == "NOT_SELECTED"
-    assert status.pilot_v6_status == "NOT_CONFIGURED"
+    assert status.pilot_v6_status == "NOT_RUN"
+    assert status.final_pair_status == "NOT_QUALIFIED"
+    assert status.final_pair_source == "NONE"
+    assert status.replacement_required is False
     assert status.main_study_status == "BLOCKED"
-    assert status.blocker == "replacement_endpoint_not_frozen"
-    assert status.rejected_comparator == "nvidia/nemotron-3-super-120b-a12b:free"
-    assert status.rejection_scope == "technical_generation_suitability_only"
-    assert status.retained_technically_qualified_candidate == "minimax/minimax-m3:free"
-    assert replacement_endpoint_not_frozen(status) is True
+    assert status.blocker == "final_model_pair_not_qualified"
+    assert status.intended_model_a == "minimax/minimax-m3:free"
+    assert status.intended_model_b == "nvidia/nemotron-3-super-120b-a12b:free"
+    assert replacement_endpoint_not_frozen(status) is False
+    assert final_model_pair_not_qualified(status) is True
 
 
 def test_study_status_rejects_unknown_fields() -> None:
@@ -114,27 +118,27 @@ def test_study_status_rejects_unknown_fields() -> None:
             {
                 "version": STATUS_VERSION,
                 "replacement_endpoint_status": "NOT_SELECTED",
-                "pilot_v6_status": "NOT_CONFIGURED",
+                "pilot_v6_status": "NOT_RUN",
+                "final_pair_status": "NOT_QUALIFIED",
+                "final_pair_source": "NONE",
+                "replacement_required": False,
                 "main_study_status": "BLOCKED",
-                "blocker": "replacement_endpoint_not_frozen",
-                "rejected_comparator": "nvidia/nemotron-3-super-120b-a12b:free",
-                "rejection_scope": "technical_generation_suitability_only",
-                "retained_technically_qualified_candidate": "minimax/minimax-m3:free",
+                "blocker": "final_model_pair_not_qualified",
+                "intended_model_a": "minimax/minimax-m3:free",
+                "intended_model_b": "nvidia/nemotron-3-super-120b-a12b:free",
                 "unexpected": "field",
             }
         )
 
 
-def test_replacement_blocker_not_bypassable_by_cli_confirmation(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_final_pair_blocker_not_bypassable_by_cli_confirmation(tmp_path: Path, monkeypatch) -> None:
     class NetworkForbidden:
         def __init__(self, *args, **kwargs):  # noqa: ANN002, ANN003
             raise AssertionError("provider must not be constructed while replacement pending")
 
     monkeypatch.setattr(run_study, "OpenRouterProvider", NetworkForbidden)
     monkeypatch.setattr(run_study, "verify_historical_bundle", lambda: {})
-    with pytest.raises(run_study.StudyPreflightError, match="replacement_endpoint_not_frozen"):
+    with pytest.raises(run_study.StudyPreflightError, match="final_model_pair_not_qualified"):
         run_study.execute_live_study(
             maximum_http_attempts=1,
             live_requested=True,

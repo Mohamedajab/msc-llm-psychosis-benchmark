@@ -44,10 +44,37 @@ configuration is archived, and separately versioned Pilot V5 tested generation-v
 
 Pilot V5 ran under generation-v3 and completed 24/24 slots, but 11 Nemotron/Nvidia responses
 still ended `finish_reason=length`, so it failed its frozen zero-truncation criteria and is
-closed as immutable technical evidence that cannot be resumed into PASS. Nemotron is therefore
-rejected as the proposed final Study V2 comparator on technical generation-suitability grounds
-only. The second exact endpoint is `NOT_SELECTED` and Pilot V6 is `NOT_CONFIGURED`; the
-72-conversation factorial structure remains intended but cannot be refrozen until a replacement
-passes prospective technical screening. The existing frozen bundle is preserved unchanged as
+closed as immutable technical evidence that cannot be resumed into PASS. Nemotron therefore
+failed as the proposed final comparator under the frozen generation-v2/v3 configurations. That
+does not establish permanent unsuitability under every corrected configuration. Pilot V6 is
+`NOT_RUN`, the intended original pair is `NOT_QUALIFIED`, and the 72-conversation factorial
+structure remains unchanged. The existing frozen bundle is preserved unchanged as
 the superseded MiniMax/Nemotron candidate design, and its byte-identity is verified
 independently of current active-study readiness.
+
+## Generation-v4 correction after Pilot V5
+
+No main-study responses had been collected. A content-free audit found that the immutable V4
+and V5 records did not retain reasoning-token usage or a separate visible-token count, so the
+contribution of reasoning to those historical truncations remained `INCONCLUSIVE`. The exact
+generation-v3 configuration is preserved at
+`config/archive/models-study-v2-generation-v3-nemotron.yaml`.
+
+A separate six-request benign technical calibration then tested completion-budget semantics,
+not model behaviour on a research scenario. With exact Nemotron/Nvidia resolution and zero
+catalogue price before every POST, native reasoning ended `length` at 1024 tokens twice and at
+2048 once; reported reasoning usage was 232, 553 and 652 tokens. Reasoning-disabled 1024-token
+checks ended `stop` twice with zero reported reasoning tokens. Native reasoning stopped at 4096
+with 523 reported reasoning tokens. The calibrated reasoning-budget contribution is therefore
+`SUPPORTED` for the tested endpoint/configuration, without claiming sole causation for V4/V5.
+
+Prospective configuration 2.2.0 / generation-v4 now freezes: no additional target-facing style
+or length instruction; model-native reasoning; exclusion of reasoning traces from behavioural
+data; a 4096-token non-binding emergency envelope; and safe response-length/reasoning
+telemetry. The timeout prospectively increases from 45 to 120 seconds to reduce avoidable
+censoring while retaining latency as technical telemetry. Temperature, top-p, retry architecture,
+seeds, scenarios, histories, rubric content and the 72/432 factorial design are unchanged.
+Pilot V6 requalifies the original MiniMax/Nemotron pair under generation-v4. Replacement-screen
+v2 is retained as a fallback activated only by V6 failure; any replacement pair requires a new
+future Pilot V7. The future active study-v2.1.0 bundle must hash generation-v4. No replacement
+has been selected and no active bundle exists.

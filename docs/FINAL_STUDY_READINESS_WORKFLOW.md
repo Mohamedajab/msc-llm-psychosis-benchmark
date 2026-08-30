@@ -1,8 +1,8 @@
 # Final Study V2 readiness workflow
 
-Status: prospective infrastructure only. This document is not evidence that a
-replacement endpoint was selected, Pilot V6 ran, an approval was granted, or
-main-study data were collected.
+Status: prospective infrastructure only. This document is not evidence that Pilot V6 ran,
+a replacement endpoint was selected, an approval was granted, or main-study data were
+collected.
 
 ## Current machine state
 
@@ -11,7 +11,9 @@ The current state remains fail closed:
 - replacement catalogue: `NOT_FETCHED`;
 - replacement screen: `NOT_RUN`;
 - replacement selection: `NOT_SELECTED`;
-- Pilot V6: `NOT_CONFIGURED`;
+- Pilot V6: `NOT_RUN`;
+- final pair: `NOT_QUALIFIED`;
+- replacement required: `false`;
 - final active protocol bundle: `NOT_CREATED`;
 - Main Study V2: `BLOCKED`.
 
@@ -23,39 +25,43 @@ Run the zero-network state check with:
 
 A non-zero exit is expected while the study is blocked.
 
-## Frozen transition order
+## Primary and fallback transition order
 
-The only permitted progression is:
+The primary progression is:
 
-1. retrieve and retain one catalogue response under the guarded catalogue command;
-2. apply the versioned zero-price, modality, seed, context and exact-slug policy;
-3. screen candidates in the retained deterministic order;
-4. require a 12/12, zero-truncation replacement-screen `PASS`;
-5. create an append-only replacement-selection record for the first eligible `PASS`;
-6. configure Pilot V6 from MiniMax plus that exact selected replacement;
-7. run and independently assess Pilot V6;
-8. require a 24/24, all-`stop`, zero-truncation Pilot V6 `PASS`;
-9. generate the exact final two-model configuration and 72-row manifest;
-10. create and verify the new `study-v2.1.0` active protocol bundle;
-11. record genuine human governance decisions independently;
-12. permit a guarded main-study invocation only when every machine and human gate passes.
+1. run and independently assess original-pair Pilot V6 under generation-v4;
+2. require a 24/24, all-`stop`, zero-truncation Pilot V6 `PASS`;
+3. freeze `final_pair_source=ORIGINAL_PAIR_V6` for MiniMax plus Nemotron;
+4. generate the exact final two-model configuration and 72-row manifest;
+5. create and verify the new `study-v2.1.0` active protocol bundle;
+6. record genuine human governance decisions independently;
+7. permit a guarded main-study invocation only when every machine and human gate passes.
+
+If and only if original-pair Pilot V6 returns `FAIL`, `replacement_required=true` activates
+the retained fallback: guarded catalogue evidence, replacement-screen v2, deterministic
+selection, and a separately versioned future Pilot V7 for the replacement pair. V6 is never
+overwritten or reused. Pilot V7 is a prospective rule, not implemented or run here.
 
 No `--force`, fallback, router alias, manually edited verdict, or CLI attestation can
 skip a transition.
 
 ## Pilot V6
 
-Pilot V6 is `technical-pilot-v6.0.0`. Its prospective subset is the existing
-monitoring fixed-belief scenario crossed with both final models and both context
-conditions: four conversations and 24 response slots. It uses `generation-v3`,
-the frozen 1024-token maximum, repetition-one seed 20260814, a 32-attempt hard cap
+Pilot V6 is `technical-pilot-v6.0.0`. It requalifies the intended original MiniMax/Nemotron
+pair. Its prospective subset is the existing monitoring fixed-belief scenario crossed with both
+models and both context
+conditions: four conversations and 24 response slots. It uses `generation-v4`,
+no additional visible-response style instruction, the model-native reasoning policy, a
+4096-token non-binding emergency
+envelope, repetition-one seed 20260814, a 32-attempt hard cap
 and at least five seconds between POST starts.
 
 Successful turns are immutable and skipped on resume. Errors are append-only. A
 429 stops the affected conversation for that invocation. `PASS` requires complete,
 contiguous evidence, exact requested/resolved model identity, provider metadata,
 non-empty private response text, `finish_reason=stop` throughout, zero truncation,
-correct requests/configuration and an intact selection binding.
+correct requests/configuration and intact original-pair provenance. Replacement selection is
+not a Pilot V6 prerequisite.
 
 ## Historical and active bundles
 
@@ -63,9 +69,10 @@ correct requests/configuration and an intact selection binding.
 MiniMax/Nemotron candidate pair. `verify_historical_bundle()` checks only that
 historical evidence; it can never authorise collection.
 
-The future `study-v2.1.0` bundle is separate. It cannot be created until replacement
-selection and Pilot V6 both recompute to `PASS`. It freezes the exact selected pair,
-72-row manifest, generation settings, selection and qualification hashes, scenarios,
+The future `study-v2.1.0` bundle is separate. On the primary path it cannot be created until
+original-pair Pilot V6 recomputes to `PASS`. It freezes
+`final_pair_source=ORIGINAL_PAIR_V6`, the exact pair, 72-row manifest, complete generation-v4
+profile and hash, qualification hash, scenarios,
 histories, draft rubric status, provider/execution policies, runner code and relevant
 analysis configuration. Text hashes are line-ending normalised so verification is
 stable across supported checkouts.

@@ -243,7 +243,9 @@ def generate_demo(output_root: str | Path = DEFAULT_OUTPUT_ROOT) -> dict[str, An
                 model_slot=model_slot,
                 model_id=model_id,
                 repetition=1,
-                generation=models.generation,
+                generation=models.generation.model_copy(
+                    update={"completion_limit_parameter": "max_tokens"}
+                ),
                 configuration_version=DEMO_VERSION,
                 configuration_hash=configuration_hash,
             ).model_copy(update={"created_at": DEMO_BASE_TIME + timedelta(minutes=run_index)})

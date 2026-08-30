@@ -1,4 +1,4 @@
-"""Comprehensive zero-network tests for selection-bound Pilot V6."""
+"""Comprehensive zero-network tests for original-pair Pilot V6."""
 
 from __future__ import annotations
 
@@ -24,6 +24,7 @@ from src.pilot_v6 import (
     FINAL_CONFIGURATION_VERSION,
     MAX_HTTP_ATTEMPTS,
     MINIMAX_MODEL_ID,
+    NEMOTRON_MODEL_ID,
     PILOT_V6_NAMESPACE,
     PilotV6Verdict,
     assess_pilot_v6,
@@ -77,6 +78,7 @@ class AttemptFixture(DeterministicFixtureProvider):
         self.interval: float | None = None
         self.routing = None
         self.catalogue_checked = False
+        self.sent_parameters: list[tuple[str, dict[str, object]]] = []
 
     def set_request_attempt_budget(self, maximum: int) -> None:
         self.maximum = maximum
@@ -91,11 +93,17 @@ class AttemptFixture(DeterministicFixtureProvider):
         self.routing = policy
 
     def validate_exact_models_strict(self, model_ids, **kwargs) -> None:  # noqa: ANN001, ANN003
-        assert tuple(model_ids) == (MINIMAX_MODEL_ID, REPLACEMENT)
+        assert tuple(model_ids) == (MINIMAX_MODEL_ID, NEMOTRON_MODEL_ID)
         assert kwargs["minimum_context_tokens"] == 16_384
+        assert kwargs["required_completion_tokens"] == 4096
+        assert kwargs["completion_limit_parameters"] == {
+            MINIMAX_MODEL_ID: "max_tokens",
+            NEMOTRON_MODEL_ID: "max_tokens",
+        }
         self.catalogue_checked = True
 
     def generate(self, **kwargs):  # noqa: ANN003, ANN202
+        self.sent_parameters.append((kwargs["model_id"], kwargs["generation"].request_parameters()))
         if self.request_attempt_count >= self.maximum:
             return ProviderResult(
                 status=ObservationStatus.PROVIDER_ERROR,
@@ -127,6 +135,7 @@ def _prerequisites(tmp_path: Path) -> tuple[Path, Path, Path]:
         output_root=screen_root,
         provider=screen_provider,
         maximum_http_attempts=SCREEN_MAX_ATTEMPTS,
+        completion_limit_parameter="max_tokens",
     )
     _, selection_path = create_replacement_selection(
         candidate_model_id=REPLACEMENT,
@@ -210,7 +219,7 @@ def _approved_governance(tmp_path: Path) -> Path:
     return path
 
 
-def test_current_pilot_v6_is_not_configured_and_default_is_zero_network(
+def test_current_pilot_v6_is_configured_for_original_pair_and_default_is_zero_network(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     class NetworkForbidden:
@@ -224,11 +233,11 @@ def test_current_pilot_v6_is_not_configured_and_default_is_zero_network(
         screen_output_root=Path("unused"),
         repository_root=ROOT,
     )
-    assert plan["status"] == "NOT_CONFIGURED"
+    assert plan["status"] == "offline_preflight"
     assert plan["network_requests"] == 0
     assert run_pilot_v6.main([]) == 0
     output = capsys.readouterr().out
-    assert "pilot_v6=NOT_CONFIGURED" in output
+    assert "pilot_v6=offline_preflight" in output
     assert "network_requests=0" in output
 
     assessment = assess_pilot_v6(
@@ -238,23 +247,23 @@ def test_current_pilot_v6_is_not_configured_and_default_is_zero_network(
         pilot_output_root=Path("unused"),
         repository_root=ROOT,
     )
-    assert assessment.verdict == PilotV6Verdict.NOT_CONFIGURED
-    assert assessment.failed_criteria == ("replacement_selection_not_frozen",)
+    assert assessment.verdict == PilotV6Verdict.NOT_RUN
+    assert assessment.failed_criteria == ("technical_pilot_v6_evidence_not_present",)
 
 
 def test_configured_offline_plan_freezes_final_pair_generation_and_subset(tmp_path: Path) -> None:
     catalogue, screens, selection, configured = _configuration(tmp_path)
     selected, script, _, models, _, _ = configured
-    assert selected.selected_model_id == REPLACEMENT
+    assert selected is None
     assert models.version == FINAL_CONFIGURATION_VERSION
     assert {slot: value.default_model_id for slot, value in models.model_slots.items()} == {
         "model_minimax": MINIMAX_MODEL_ID,
-        "model_replacement": REPLACEMENT,
+        "model_nemotron": NEMOTRON_MODEL_ID,
     }
-    assert models.generation.version == "generation-v3"
+    assert models.generation.version == "generation-v4"
     assert models.generation.temperature == 0.2
     assert models.generation.top_p == 1.0
-    assert models.generation.max_tokens == 1024
+    assert models.generation.max_tokens == 4096
     assert models.repetition_seeds == {1: 20260814, 2: 20260815}
     plan = build_pilot_v6_offline_plan(
         selection_record_path=selection,
@@ -271,7 +280,7 @@ def test_configured_offline_plan_freezes_final_pair_generation_and_subset(tmp_pa
     assert all(run["payload_count"] == 6 for run in plan["runs"])
     assert {run["model_slot"] for run in plan["runs"]} == {
         "model_minimax",
-        "model_replacement",
+        "model_nemotron",
     }
     assert {run["context_condition"] for run in plan["runs"]} == {
         "no_preloaded_context",
@@ -377,7 +386,7 @@ def test_pilot_v6_namespace_ignores_other_evidence_but_rejects_mixed_v6_run(
     output = tmp_path / "pilot"
     for namespace in (
         "technical-pilot-v5_foreign",
-        "replacement-screen-v1.0.0_foreign",
+        "replacement-screen-v2.0.0_foreign",
         "study-v2.1.0_foreign",
         "demo-fixture_foreign",
     ):
@@ -443,15 +452,18 @@ def test_every_live_gate_is_required_before_provider_construction(
     assert constructed is False
 
 
-def test_missing_selection_blocks_before_provider_and_network(tmp_path: Path) -> None:
-    with pytest.raises(Exception, match="NOT_CONFIGURED"):
+def test_replacement_selection_is_not_required_for_original_pair_v6(tmp_path: Path) -> None:
+    with pytest.raises(AssertionError, match="original-pair provider reached"):
         run_pilot_v6.execute_live_pilot_v6(
             selection_record_path=None,
             catalogue_record_path=None,
             live_requested=True,
             live_confirmed=True,
             environ={"RUN_LIVE_PILOT_V6": "1", "OPENROUTER_API_KEY": "x"},
-            provider_factory=lambda **_: (_ for _ in ()).throw(AssertionError("unreachable")),
+            provider_factory=lambda **_: (_ for _ in ()).throw(
+                AssertionError("original-pair provider reached")
+            ),
+            output_root=tmp_path / "pilot",
         )
 
 
@@ -479,7 +491,10 @@ def test_mocked_live_path_enforces_routing_pacing_catalogue_and_passes(tmp_path:
     assert instances[0].retry_429 is False
     assert instances[0].interval == 5.0
     assert instances[0].routing.allow_fallbacks is False
+    assert instances[0].routing.require_parameters is True
     assert instances[0].catalogue_checked is True
+    assert len(instances[0].sent_parameters) == 24
+    assert all(parameters["max_tokens"] == 4096 for _, parameters in instances[0].sent_parameters)
 
 
 def test_catalogue_failure_is_append_only_and_sends_zero_generation_posts(tmp_path: Path) -> None:
@@ -565,17 +580,12 @@ def test_assessor_output_is_content_free_and_append_only(
     paths = _write_pilot(tmp_path)
     catalogue, screens, selection, output, _ = paths
     args = [
-        "--selection-record",
-        str(selection),
-        "--catalogue-record",
-        str(catalogue),
-        "--screen-output-root",
-        str(screens),
         "--pilot-output-root",
         str(output),
         "--assessment-root",
         str(tmp_path / "assessments"),
     ]
+    del catalogue, screens, selection
     assert assess_script.main(args) == 0
     assert assess_script.main(args) == 0
     assert len(list((tmp_path / "assessments").glob("*.json"))) == 2
@@ -591,7 +601,7 @@ def test_assessor_output_is_content_free_and_append_only(
 
 
 def test_active_bundle_cannot_be_created_without_selection_or_v6_pass(tmp_path: Path) -> None:
-    with pytest.raises(ActiveStudyError, match="selection and Pilot V6 PASS"):
+    with pytest.raises(ActiveStudyError, match="Pilot V6 PASS"):
         freeze_active_study_bundle(
             repository_root=ROOT,
             artifact_root=tmp_path / "artifacts",
@@ -626,9 +636,9 @@ def _freeze_valid_bundle(tmp_path: Path):  # noqa: ANN202
         repository_root=ROOT,
         artifact_root=artifacts,
         bundle_root=bundle,
-        selection_record_path=selection,
-        catalogue_record_path=catalogue,
-        screen_output_root=screens,
+        selection_record_path=None,
+        catalogue_record_path=None,
+        screen_output_root=None,
         pilot_output_root=pilot_output,
         created_at=NOW,
         software_commit="synthetic-test",
@@ -641,18 +651,20 @@ def test_final_freeze_creates_exact_72_row_selected_pair_and_safe_bundle(tmp_pat
         tmp_path
     )
     assert metadata.study_version == "study-v2.1.0"
-    assert metadata.configuration_version == "2.2.0"
-    assert metadata.generation_version == "generation-v3"
+    assert metadata.configuration_version == "2.3.0"
+    assert metadata.generation_version == "generation-v4"
+    assert len(metadata.generation_profile_hash) == 64
     assert metadata.planned_conversations == 72
     assert metadata.planned_response_slots == 432
+    assert metadata.final_pair_source == "ORIGINAL_PAIR_V6"
     assert metadata.model_ids == {
         "model_minimax": MINIMAX_MODEL_ID,
-        "model_replacement": REPLACEMENT,
+        "model_nemotron": NEMOTRON_MODEL_ID,
     }
     frame = pd.read_csv(artifacts / FINAL_MANIFEST_RELATIVE_PATH)
     assert len(frame) == 72
     assert frame["run_id"].nunique() == 72
-    assert set(frame["requested_model_id"]) == {MINIMAX_MODEL_ID, REPLACEMENT}
+    assert set(frame["requested_model_id"]) == {MINIMAX_MODEL_ID, NEMOTRON_MODEL_ID}
     assert set(frame["repetition"]) == {1, 2}
     assert set(frame["planned_seed"]) == {20260814, 20260815}
     assert set(frame["context_condition"]) == {
@@ -714,31 +726,52 @@ def test_readiness_is_blocked_today_and_ready_only_on_complete_synthetic_chain(
     assert current.replacement_catalogue == "NOT_FETCHED"
     assert current.replacement_screen == "NOT_RUN"
     assert current.replacement_selection == "NOT_SELECTED"
-    assert current.pilot_v6 == "NOT_CONFIGURED"
+    assert current.pilot_v6 == "NOT_RUN"
+    assert current.final_pair_status == "NOT_QUALIFIED"
+    assert current.replacement_required is False
     assert current.active_bundle == "NOT_CREATED"
     assert current.main_study == "BLOCKED"
     assert current.network_requests == 0
 
-    catalogue, screens, selection, pilot, artifacts, bundle, _ = _freeze_valid_bundle(
-        tmp_path / "ready"
-    )
+    _, _, _, pilot, artifacts, bundle, _ = _freeze_valid_bundle(tmp_path / "ready")
     ready = evaluate_main_study_readiness(
         repository_root=ROOT,
         governance_path=_approved_governance(tmp_path),
-        catalogue_record_path=catalogue,
-        selection_record_path=selection,
-        screen_output_root=screens,
         pilot_output_root=pilot,
         active_bundle_root=bundle,
         final_artifact_root=artifacts,
     )
-    assert ready.replacement_screen == "PASS"
-    assert ready.replacement_selection == "PASS"
+    assert ready.replacement_catalogue == "NOT_FETCHED"
+    assert ready.replacement_screen == "NOT_RUN"
+    assert ready.replacement_selection == "NOT_SELECTED"
     assert ready.pilot_v6 == "PASS"
+    assert ready.final_pair_status == "QUALIFIED"
+    assert ready.final_pair_source == "ORIGINAL_PAIR_V6"
+    assert ready.replacement_required is False
     assert ready.active_bundle == "PASS"
     assert ready.governance == "PASS"
     assert ready.main_study == "READY"
     assert ready.blockers == ()
+
+
+def test_failed_original_pair_v6_activates_replacement_fallback(tmp_path: Path) -> None:
+    paths = _write_pilot(tmp_path / "failed-v6")
+    success = next(paths[3].rglob("turn-*-success.json"))
+    _mutate(
+        success,
+        lambda value: value["result"].update({"finish_reason": "length", "truncated": True}),
+    )
+    readiness = evaluate_main_study_readiness(
+        repository_root=ROOT,
+        governance_path=ROOT / "config" / "main-study-governance.yaml",
+        pilot_output_root=paths[3],
+    )
+    assert readiness.pilot_v6 == "FAIL"
+    assert readiness.final_pair_status == "NOT_QUALIFIED"
+    assert readiness.final_pair_source == "NONE"
+    assert readiness.replacement_required is True
+    assert "replacement_endpoint_not_frozen" in readiness.blockers
+    assert readiness.main_study == "BLOCKED"
 
 
 def test_main_study_blocks_before_provider_without_chain_and_uses_mock_only_when_ready(
@@ -751,7 +784,7 @@ def test_main_study_blocks_before_provider_without_chain_and_uses_mock_only_when
         constructed = True
         raise AssertionError("provider construction must remain unreachable")
 
-    with pytest.raises(run_study.StudyPreflightError, match="replacement_endpoint_not_frozen"):
+    with pytest.raises(run_study.StudyPreflightError, match="final_model_pair_not_qualified"):
         run_study.execute_live_study(
             maximum_http_attempts=1,
             live_requested=True,
@@ -764,9 +797,7 @@ def test_main_study_blocks_before_provider_without_chain_and_uses_mock_only_when
         )
     assert constructed is False
 
-    catalogue, screens, selection, pilot, artifacts, bundle, _ = _freeze_valid_bundle(
-        tmp_path / "allowed"
-    )
+    _, _, _, pilot, artifacts, bundle, _ = _freeze_valid_bundle(tmp_path / "allowed")
     instances: list[AttemptFixture] = []
 
     def factory(*, api_key: str) -> AttemptFixture:
@@ -781,9 +812,6 @@ def test_main_study_blocks_before_provider_without_chain_and_uses_mock_only_when
         protocol_confirmed=True,
         output_root=tmp_path / "allowed-output",
         pilot_output_root=pilot,
-        catalogue_record_path=catalogue,
-        selection_record_path=selection,
-        screen_output_root=screens,
         active_bundle_root=bundle,
         final_artifact_root=artifacts,
         governance_path=_approved_governance(tmp_path / "allowed-governance"),

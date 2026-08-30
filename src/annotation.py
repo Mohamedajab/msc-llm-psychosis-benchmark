@@ -63,6 +63,44 @@ class AnnotationPersistenceError(RuntimeError):
 
 
 @dataclass(frozen=True)
+class BehaviouralScorability:
+    """Content-independent primary-annotation eligibility for one observed turn."""
+
+    turn_number: int
+    primary_scorable: bool
+    reason: Literal["complete_pre_truncation", "truncated", "downstream_of_truncation"]
+
+
+def behavioural_scorability(record: ConversationRecord) -> tuple[BehaviouralScorability, ...]:
+    """Exclude the first truncated response and every downstream trajectory turn."""
+
+    first_truncation_seen = False
+    decisions: list[BehaviouralScorability] = []
+    for turn in sorted(record.turns, key=lambda event: event.turn_number):
+        is_truncated = turn.result.truncated or (
+            (turn.result.finish_reason or "").strip().casefold() == "length"
+        )
+        if first_truncation_seen:
+            reason = "downstream_of_truncation"
+            scorable = False
+        elif is_truncated:
+            first_truncation_seen = True
+            reason = "truncated"
+            scorable = False
+        else:
+            reason = "complete_pre_truncation"
+            scorable = True
+        decisions.append(
+            BehaviouralScorability(
+                turn_number=turn.turn_number,
+                primary_scorable=scorable,
+                reason=reason,
+            )
+        )
+    return tuple(decisions)
+
+
+@dataclass(frozen=True)
 class AxisReliabilityResult:
     """Agreement statistics for one ordinal rubric axis."""
 
@@ -180,8 +218,9 @@ def build_blinded_items(
     """Build initial-round items and a separate internal mapping.
 
     Each item uses the exact request messages for its turn, so future turns and future
-    responses cannot appear.  Failed/missing provider observations are excluded because
-    they are not assistant responses that a human can score.
+    responses cannot appear. Failed/missing provider observations, truncated responses,
+    and turns downstream of the first truncation are excluded from primary behavioural
+    scoring. All remain preserved in raw technical evidence.
     """
 
     records = sorted(conversations, key=lambda record: record.header.run_id)
@@ -190,8 +229,12 @@ def build_blinded_items(
     seen_ids: set[str] = set()
 
     for record in records:
+        scorability = {
+            decision.turn_number: decision for decision in behavioural_scorability(record)
+        }
         for turn in sorted(record.turns, key=lambda event: event.turn_number):
-            if turn.result.status != ObservationStatus.RESPONSE:
+            decision = scorability[turn.turn_number]
+            if turn.result.status != ObservationStatus.RESPONSE or not decision.primary_scorable:
                 continue
             text = turn.result.text or ""
             source_hash = response_hash(text)

@@ -4,23 +4,27 @@ An auditable, configuration-driven benchmark of how two exact language-model end
 respond across six-turn conversations containing controlled unsupported interpretations.
 No main-study data or results currently exist.
 
-## Frozen Study V2 design
+## Prospective Study V2 design
 
-Study `study-v2.0.0` crosses three presentation levels, three themes, two models, two
+The final `study-v2.1.0` protocol will cross three presentation levels, three themes, two models, two
 context conditions and two repetitions: 72 conversations and 432 planned responses.
 
-- `minimax/minimax-m3:free`
-- `nvidia/nemotron-3-super-120b-a12b:free`
+- fixed Model A: `minimax/minimax-m3:free`
+- provisional Model B: `nvidia/nemotron-3-super-120b-a12b:free`, pending joint Pilot V6
+  qualification with MiniMax under generation-v4
 
 The reduction from the historical 108-conversation plan was adopted before data collection
-and is documented in `docs/PROTOCOL_DEVIATION_STUDY_V2.md`. Active generation-v3 uses 1024
-output tokens and the unchanged frozen repetition seeds 20260814/20260815.
+and is documented in `docs/PROTOCOL_DEVIATION_STUDY_V2.md`. Prospective generation-v4 adds no
+target-facing concision/length instruction, uses model-native reasoning with reasoning traces
+excluded, a non-binding 4096-token emergency envelope, and the unchanged repetition seeds
+20260814/20260815.
 
 ## Evidence boundaries
 
 Demo fixtures, Pilot V1, Pilot V2, Pilot V3, the Nemotron endpoint screen, failed Pilot V4,
-planned Pilot V5, and the main study are distinct namespaces. Technical evidence is not
-dissertation data. Pilot V1-V4 and the screen are immutable. Raw responses, assessments,
+failed Pilot V5, the benign generation calibration, replacement-screen v2, Pilot V6 and the
+main study are distinct namespaces. Technical evidence is not dissertation data. Pilot V1-V5,
+the endpoint screen and calibration records are immutable. Raw responses, assessments,
 annotations, private maps and credentials are ignored by Git.
 
 ## Offline validation
@@ -32,6 +36,8 @@ annotations, private maps and credentials are ignored by Git.
 & .\.venv\Scripts\python.exe scripts\generate_manifest.py --validate
 & .\.venv\Scripts\python.exe scripts\audit_pilot_v4.py
 & .\.venv\Scripts\python.exe scripts\audit_pilot_v5.py
+& .\.venv\Scripts\python.exe scripts\audit_generation_budget.py
+& .\.venv\Scripts\python.exe scripts\run_generation_calibration.py # offline only
 & .\.venv\Scripts\python.exe scripts\run_pilot_v5.py
 & .\.venv\Scripts\python.exe scripts\assess_pilot_v5.py # recomputes FAIL from immutable V5 evidence
 & .\.venv\Scripts\python.exe scripts\run_study.py
@@ -48,16 +54,24 @@ rewritten. Pilot V5 ran under generation-v3 (1024 tokens) and completed 24/24 sl
 responses were truncated, so it is now closed as immutable failed technical evidence and cannot
 be resumed into PASS.
 
-As a result, NVIDIA Nemotron Super is rejected as the proposed final Study V2 comparator on
-technical generation-suitability grounds only. MiniMax M3 remains technically qualified based
-on its completed pilot behaviour. The replacement endpoint is `NOT_SELECTED`, Pilot V6 is
-`NOT_CONFIGURED`, and the main study is `BLOCKED` by the `replacement_endpoint_not_frozen`
-blocker. The 72-conversation factorial structure is unchanged but cannot be refrozen around a
-replacement endpoint until one passes prospective technical screening.
+The content-free V4/V5 audit found no stored reasoning-token telemetry. A separate six-request
+benign calibration then showed native-reasoning truncation at 1024 twice and at 2048 once,
+reasoning-off `stop` at 1024 twice, and native-reasoning `stop` at 4096. Reported reasoning usage
+supports a material contribution to budget exhaustion under the tested endpoint; it does not
+rewrite Pilot V4/V5 or constitute behavioural evidence. See
+`docs/GENERATION_V4_CALIBRATION.md`.
 
-The Study V2 live runner recomputes the V4 and V5 assessments from immutable evidence and
-checks the versioned replacement-pending status before it can construct a live provider. A
-future PASS is technical qualification only, not academic approval.
+Nemotron failed the frozen generation-v2/v3 technical qualification. The calibration motivates
+a fair prospective requalification without altering those historical verdicts. MiniMax remains
+Model A; both intended endpoints must jointly pass original-pair Pilot V6 under generation-v4.
+Pilot V6 is `NOT_RUN`, the final pair is `NOT_QUALIFIED`, replacement is not yet required, and
+the main study is `BLOCKED` by `final_model_pair_not_qualified`. The 72-conversation factorial
+structure is unchanged.
+
+The primary Study V2 path requires an original-pair generation-v4 Pilot V6 PASS and a verified
+active study-v2.1.0 bundle before live collection. Only if V6 fails does the preserved governed
+replacement-screen workflow activate, followed by a separately versioned future Pilot V7.
+A future technical PASS is not academic approval.
 
 See `docs/MAIN_STUDY_RUNBOOK.md`, `docs/RESEARCH_PROTOCOL.md` and
 `docs/MAIN_STUDY_GO_NO_GO_CHECKLIST.md` before any collection.

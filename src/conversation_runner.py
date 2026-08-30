@@ -112,6 +112,7 @@ class ConversationRunner:
                 prefix=prefix,
                 completed_exchanges=exchanges,
                 current_user_message=user_message,
+                visible_response_instruction=header.generation_config.visible_response_instruction,
             )
             payloads.append(
                 {
@@ -143,7 +144,7 @@ class ConversationRunner:
         self._validate_inputs(header, script, prefix)
         self.store.initialise(header)
         previous = self.store.successful_turns(header.run_id)
-        if len(previous) == 6:
+        if len(previous) == 6 or self._closed_by_truncation(previous):
             return self.store.load(header.run_id)
         exchanges = [(event.user_message, event.result.text or "") for event in previous]
         for turn_number in range(len(previous) + 1, 7):
@@ -153,6 +154,7 @@ class ConversationRunner:
                 prefix=prefix,
                 completed_exchanges=exchanges,
                 current_user_message=user_message,
+                visible_response_instruction=header.generation_config.visible_response_instruction,
             )
             parameters = header.generation_config.request_parameters()
             request_time = utc_now()
@@ -195,8 +197,20 @@ class ConversationRunner:
                 result=result,
             )
             self.store.append_success(event)
+            if result.truncated or (result.finish_reason or "").strip().casefold() == "length":
+                return self.store.load(header.run_id)
             exchanges.append((user_message, result.text or ""))
         return self.store.load(header.run_id)
+
+    @staticmethod
+    def _closed_by_truncation(turns: list[TurnEvent]) -> bool:
+        """Return whether immutable evidence has already closed this trajectory."""
+
+        return any(
+            event.result.truncated
+            or (event.result.finish_reason or "").strip().casefold() == "length"
+            for event in turns
+        )
 
     @staticmethod
     def _validate_inputs(header: RunHeader, script: ScriptConfig, prefix: HistoryPrefix) -> None:

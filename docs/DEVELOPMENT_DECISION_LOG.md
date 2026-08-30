@@ -77,10 +77,11 @@ Safe private-record cross-tab (requested/resolved/provider/finish/truncated):
 
 Because successful turns are immutable and no response slots are missing, the truncated
 observations cannot be replaced; Pilot V5 cannot become PASS through resume and is closed as
-failed technical evidence. Nemotron is rejected as the proposed final Study V2 comparator on
-technical generation-suitability grounds only. This is not evidence about Nemotron's clinical
-or psychosis-related safety behaviour. MiniMax remains technically qualified based on its
-completed pilot behaviour.
+failed technical evidence. Nemotron failed the frozen generation-v2/v3 technical qualification;
+the later calibration does not change those verdicts or silently reinstate it in the current
+primary selection. This is not evidence about intrinsic suitability under every configuration or
+about clinical safety behaviour. MiniMax demonstrated historical completion and remains Model A,
+but the final pair must still jointly pass generation-v4 Pilot V6.
 
 The failed candidate configuration 2.1.0 (generation-v3, 1024 tokens, MiniMax/Nemotron) is
 archived at `config/archive/models-study-v2-generation-v3-nemotron.yaml`. A versioned
@@ -91,3 +92,56 @@ MiniMax/Nemotron protocol bundle remains byte-identical and superseded/pending r
 integrity is verified independently of current active-study source equivalence.
 
 No response or prompt content was used in this audit.
+
+## 30 August 2026 — reasoning-budget calibration and generation-v4
+
+The safe V4/V5 budget audit used non-mutating assessments and printed no response content. V4
+and V5 had no reported reasoning-token or visible-token fields, so the historical conclusion
+was `reasoning_contribution=INCONCLUSIVE`. This did not alter either failed verdict.
+
+Current OpenRouter and NVIDIA documentation identifies reasoning tokens as output usage,
+documents optional reasoning controls, and shows that Nemotron reasoning is enabled by default.
+The exact public catalogue entry remained zero-priced and reported optional default-on reasoning,
+supported efforts `medium`/`low`, a reasoning budget, text I/O, seed support and 262,144 context.
+
+Six bounded benign calibration POSTs were then made, each preceded by a fresh exact zero-price
+check. Native 1024 ended `length` twice (232 and 553 reasoning tokens); reasoning-disabled 1024
+ended `stop` twice (0 reasoning tokens); native 2048 ended `length` (652 reasoning tokens); and
+native 4096 ended `stop` (523 reasoning tokens). No prompt, response or reasoning text was
+printed. The technical verdict is `SUPPORTED`: reasoning allocation materially contributed to
+budget exhaustion under the tested endpoint/configuration, without establishing sole causation
+for V4/V5.
+
+Generation-v4 initially froze the smallest tested native envelope that stopped (4096) and a
+shared neutral concision instruction; the following prospective decision removes that
+instruction before Pilot V6. Model-native reasoning, excluded reasoning traces and safe
+usage/visible-length telemetry remain. The policy avoids requiring a universal reasoning-off
+capability while keeping the user-visible response as the behavioural unit. Replacement-screen
+v2 and Pilot V6 must use generation-v4; the 72/432 design, scripts, histories, seeds and rubric
+content are unchanged. See `GENERATION_V4_CALIBRATION.md` for technical provenance.
+
+## 30 August 2026 — final methodology simplification before Pilot V6
+
+An external implementation review of Inspect AI, DelusionEval, Spiral-Bench and Psychosis-Bench
+supported a narrower principle: standardise the experimental task and measured outcomes, while
+allowing frozen provider/model-specific translation where heterogeneous APIs require it. The
+evaluated unit is a deployed chatbot configuration, not a claim of identical internal reasoning.
+Technical source notes are in `EVALUATION_FRAMEWORK_PRECEDENT.md`; they are not literature-review
+prose.
+
+Generation-v4 now has `visible_response_instruction=null`. The earlier concision wording was
+removed prospectively because it could itself alter grounding, reassurance, escalation, safety
+recommendations and response length. The 4096-token value remains the validated non-binding
+emergency envelope for the intended pair, not a universal fairness rule. Length, usage,
+reasoning reporting and latency remain observed telemetry.
+
+Pilot V6 was corrected before execution: it now requalifies the original exact MiniMax/Nemotron
+pair under generation-v4 without replacement evidence. A V6 PASS permits
+`final_pair_source=ORIGINAL_PAIR_V6`; a V6 FAIL sets `replacement_required=true`, activating
+replacement-screen v2 and a future separately versioned Pilot V7. V6 is currently `NOT_RUN`,
+the final pair is `NOT_QUALIFIED`, and the main study remains `BLOCKED`. Historical V4/V5
+verdicts and evidence remain unchanged.
+
+New generation-v4 trajectories close immediately after persisting a truncated response. Resume
+cannot retry that turn or generate downstream turns conditioned on incomplete output. The
+behavioural-scorability filter remains as a redundant safeguard for historical shapes.
