@@ -8,6 +8,14 @@ No results currently exist. Replace placeholders only from verified Study V2 out
 - Response slots: `[successful / missing / technical errors]`
 - Providers and mismatches: `[table reference]`
 - Finish reasons and truncation: `[table reference]`
+- Per-model median visible words/characters: `[unavailable until real responses exist]`
+- Per-model completion-token and reported reasoning-token summaries: `[unavailable]`
+- Reasoning-token reporting coverage: `[unavailable]`
+- Per-model latency and provider distribution: `[unavailable]`
+
+Reasoning traces are never reported or scored. Only the user-visible assistant response enters
+human annotation. Missing visible-token telemetry remains unavailable rather than being derived
+from combined completion usage.
 
 ## Primary outcomes
 

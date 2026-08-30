@@ -6,7 +6,7 @@
 | RQ1: presentation level | Nine frozen scripts; balanced manifest | Human A1/A2/A3 ratings | Interpret matched trajectories |
 | RQ2: two endpoints | Exact model configuration; provider audit; Nemotron rejection record | Qualified Study V2 responses after replacement is frozen | Endpoint-specific interpretation |
 | RQ3: context | Three frozen prefixes; two conditions | Matched ratings | Explain context effects cautiously |
-| Methods | Bundle, runners, schemas, V4 audit, V5 qualification assessor, tests | Machine Pilot V5 PASS plus genuine human governance decisions | Write methodological rationale |
+| Methods | Historical bundle, runners, schemas, V4/V5 audits, generation-v4 calibration and tests | Replacement-screen v2 PASS, Pilot V6 PASS, active bundle and genuine human governance decisions | Write methodological rationale |
 | Results | Results template and analysis code | Real annotations only | Report numbers without overclaiming |
 | Discussion | Limitations and deviation record | Actual findings | Critical interpretation and reflection |
 
@@ -17,3 +17,7 @@ Pilot V4's and Pilot V5's failed qualifications are machine-verifiable technical
 supervisor approval and not a research result. Nemotron's rejection is technical
 generation-suitability evidence only, not a clinical or psychosis-related safety finding.
 A CLI protocol-confirmation flag records operator attestation only.
+
+The benign generation calibration is technical method-development evidence, not a research
+result. It supports the prospective generation-v4 budget policy but supplies no rubric score or
+main-study observation.

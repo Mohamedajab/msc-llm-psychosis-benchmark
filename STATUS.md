@@ -1,4 +1,4 @@
-# Project status — 29 August 2026
+# Project status — 30 August 2026
 
 ## Current state
 
@@ -14,9 +14,14 @@
   generation-suitability grounds only (not clinical safety behaviour).
 - MiniMax remains a technically qualified candidate based on its completed pilot behaviour.
 - Replacement endpoint: `NOT_SELECTED`; Pilot V6: `NOT_CONFIGURED`.
+- Prospective generation profile: configuration 2.2.0 / generation-v4, with a shared concise
+  visible-response contract, model-native reasoning, excluded reasoning traces and a 4096-token
+  emergency envelope. Replacement screen v2 and Pilot V6 use this profile.
 - Main-study runner: offline by default; live Study V2 collection is blocked by
   `replacement_endpoint_not_frozen` and by the recomputed Pilot V5 `FAIL`.
-- Current full offline test suite: 150 passing tests.
+- Generation calibration: completed six benign technical requests at zero catalogue price;
+  reasoning contribution `SUPPORTED`. It is not a pilot or research dataset.
+- Current full offline test suite: 273 passing tests.
 
 ## Immutable technical evidence
 
@@ -31,6 +36,10 @@
 - Pilot V4 established exact endpoint/provider resolution and accessibility, but not generation
   suitability: all 12 MiniMax/GMICloud responses stopped normally, while all 12
   Nemotron/Nvidia responses reached the 512-token limit and were truncated.
+- The V4/V5 budget audit found reasoning usage `NOT_REPORTED` in historical records. In the
+  benign calibration, native Nemotron reached `length` at 1024 twice and 2048 once, while
+  reasoning-off stopped at 1024 twice and native reasoning stopped at 4096. Reported reasoning
+  tokens support a material budget contribution under those tested conditions.
 
 ## Readiness
 
@@ -39,7 +48,8 @@ it completed 24/24 response slots but 11 Nemotron/Nvidia responses were truncate
 be resumed into PASS. Nemotron is rejected as the proposed final comparator on technical
 generation-suitability grounds only. MiniMax remains technically qualified.
 
-The second exact endpoint is `NOT_SELECTED`, Pilot V6 is `NOT_CONFIGURED`, and the main study
+Replacement-screen v2 is `NOT_RUN`; the second exact endpoint is `NOT_SELECTED`, Pilot V6 is
+`NOT_CONFIGURED`, and the main study
 is `BLOCKED` by the `replacement_endpoint_not_frozen` blocker plus the recomputed Pilot V5
 `FAIL`. Collection remains a no-go until a replacement endpoint passes prospective technical
 screening, is explicitly frozen, and academic/rubric/ethics/data-management decisions are

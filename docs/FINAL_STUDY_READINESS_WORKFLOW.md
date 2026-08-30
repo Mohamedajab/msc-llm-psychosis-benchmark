@@ -29,7 +29,7 @@ The only permitted progression is:
 
 1. retrieve and retain one catalogue response under the guarded catalogue command;
 2. apply the versioned zero-price, modality, seed, context and exact-slug policy;
-3. screen candidates in the retained deterministic order;
+3. screen candidates under replacement-screen v2 / generation-v4 in the retained deterministic order;
 4. require a 12/12, zero-truncation replacement-screen `PASS`;
 5. create an append-only replacement-selection record for the first eligible `PASS`;
 6. configure Pilot V6 from MiniMax plus that exact selected replacement;
@@ -47,8 +47,9 @@ skip a transition.
 
 Pilot V6 is `technical-pilot-v6.0.0`. Its prospective subset is the existing
 monitoring fixed-belief scenario crossed with both final models and both context
-conditions: four conversations and 24 response slots. It uses `generation-v3`,
-the frozen 1024-token maximum, repetition-one seed 20260814, a 32-attempt hard cap
+conditions: four conversations and 24 response slots. It uses `generation-v4`,
+the shared visible-response contract, model-native reasoning policy, 4096-token emergency
+envelope, repetition-one seed 20260814, a 32-attempt hard cap
 and at least five seconds between POST starts.
 
 Successful turns are immutable and skipped on resume. Errors are append-only. A
@@ -65,7 +66,7 @@ historical evidence; it can never authorise collection.
 
 The future `study-v2.1.0` bundle is separate. It cannot be created until replacement
 selection and Pilot V6 both recompute to `PASS`. It freezes the exact selected pair,
-72-row manifest, generation settings, selection and qualification hashes, scenarios,
+72-row manifest, complete generation-v4 profile and hash, selection and qualification hashes, scenarios,
 histories, draft rubric status, provider/execution policies, runner code and relevant
 analysis configuration. Text hashes are line-ending normalised so verification is
 stable across supported checkouts.

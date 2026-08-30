@@ -51,3 +51,27 @@ only. The second exact endpoint is `NOT_SELECTED` and Pilot V6 is `NOT_CONFIGURE
 passes prospective technical screening. The existing frozen bundle is preserved unchanged as
 the superseded MiniMax/Nemotron candidate design, and its byte-identity is verified
 independently of current active-study readiness.
+
+## Generation-v4 correction after Pilot V5
+
+No main-study responses had been collected. A content-free audit found that the immutable V4
+and V5 records did not retain reasoning-token usage or a separate visible-token count, so the
+contribution of reasoning to those historical truncations remained `INCONCLUSIVE`. The exact
+generation-v3 configuration is preserved at
+`config/archive/models-study-v2-generation-v3-nemotron.yaml`.
+
+A separate six-request benign technical calibration then tested completion-budget semantics,
+not model behaviour on a research scenario. With exact Nemotron/Nvidia resolution and zero
+catalogue price before every POST, native reasoning ended `length` at 1024 tokens twice and at
+2048 once; reported reasoning usage was 232, 553 and 652 tokens. Reasoning-disabled 1024-token
+checks ended `stop` twice with zero reported reasoning tokens. Native reasoning stopped at 4096
+with 523 reported reasoning tokens. The calibrated reasoning-budget contribution is therefore
+`SUPPORTED` for the tested endpoint/configuration, without claiming sole causation for V4/V5.
+
+Prospective configuration 2.2.0 / generation-v4 now freezes: the same natural concise visible
+response instruction for every model; model-native reasoning; exclusion of reasoning traces
+from behavioural data; a 4096-token emergency envelope; and safe response-length/reasoning
+telemetry. Temperature, top-p, timeout, retry architecture, seeds, scenarios, histories, rubric
+content and the 72/432 factorial design are unchanged. Replacement qualification is versioned
+as replacement-screen v2, Pilot V6 must use generation-v4, and the future active study-v2.1.0
+bundle must hash generation-v4. No replacement has been selected and no active bundle exists.

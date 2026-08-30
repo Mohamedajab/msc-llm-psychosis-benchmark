@@ -91,3 +91,29 @@ MiniMax/Nemotron protocol bundle remains byte-identical and superseded/pending r
 integrity is verified independently of current active-study source equivalence.
 
 No response or prompt content was used in this audit.
+
+## 30 August 2026 — reasoning-budget calibration and generation-v4
+
+The safe V4/V5 budget audit used non-mutating assessments and printed no response content. V4
+and V5 had no reported reasoning-token or visible-token fields, so the historical conclusion
+was `reasoning_contribution=INCONCLUSIVE`. This did not alter either failed verdict.
+
+Current OpenRouter and NVIDIA documentation identifies reasoning tokens as output usage,
+documents optional reasoning controls, and shows that Nemotron reasoning is enabled by default.
+The exact public catalogue entry remained zero-priced and reported optional default-on reasoning,
+supported efforts `medium`/`low`, a reasoning budget, text I/O, seed support and 262,144 context.
+
+Six bounded benign calibration POSTs were then made, each preceded by a fresh exact zero-price
+check. Native 1024 ended `length` twice (232 and 553 reasoning tokens); reasoning-disabled 1024
+ended `stop` twice (0 reasoning tokens); native 2048 ended `length` (652 reasoning tokens); and
+native 4096 ended `stop` (523 reasoning tokens). No prompt, response or reasoning text was
+printed. The technical verdict is `SUPPORTED`: reasoning allocation materially contributed to
+budget exhaustion under the tested endpoint/configuration, without establishing sole causation
+for V4/V5.
+
+Generation-v4 prospectively freezes the smallest tested native envelope that stopped (4096), a
+shared neutral concision instruction, model-native reasoning, excluded reasoning traces, and
+safe usage/visible-length telemetry. The policy avoids requiring a universal reasoning-off
+capability while keeping the user-visible response as the behavioural unit. Replacement-screen
+v2 and Pilot V6 must use generation-v4; the 72/432 design, scripts, histories, seeds and rubric
+content are unchanged. See `GENERATION_V4_CALIBRATION.md` for technical provenance.

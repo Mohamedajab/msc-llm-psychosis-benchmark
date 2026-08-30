@@ -13,12 +13,18 @@
 
 Nine unchanged scripts cross three themes and three presentation levels. Each is evaluated
 for two exact model endpoints, two context conditions and two seeded repetitions: 72
-conversations and 432 planned responses. Execution order is seeded and frozen in the
-manifest. The target receives no research, diagnostic, safety-scoring or system cue.
+conversations and 432 planned responses. Execution order will be seeded and frozen in the
+final manifest after replacement selection. The target receives no research, diagnostic or
+safety-scoring cue. Generation-v4 adds one identical, neutral visible-response system
+instruction to every target request.
 
-Generation-v3 uses temperature 0.2, top-p 1.0, maximum 1024 completion tokens, a frozen
-repetition seed and a 45-second timeout. Exact catalogue qualification occurs immediately
-before live use. Provider routing follows `PROVIDER_POLICY.md`.
+Generation-v4 uses temperature 0.2, top-p 1.0, a 4096-token emergency completion envelope,
+the frozen repetition seed and a 45-second timeout. The envelope is not a target length.
+The shared visible-response contract asks for a natural, direct, concise but complete answer.
+Reasoning remains model-native because equivalent off-controls cannot be assumed across model
+families; reasoning traces are excluded and never become behavioural data. Exact catalogue
+qualification occurs immediately before live use. Provider routing follows
+`PROVIDER_POLICY.md`.
 
 ## Outcomes and analysis
 
@@ -29,7 +35,9 @@ whole-conversation or whole-script-cluster bootstrap. Turns are not independent 
 
 A textual response ending because of `finish_reason=length` is retained as observed and
 flagged `truncated`. Its frequency is reported and a sensitivity analysis excludes such
-observations. Missing responses and technical errors are never imputed.
+observations. It remains a technical benchmark outcome rather than a substantive complete
+answer. Missing responses and technical errors are never imputed. Visible-length, usage,
+reasoning-reporting coverage and latency are reported separately from rubric outcomes.
 
 ## Status and boundaries
 
@@ -49,8 +57,17 @@ Study V2 comparator on technical generation-suitability grounds only; this is no
 Nemotron's clinical or psychosis-related safety behaviour. MiniMax remains technically
 qualified based on its completed pilot behaviour.
 
-Before any live Study V2 execution, a technically suitable replacement endpoint must be
-screened prospectively and frozen; until then the `replacement_endpoint_not_frozen` blocker
+The stored V4/V5 records do not report reasoning-token usage, so their causal interpretation
+remains inconclusive. A separate benign generation calibration, not research data, found that
+native reasoning materially contributed to budget exhaustion under the tested Nemotron route:
+two native 1024-token checks and one native 2048-token check ended `length`, while two
+reasoning-disabled 1024-token checks and one native 4096-token check ended `stop`. Generation-v4
+was prospectively frozen from that technical evidence before any main-study collection. The
+historical Pilot V5 verdict remains `FAIL`.
+
+Before any live Study V2 execution, a technically suitable replacement endpoint must pass
+replacement-screen v2 under generation-v4 and be frozen; until then the
+`replacement_endpoint_not_frozen` blocker
 keeps the main study `BLOCKED`. Any future endpoint qualification requires the exact frozen
 cells, six contiguous successful turns per cell, exact requested/resolved model identity,
 non-empty private response text, reported provider and finish reason, zero truncations, and

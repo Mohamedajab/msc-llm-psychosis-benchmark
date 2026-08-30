@@ -10,6 +10,10 @@
 - Review Pilot V4's and Pilot V5's frozen technical failures (both closed, immutable `FAIL`),
   and approve or revise the decision process around selecting a Nemotron replacement and the
   main-study go/no-go; the software does not infer approval.
+- Review the prospective generation-v4 method: common neutral concision wording, model-native
+  reasoning, excluded reasoning traces, a 4096-token emergency envelope and technical
+  response-length/reasoning telemetry. The calibration supports this engineering choice but
+  does not itself constitute supervisor approval.
 
 ## Already fixed in the candidate protocol
 
