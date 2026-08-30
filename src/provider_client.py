@@ -43,7 +43,12 @@ class TargetProvider(ABC):
 
 
 def qualify_catalogue_entry(
-    model_id: str, entry: Mapping[str, Any], *, minimum_context_tokens: int
+    model_id: str,
+    entry: Mapping[str, Any],
+    *,
+    minimum_context_tokens: int,
+    required_completion_tokens: int | None = None,
+    completion_limit_parameter: str | None = None,
 ) -> dict[str, Any]:
     """Fail closed unless one exact catalogue entry meets the study contract."""
 
@@ -73,6 +78,24 @@ def qualify_catalogue_entry(
     context_length = entry.get("context_length")
     if not isinstance(context_length, int) or context_length < minimum_context_tokens:
         raise RuntimeError(f"Target endpoint context is below {minimum_context_tokens} tokens")
+    if completion_limit_parameter is not None and completion_limit_parameter not in (
+        entry.get("supported_parameters") or []
+    ):
+        raise RuntimeError(
+            f"Target endpoint does not advertise {completion_limit_parameter} support"
+        )
+    top_provider = entry.get("top_provider")
+    if required_completion_tokens is not None:
+        candidates = [entry.get("max_completion_tokens"), entry.get("max_tokens")]
+        if isinstance(top_provider, Mapping):
+            candidates.extend(
+                [top_provider.get("max_completion_tokens"), top_provider.get("max_tokens")]
+            )
+        maximums = [value for value in candidates if isinstance(value, int) and value > 0]
+        if not maximums or max(maximums) < required_completion_tokens:
+            raise RuntimeError(
+                "Target endpoint does not verify the required completion-token envelope"
+            )
     return {
         "model_id": model_id,
         "prompt_price": str(prompt_price),
@@ -81,6 +104,8 @@ def qualify_catalogue_entry(
         "output_text": True,
         "seed_supported": True,
         "context_length": context_length,
+        "required_completion_tokens": required_completion_tokens,
+        "completion_limit_parameter": completion_limit_parameter,
     }
 
 
@@ -250,6 +275,8 @@ class OpenRouterProvider(TargetProvider):
         *,
         minimum_context_tokens: int,
         timeout_seconds: float = 20,
+        required_completion_tokens: int | None = None,
+        completion_limit_parameter: str | None = None,
     ) -> dict[str, dict[str, Any]]:
         """Validate identity, free pricing, modality, seed and context in one GET."""
 
@@ -269,6 +296,8 @@ class OpenRouterProvider(TargetProvider):
                 model_id,
                 by_id.get(model_id, {}),
                 minimum_context_tokens=minimum_context_tokens,
+                required_completion_tokens=required_completion_tokens,
+                completion_limit_parameter=completion_limit_parameter,
             )
             for model_id in requested
         }
@@ -448,7 +477,6 @@ class OpenRouterProvider(TargetProvider):
                 )
             text = (choice.get("message") or {}).get("content")
             if not isinstance(text, str) or not text.strip():
-                usage_raw = body.get("usage") or {}
                 return self._error_result(
                     model_id=model_id,
                     started=started,
@@ -464,11 +492,7 @@ class OpenRouterProvider(TargetProvider):
                     if isinstance(body.get("provider"), dict)
                     else body.get("provider"),
                     finish_reason=choice.get("finish_reason"),
-                    usage=TokenUsage(
-                        prompt_tokens=usage_raw.get("prompt_tokens"),
-                        completion_tokens=usage_raw.get("completion_tokens"),
-                        total_tokens=usage_raw.get("total_tokens"),
-                    ),
+                    usage=self._parse_usage(body.get("usage")),
                 )
             resolved_model = body.get("model")
             if resolved_model and resolved_model != model_id:
@@ -486,7 +510,8 @@ class OpenRouterProvider(TargetProvider):
                     request_id=request_id,
                     resolved_model_id=resolved_model,
                 )
-            usage_raw = body.get("usage") or {}
+            response_metadata = self._response_diagnostics(body, choice)
+            usage = self._parse_usage(body.get("usage"))
             return ProviderResult(
                 status=ObservationStatus.RESPONSE,
                 text=text,
@@ -498,19 +523,19 @@ class OpenRouterProvider(TargetProvider):
                 generation_id=body.get("id"),
                 request_id=request_id,
                 finish_reason=choice.get("finish_reason"),
-                usage=TokenUsage(
-                    prompt_tokens=usage_raw.get("prompt_tokens"),
-                    completion_tokens=usage_raw.get("completion_tokens"),
-                    total_tokens=usage_raw.get("total_tokens"),
-                ),
+                usage=usage,
                 latency_ms=(time.perf_counter() - started) * 1000,
                 retry_count=attempt,
                 http_attempts=attempt + 1,
                 http_status=response.status_code,
-                response_metadata={
-                    "created": body.get("created"),
-                    "native_finish_reason": choice.get("native_finish_reason"),
-                },
+                response_metadata=response_metadata,
+                reasoning_control_applied=(
+                    "REPORTED"
+                    if response_metadata["reasoning_present"]
+                    or response_metadata["reasoning_details_present"]
+                    or (usage is not None and usage.reasoning_tokens is not None)
+                    else None
+                ),
             )
         assert last_result is not None
         return last_result
@@ -587,6 +612,45 @@ class OpenRouterProvider(TargetProvider):
                 len(reasoning_details) if isinstance(reasoning_details, list) else 0
             ),
         }
+
+    @classmethod
+    def _response_diagnostics(
+        cls, body: Mapping[str, Any], choice: Mapping[str, Any]
+    ) -> dict[str, Any]:
+        """Retain response structure and reasoning lengths, never reasoning text."""
+
+        diagnostics = cls._empty_response_diagnostics(body, choice)
+        diagnostics.update(
+            {
+                "created": body.get("created"),
+                "native_finish_reason": choice.get("native_finish_reason"),
+            }
+        )
+        return diagnostics
+
+    @staticmethod
+    def _parse_usage(value: Any) -> TokenUsage | None:
+        """Parse reported token classes without deriving unreported visible tokens."""
+
+        if not isinstance(value, Mapping):
+            return None
+        completion_details = value.get("completion_tokens_details")
+        if not isinstance(completion_details, Mapping):
+            completion_details = {}
+        prompt_details = value.get("prompt_tokens_details")
+        if not isinstance(prompt_details, Mapping):
+            prompt_details = {}
+        visible_tokens = completion_details.get(
+            "visible_tokens", completion_details.get("visible_completion_tokens")
+        )
+        return TokenUsage(
+            prompt_tokens=value.get("prompt_tokens"),
+            completion_tokens=value.get("completion_tokens"),
+            total_tokens=value.get("total_tokens"),
+            reasoning_tokens=completion_details.get("reasoning_tokens"),
+            visible_completion_tokens=visible_tokens,
+            cached_prompt_tokens=prompt_details.get("cached_tokens"),
+        )
 
     @staticmethod
     def _classify_http_error(status_code: int) -> ObservationStatus:

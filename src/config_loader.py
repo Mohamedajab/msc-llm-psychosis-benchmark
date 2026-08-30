@@ -135,6 +135,11 @@ def configuration_bundle_hash(
     scripts: list[ScriptConfig], histories: list[HistoryPrefix], models: ModelsConfig
 ) -> str:
     model_payload = models.model_dump(mode="json")
+    if models.generation.version != "generation-v4":
+        generation = model_payload["generation"]
+        generation.pop("completion_limit_parameter", None)
+        generation.pop("visible_response_instruction", None)
+        generation.pop("reasoning_policy", None)
     # Provider routing was introduced for Study V2. Historical configuration hashes
     # must remain reproducible without rewriting Pilot V1-V3 evidence.
     if models.version.startswith("1."):
