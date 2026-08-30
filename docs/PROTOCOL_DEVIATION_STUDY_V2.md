@@ -71,7 +71,9 @@ with 523 reported reasoning tokens. The calibrated reasoning-budget contribution
 Prospective configuration 2.2.0 / generation-v4 now freezes: the same natural concise visible
 response instruction for every model; model-native reasoning; exclusion of reasoning traces
 from behavioural data; a 4096-token emergency envelope; and safe response-length/reasoning
-telemetry. Temperature, top-p, timeout, retry architecture, seeds, scenarios, histories, rubric
-content and the 72/432 factorial design are unchanged. Replacement qualification is versioned
+telemetry. The timeout prospectively increases from 45 to 120 seconds to reduce avoidable
+censoring while retaining latency as technical telemetry. Temperature, top-p, retry architecture,
+seeds, scenarios, histories, rubric content and the 72/432 factorial design are unchanged.
+Replacement qualification is versioned
 as replacement-screen v2, Pilot V6 must use generation-v4, and the future active study-v2.1.0
 bundle must hash generation-v4. No replacement has been selected and no active bundle exists.

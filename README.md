@@ -59,9 +59,11 @@ supports a material contribution to budget exhaustion under the tested endpoint;
 rewrite Pilot V4/V5 or constitute behavioural evidence. See
 `docs/GENERATION_V4_CALIBRATION.md`.
 
-NVIDIA Nemotron Super remains rejected as the proposed final Study V2 comparator on
-technical generation-suitability grounds only. MiniMax M3 remains technically qualified based
-on its completed pilot behaviour. The replacement endpoint is `NOT_SELECTED`, Pilot V6 is
+Nemotron failed the frozen generation-v2/v3 technical qualification; the calibration motivates
+generation-v4 but does not alter those verdicts or reinstate it in the current governed primary
+selection. MiniMax demonstrated historical technical completion and remains Model A, but the
+final pair must still pass Pilot V6 jointly under generation-v4. The replacement endpoint is
+`NOT_SELECTED`, Pilot V6 is
 `NOT_CONFIGURED`, and the main study is `BLOCKED` by the `replacement_endpoint_not_frozen`
 blocker. The 72-conversation factorial structure is unchanged but cannot be refrozen around a
 replacement endpoint until one passes prospective technical screening.

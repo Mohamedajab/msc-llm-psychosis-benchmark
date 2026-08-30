@@ -6,8 +6,8 @@
 - [ ] Pilot V4 remains preserved as completed, immutable `FAIL` technical evidence.
 - [ ] Pilot V5 remains preserved as completed, immutable `FAIL` technical evidence: 24/24
   contiguous responses but 11 truncated, so it cannot be resumed into PASS.
-- [ ] Nemotron is rejected as the proposed final comparator on technical
-  generation-suitability grounds only (not clinical safety behaviour).
+- [ ] Nemotron's frozen generation-v2/v3 failure remains historical; the calibration has not
+  been used to alter the current prospective replacement decision.
 - [ ] Generation-v4 and its common visible-response/reasoning policy have been reviewed as a
   prospective technical method; this is separate from rubric approval.
 - [ ] A technically suitable replacement endpoint has passed replacement-screen v2 under

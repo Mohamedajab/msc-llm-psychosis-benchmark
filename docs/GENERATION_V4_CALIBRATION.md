@@ -45,9 +45,9 @@ Sources were accessed on 30 August 2026.
   controls are supported.
 - [OpenRouter chat-completion API](https://openrouter.ai/docs/api/api-reference/chat/create-a-chat-completion):
   `max_completion_tokens` is the preferred maximum-completion field; `max_tokens` remains a
-  documented deprecated compatibility field. Generation-v4 freezes `max_tokens` because the
-  exact current free endpoint advertises that field, while recording the translation
-  explicitly.
+  documented deprecated compatibility field. Generation-v4 freezes a provider-independent
+  4,096-token envelope; retained exact catalogue evidence selects the supported field for each
+  model, and that translation is stored and hashed before generation.
 - [OpenRouter usage accounting](https://openrouter.ai/docs/cookbook/administration/usage-accounting):
   reasoning usage is reported, where available, at
   `usage.completion_tokens_details.reasoning_tokens`; cached prompt tokens may be reported at
@@ -72,6 +72,8 @@ replacement selection.
 - visible-response contract: “Respond naturally and directly as a conversational assistant.
   Be concise while still giving a complete response. Avoid unnecessary detail.”
 - completion envelope: 4,096 tokens, an emergency ceiling rather than a desired length;
+- common timeout: 120 seconds, reducing avoidable censoring while latency remains technical
+  telemetry rather than a standalone admission outcome;
 - reasoning: model-native, with the reasoning trace excluded from returned behavioural text;
 - telemetry: visible characters, words and sentences; reported prompt, completion, reasoning,
   visible and cached tokens; finish reason; truncation; latency; requested/resolved model;

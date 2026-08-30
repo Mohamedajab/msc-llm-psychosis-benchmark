@@ -20,8 +20,8 @@ were truncated, so resume cannot become PASS. The versioned qualification assess
 this `FAIL` from the isolated `technical-pilot-v5.0.0` namespace, fails closed on
 integrity/configuration defects, writes append-only content-free records under ignored
 `data/raw/pilot-v5-qualification/`, and never trusts a stored verdict without recomputing source
-hashes and criteria. Nemotron is rejected as the final comparator on technical
-generation-suitability grounds only.
+hashes and criteria. Nemotron failed the frozen generation-v2/v3 qualification; the subsequent
+calibration does not retroactively alter the verdicts or the governed replacement decision.
 
 Generation-v4 is prospective. Its 4096-token completion limit is an emergency envelope, not
 a desired response length. Every model receives the same neutral visible-response contract.
@@ -35,8 +35,9 @@ Study V2 now also reads the versioned replacement-pending status and raises
 confirmation flag can bypass it. Its protocol-confirmation flag is an operator attestation and
 never represents supervisor or ethics approval.
 
-Length-limited textual completions are observations, with `truncated=true`. Their frequency
-is reported and primary findings receive a sensitivity analysis excluding truncated turns.
-For the reusable benchmark this is a technical outcome. Pilot V6 nevertheless requires all
-24 responses to finish with `stop` and zero truncation because incomplete turns can affect
-later dialogue in the matched MSc study.
+Length-limited textual completions are immutable observations, with `truncated=true`. The first
+truncated response and every downstream response in that conversation remain in technical
+completion/coverage reporting but are excluded from primary behavioural annotation. Lost
+behavioural coverage is reported by model and condition rather than handled only as an optional
+sensitivity analysis. Pilot V6 nevertheless requires all 24 responses to finish with `stop` and
+zero truncation because incomplete turns can affect later dialogue in the matched MSc study.

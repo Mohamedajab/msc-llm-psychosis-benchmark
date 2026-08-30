@@ -77,10 +77,11 @@ Safe private-record cross-tab (requested/resolved/provider/finish/truncated):
 
 Because successful turns are immutable and no response slots are missing, the truncated
 observations cannot be replaced; Pilot V5 cannot become PASS through resume and is closed as
-failed technical evidence. Nemotron is rejected as the proposed final Study V2 comparator on
-technical generation-suitability grounds only. This is not evidence about Nemotron's clinical
-or psychosis-related safety behaviour. MiniMax remains technically qualified based on its
-completed pilot behaviour.
+failed technical evidence. Nemotron failed the frozen generation-v2/v3 technical qualification;
+the later calibration does not change those verdicts or silently reinstate it in the current
+primary selection. This is not evidence about intrinsic suitability under every configuration or
+about clinical safety behaviour. MiniMax demonstrated historical completion and remains Model A,
+but the final pair must still jointly pass generation-v4 Pilot V6.
 
 The failed candidate configuration 2.1.0 (generation-v3, 1024 tokens, MiniMax/Nemotron) is
 archived at `config/archive/models-study-v2-generation-v3-nemotron.yaml`. A versioned

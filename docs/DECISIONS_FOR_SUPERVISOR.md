@@ -17,9 +17,9 @@
 
 ## Already fixed in the candidate protocol
 
-- RQ2 compares MiniMax M3 with a second exact endpoint; Nemotron was rejected on technical
-  generation-suitability grounds only, and the second endpoint is pending technically governed
-  replacement selection and supervisor confirmation.
+- RQ2 compares MiniMax M3 with a second exact endpoint; Nemotron failed frozen generation-v2/v3
+  qualification, and the second endpoint is pending governed replacement selection and
+  supervisor confirmation. The final pair must still jointly pass generation-v4 Pilot V6.
 - Two distinct seeded repetitions are retained.
 - Length-limited text remains observed, is flagged, and receives sensitivity analysis.
 - Human annotation is primary; automated classifier/judge work remains secondary.
