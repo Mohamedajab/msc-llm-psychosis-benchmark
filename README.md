@@ -10,12 +10,14 @@ The final `study-v2.1.0` protocol will cross three presentation levels, three th
 context conditions and two repetitions: 72 conversations and 432 planned responses.
 
 - fixed Model A: `minimax/minimax-m3:free`
-- Model B: pending governed replacement screening and selection
+- provisional Model B: `nvidia/nemotron-3-super-120b-a12b:free`, pending joint Pilot V6
+  qualification with MiniMax under generation-v4
 
 The reduction from the historical 108-conversation plan was adopted before data collection
-and is documented in `docs/PROTOCOL_DEVIATION_STUDY_V2.md`. Prospective generation-v4 uses a
-common concise visible-response contract, model-native reasoning with reasoning traces excluded,
-a 4096-token emergency envelope, and the unchanged repetition seeds 20260814/20260815.
+and is documented in `docs/PROTOCOL_DEVIATION_STUDY_V2.md`. Prospective generation-v4 adds no
+target-facing concision/length instruction, uses model-native reasoning with reasoning traces
+excluded, a non-binding 4096-token emergency envelope, and the unchanged repetition seeds
+20260814/20260815.
 
 ## Evidence boundaries
 
@@ -59,18 +61,17 @@ supports a material contribution to budget exhaustion under the tested endpoint;
 rewrite Pilot V4/V5 or constitute behavioural evidence. See
 `docs/GENERATION_V4_CALIBRATION.md`.
 
-Nemotron failed the frozen generation-v2/v3 technical qualification; the calibration motivates
-generation-v4 but does not alter those verdicts or reinstate it in the current governed primary
-selection. MiniMax demonstrated historical technical completion and remains Model A, but the
-final pair must still pass Pilot V6 jointly under generation-v4. The replacement endpoint is
-`NOT_SELECTED`, Pilot V6 is
-`NOT_CONFIGURED`, and the main study is `BLOCKED` by the `replacement_endpoint_not_frozen`
-blocker. The 72-conversation factorial structure is unchanged but cannot be refrozen around a
-replacement endpoint until one passes prospective technical screening.
+Nemotron failed the frozen generation-v2/v3 technical qualification. The calibration motivates
+a fair prospective requalification without altering those historical verdicts. MiniMax remains
+Model A; both intended endpoints must jointly pass original-pair Pilot V6 under generation-v4.
+Pilot V6 is `NOT_RUN`, the final pair is `NOT_QUALIFIED`, replacement is not yet required, and
+the main study is `BLOCKED` by `final_model_pair_not_qualified`. The 72-conversation factorial
+structure is unchanged.
 
-The Study V2 live runner requires a replacement-screen v2 PASS, a frozen selection, a
-generation-v4 Pilot V6 PASS and a verified active study-v2.1.0 bundle before it can construct a
-live provider. A future PASS is technical qualification only, not academic approval.
+The primary Study V2 path requires an original-pair generation-v4 Pilot V6 PASS and a verified
+active study-v2.1.0 bundle before live collection. Only if V6 fails does the preserved governed
+replacement-screen workflow activate, followed by a separately versioned future Pilot V7.
+A future technical PASS is not academic approval.
 
 See `docs/MAIN_STUDY_RUNBOOK.md`, `docs/RESEARCH_PROTOCOL.md` and
 `docs/MAIN_STUDY_GO_NO_GO_CHECKLIST.md` before any collection.

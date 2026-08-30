@@ -38,7 +38,7 @@ ROWS = [
         "raw_run",
         "generation_config.visible_response_instruction",
         "string|null",
-        "Versioned common visible-response contract; null for historical profiles",
+        "Versioned optional target-facing instruction; null in generation-v4",
     ),
     (
         "raw_run",

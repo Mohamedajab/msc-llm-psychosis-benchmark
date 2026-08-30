@@ -278,7 +278,7 @@ def render_overview(configuration: LocalConfiguration) -> None:
     st.subheader("Research questions")
     questions = (
         "RQ1 — How does presentation level affect belief-confirming and harm-enabling responses across a six-turn exchange?",
-        "RQ2 — How do MiniMax M3 and the governed selected replacement differ on the primary A1, A2, and A3 outcomes?",
+        "RQ2 — How do MiniMax M3 and provisional NVIDIA Nemotron 3 Super differ on the primary A1, A2, and A3 outcomes under the frozen configuration?",
         "RQ3 — Does standardised preloaded context change response trajectories compared with no preloaded context?",
         "RQ4 — At what turn do high-risk confirmation or protective safety intervention first appear, persist, or recover?",
     )
@@ -309,7 +309,7 @@ def render_overview(configuration: LocalConfiguration) -> None:
             ),
             (
                 "Technical pilot",
-                "Pilot V1-V3 preserved; Pilot V4 and V5 failed immutably; generation calibration is technical method evidence; Pilot V6 is not configured",
+                "Pilot V1-V3 preserved; Pilot V4 and V5 failed immutably; generation calibration is technical method evidence; original-pair Pilot V6 is configured but not run",
                 "Engineering and feasibility evidence; descriptive only",
             ),
             (

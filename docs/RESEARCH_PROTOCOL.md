@@ -8,8 +8,8 @@ MiniMax/Nemotron candidate configuration and cannot authorise collection.
 
 - RQ1: How does presentation level affect A1 belief confirmation, A2 harm enablement and
   A3 safety intervention across a six-turn exchange?
-- RQ2: How does `minimax/minimax-m3:free` differ from a second, technically governed exact
-  endpoint selected through the governed replacement process on A1, A2 and A3?
+- RQ2: How does `minimax/minimax-m3:free` differ from the provisional exact endpoint
+  `nvidia/nemotron-3-super-120b-a12b:free` on A1, A2 and A3 under the frozen configuration?
 - RQ3: Does standardised preloaded context change trajectories relative to no context?
 
 ## Design
@@ -17,9 +17,8 @@ MiniMax/Nemotron candidate configuration and cannot authorise collection.
 Nine unchanged scripts cross three themes and three presentation levels. Each is evaluated
 for two exact model endpoints, two context conditions and two seeded repetitions: 72
 conversations and 432 planned responses. Execution order will be seeded and frozen in the
-final manifest after replacement selection. The target receives no research, diagnostic or
-safety-scoring cue. Generation-v4 adds one identical, neutral visible-response system
-instruction to every target request.
+final manifest after final-pair qualification. The target receives no research, diagnostic or
+safety-scoring cue. Generation-v4 adds no concision, style or response-length instruction.
 
 Generation-v4 uses temperature 0.2, top-p 1.0, a provider-independent 4096-token emergency
 completion envelope, the frozen repetition seed and a 120-second timeout. The envelope is not
@@ -27,7 +26,6 @@ a target length. Each exact model freezes the catalogue-verified equivalent requ
 (`max_completion_tokens` preferred when advertised, otherwise `max_tokens`); that field is
 stored in request parameters and the payload hash. The generous common timeout reduces
 avoidable censoring because latency is technical telemetry, not an admission outcome by itself.
-The shared visible-response contract asks for a natural, direct, concise but complete answer.
 Reasoning remains model-native because equivalent off-controls cannot be assumed across model
 families; reasoning traces are excluded and never become behavioural data. Exact catalogue
 qualification occurs immediately before live use. Provider routing follows
@@ -64,10 +62,9 @@ ended `length`, so `pilot-v5-qualification-v1.0.0` recomputes `FAIL` with failed
 so Pilot V5 cannot be resumed into PASS. Nemotron failed the prospectively frozen
 generation-v2/v3 technical qualification. The subsequent content-free calibration found that
 reported reasoning-token allocation materially contributed to budget exhaustion and motivated
-generation-v4; it does not alter either historical verdict or secretly reinstate Nemotron in the
-current primary comparator-selection process. A future secondary generation-v4 evaluation could
-be separately prespecified. MiniMax demonstrated technical completion historically and remains
-Model A, but the final pair must still jointly pass Pilot V6 under generation-v4.
+generation-v4; it does not alter either historical verdict. Pilot V6 prospectively requalifies
+the original MiniMax/Nemotron pair under the final protocol. MiniMax demonstrated technical
+completion historically and remains Model A, but both endpoints must jointly pass Pilot V6.
 
 The stored V4/V5 records do not report reasoning-token usage, so their causal interpretation
 remains inconclusive. A separate benign generation calibration, not research data, found that
@@ -77,10 +74,10 @@ reasoning-disabled 1024-token checks and one native 4096-token check ended `stop
 was prospectively frozen from that technical evidence before any main-study collection. The
 historical Pilot V5 verdict remains `FAIL`.
 
-Before any live Study V2 execution, a technically suitable replacement endpoint must pass
-replacement-screen v2 under generation-v4 and be frozen; until then the
-`replacement_endpoint_not_frozen` blocker
-keeps the main study `BLOCKED`. Any future endpoint qualification requires the exact frozen
+Before any live Study V2 execution, the exact original pair must pass Pilot V6 under
+generation-v4; until then `final_model_pair_not_qualified` keeps the study `BLOCKED`. If V6
+fails, replacement-screen v2 becomes the governed fallback and any replacement pair requires a
+new future Pilot V7 rather than reusing V6. Any technical qualification requires the exact frozen
 cells, six contiguous successful turns per cell, exact requested/resolved model identity,
 non-empty private response text, reported provider and finish reason, zero truncations, and
 only complete finish reasons, with no more than the prespecified attempt cap. Malformed,

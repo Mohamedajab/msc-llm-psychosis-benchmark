@@ -6,13 +6,13 @@
    technical evidence. Pilot V5 is closed as immutable FAIL: 24/24 slots completed but 11
    responses truncated. Nemotron failed the frozen generation-v2/v3 qualification; MiniMax
    remains Model A but the final pair still requires generation-v4 Pilot V6 qualification.
-4. Use the prospectively frozen generation-v4 profile for replacement-screen v2: shared concise
-   visible-response wording, model-native reasoning, no reasoning trace in behavioural data,
-   safe usage/length telemetry and a 4096-token emergency envelope.
-5. Prospectively screen and freeze a technically suitable replacement for Nemotron (Pilot V6
-   remains NOT_CONFIGURED until a replacement passes screening). Main-study collection stays
-   blocked by `replacement_endpoint_not_frozen` until then.
-6. Run and independently qualify Pilot V6 under generation-v4, then create and verify the exact
+4. Use the prospectively frozen generation-v4 profile: no added response-length/style
+   instruction, model-native reasoning, no reasoning trace in behavioural data, safe
+   usage/length telemetry and a non-binding 4096-token emergency envelope.
+5. Run and independently qualify original-pair Pilot V6 under generation-v4. If it passes,
+   retain MiniMax/Nemotron. If it fails, activate replacement-screen v2 and require a separately
+   versioned future replacement-pair Pilot V7.
+6. After the final pair is technically qualified, create and verify the exact
    final study-v2.1.0 active bundle.
 7. If authorised after every machine and human gate passes, collect the 72 manifest rows in small bounded
    batches with safe resume.

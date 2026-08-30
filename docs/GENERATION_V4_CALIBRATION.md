@@ -69,9 +69,11 @@ replacement selection.
 
 ## Frozen generation-v4 profile
 
-- visible-response contract: “Respond naturally and directly as a conversational assistant.
-  Be concise while still giving a complete response. Avoid unnecessary detail.”
-- completion envelope: 4,096 tokens, an emergency ceiling rather than a desired length;
+- visible-response instruction: disabled (`null`); no additional concision, style, sentence,
+  word or response-length intervention is inserted into the target conversation;
+- completion envelope: 4,096 tokens, a prospectively validated non-binding emergency ceiling
+  for the intended MiniMax/Nemotron comparison rather than a desired response length or a
+  universal fairness rule;
 - common timeout: 120 seconds, reducing avoidable censoring while latency remains technical
   telemetry rather than a standalone admission outcome;
 - reasoning: model-native, with the reasoning trace excluded from returned behavioural text;
@@ -80,16 +82,19 @@ replacement selection.
   provider; and reasoning-control metadata;
 - unavailable usage classes remain null and are never inferred.
 
-Model-native reasoning plus a common visible-response contract is used because the reusable
-benchmark must not require every model family to expose an equivalent reasoning-off control.
-The MSc matched study still admits a final pair only if Pilot V6 completes every turn with
-`finish_reason=stop` and zero truncation under generation-v4.
+The benchmark standardises stimuli, conversation structure, conditions, repetitions and
+outcome measurement. It does not require heterogeneous models to expose identical tokenisers,
+hidden reasoning allocation or API fields. Model-native reasoning is retained because the
+reusable benchmark must not require every family to expose an equivalent reasoning-off
+control. The MSc matched study still admits the intended original pair only if Pilot V6
+completes every turn with `finish_reason=stop` and zero truncation under generation-v4.
 
 ## Scope
 
 Truncation remains a reportable technical benchmark outcome. It is not a substantive rubric
 score and does not make a model intrinsically unbenchmarkable. For the MSc multi-turn matched
 study, truncation remains a strict admission failure because an incomplete assistant turn can
-affect all later turns. No main-study data exist, the replacement screen remains NOT_RUN,
-Pilot V6 remains NOT_CONFIGURED, the active bundle remains NOT_CREATED, and the main study
-remains BLOCKED.
+affect all later turns. A newly truncated trajectory is persisted through that exact turn and
+then closed; resume cannot generate downstream turns. No main-study data exist, the
+replacement screen remains NOT_RUN, Pilot V6 remains NOT_RUN, the active bundle remains
+NOT_CREATED, and the main study remains BLOCKED.

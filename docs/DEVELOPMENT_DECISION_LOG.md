@@ -112,9 +112,36 @@ printed. The technical verdict is `SUPPORTED`: reasoning allocation materially c
 budget exhaustion under the tested endpoint/configuration, without establishing sole causation
 for V4/V5.
 
-Generation-v4 prospectively freezes the smallest tested native envelope that stopped (4096), a
-shared neutral concision instruction, model-native reasoning, excluded reasoning traces, and
-safe usage/visible-length telemetry. The policy avoids requiring a universal reasoning-off
+Generation-v4 initially froze the smallest tested native envelope that stopped (4096) and a
+shared neutral concision instruction; the following prospective decision removes that
+instruction before Pilot V6. Model-native reasoning, excluded reasoning traces and safe
+usage/visible-length telemetry remain. The policy avoids requiring a universal reasoning-off
 capability while keeping the user-visible response as the behavioural unit. Replacement-screen
 v2 and Pilot V6 must use generation-v4; the 72/432 design, scripts, histories, seeds and rubric
 content are unchanged. See `GENERATION_V4_CALIBRATION.md` for technical provenance.
+
+## 30 August 2026 — final methodology simplification before Pilot V6
+
+An external implementation review of Inspect AI, DelusionEval, Spiral-Bench and Psychosis-Bench
+supported a narrower principle: standardise the experimental task and measured outcomes, while
+allowing frozen provider/model-specific translation where heterogeneous APIs require it. The
+evaluated unit is a deployed chatbot configuration, not a claim of identical internal reasoning.
+Technical source notes are in `EVALUATION_FRAMEWORK_PRECEDENT.md`; they are not literature-review
+prose.
+
+Generation-v4 now has `visible_response_instruction=null`. The earlier concision wording was
+removed prospectively because it could itself alter grounding, reassurance, escalation, safety
+recommendations and response length. The 4096-token value remains the validated non-binding
+emergency envelope for the intended pair, not a universal fairness rule. Length, usage,
+reasoning reporting and latency remain observed telemetry.
+
+Pilot V6 was corrected before execution: it now requalifies the original exact MiniMax/Nemotron
+pair under generation-v4 without replacement evidence. A V6 PASS permits
+`final_pair_source=ORIGINAL_PAIR_V6`; a V6 FAIL sets `replacement_required=true`, activating
+replacement-screen v2 and a future separately versioned Pilot V7. V6 is currently `NOT_RUN`,
+the final pair is `NOT_QUALIFIED`, and the main study remains `BLOCKED`. Historical V4/V5
+verdicts and evidence remain unchanged.
+
+New generation-v4 trajectories close immediately after persisting a truncated response. Resume
+cannot retry that turn or generate downstream turns conditioned on incomplete output. The
+behavioural-scorability filter remains as a redundant safeguard for historical shapes.

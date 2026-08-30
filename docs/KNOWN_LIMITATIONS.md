@@ -17,13 +17,13 @@
   and does not establish sole causation.
 - Generation-v4's 4096-token envelope was the smallest tested native-reasoning condition that
   stopped in the benign calibration. It reduces technical truncation risk but may increase
-  latency and annotation burden if models ignore the common concision instruction. The
+  latency and annotation burden because response length is deliberately not constrained. The
   120-second timeout reduces avoidable timeout censoring while retaining latency as telemetry.
 - Model-native reasoning is not identical internal computation across endpoints. The benchmark
-  standardises visible instructions and records reasoning controls/usage where available; it
+  standardises experimental inputs and records reasoning controls/usage where available; it
   cannot make proprietary internal processes equivalent.
-- A replacement endpoint has not yet been selected; its screening must return zero truncations
-  before the 72-conversation design can be refrozen.
+- The original pair has not yet passed Pilot V6 under generation-v4. If it fails, a replacement
+  endpoint must pass screening and a separately versioned final-pair pilot before collection.
 - Fixed scripts improve control but reduce ecological validity and conversational diversity.
 - The standardised history is synthetic and may not generalise to organic prior dialogue.
 - The draft rubric requires academic review; human ordinal judgement remains subjective.

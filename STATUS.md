@@ -11,19 +11,21 @@
   response slots but is permanently `FAIL` because 11 responses ended `finish_reason=length`
   and were truncated. It cannot be resumed into PASS.
 - Nemotron failed the frozen generation-v2/v3 qualification; generation-v4 does not
-  retroactively change either verdict or silently reinstate it in the primary selection.
+  retroactively change either verdict. It prospectively requalifies the original pair before
+  main-study collection.
 - MiniMax demonstrated historical technical completion and remains Model A, but the final pair
   must still jointly pass Pilot V6 under generation-v4.
-- Replacement endpoint: `NOT_SELECTED`; Pilot V6: `NOT_CONFIGURED`.
-- Prospective generation profile: configuration 2.2.0 / generation-v4, with a shared concise
-  visible-response contract, model-native reasoning, excluded reasoning traces and a 4096-token
+- Replacement endpoint: `NOT_SELECTED`; replacement required: `false`; Pilot V6: `NOT_RUN`;
+  final pair: `NOT_QUALIFIED`.
+- Prospective generation profile: configuration 2.2.0 / generation-v4, with no added
+  target-facing style/length instruction, model-native reasoning, excluded reasoning traces and a 4096-token
   semantic emergency envelope with catalogue-verified per-model request-field translation and a
   120-second common timeout. Replacement screen v2 and Pilot V6 use this profile.
 - Main-study runner: offline by default; live Study V2 collection is blocked by
-  `replacement_endpoint_not_frozen` and by the recomputed Pilot V5 `FAIL`.
+  `final_model_pair_not_qualified` and the remaining active-bundle/human-governance gates.
 - Generation calibration: completed six benign technical requests at zero catalogue price;
   reasoning contribution `SUPPORTED`. It is not a pilot or research dataset.
-- Current full offline test suite: 280 passing tests.
+- Current full offline test suite: 285 passing tests.
 
 ## Immutable technical evidence
 
@@ -50,9 +52,9 @@ it completed 24/24 response slots but 11 Nemotron/Nvidia responses were truncate
 be resumed into PASS. Nemotron failed the prospectively frozen generation-v2/v3 qualification.
 MiniMax remains Model A but is not final-generation-v4 qualified until the pair passes Pilot V6.
 
-Replacement-screen v2 is `NOT_RUN`; the second exact endpoint is `NOT_SELECTED`, Pilot V6 is
-`NOT_CONFIGURED`, and the main study
-is `BLOCKED` by the `replacement_endpoint_not_frozen` blocker plus the recomputed Pilot V5
-`FAIL`. Collection remains a no-go until a replacement endpoint passes prospective technical
-screening, is explicitly frozen, and academic/rubric/ethics/data-management decisions are
-genuinely approved and human annotation is ready. No main-study result exists.
+Original-pair Pilot V6 is `NOT_RUN`; the final pair is `NOT_QUALIFIED`; replacement-screen v2
+is `NOT_RUN`, and replacement is not required unless V6 fails. The main study is `BLOCKED` by
+`final_model_pair_not_qualified` plus active-bundle and human-governance requirements.
+Collection remains a no-go until the final pair is technically qualified and the academic,
+rubric, ethics, data-management and annotation decisions are genuinely ready. No main-study
+result exists.
