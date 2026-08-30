@@ -149,12 +149,26 @@ def build_execution_summary(
     requested_models = Counter(row.requested_model_id for row in planned_rows)
     mismatch_count = sum(event.result.error_type == "resolved_model_mismatch" for event in errors)
     missing = len(planned_rows) * 6 - successes
+    closed_by_truncation = {
+        record.header.run_id
+        for record in records
+        if any(
+            event.result.truncated
+            or (event.result.finish_reason or "").strip().casefold() == "length"
+            for event in record.turns
+        )
+    }
+    unfillable_after_truncation = sum(
+        6 - len(record_by_id[run_id].turns) for run_id in closed_by_truncation
+    )
+    fillable_missing = missing - unfillable_after_truncation
     next_order = next(
         (
             row.execution_order
             for row in sorted(planned_rows, key=lambda item: item.execution_order)
             if row.run_id in record_by_id
             if len(record_by_id[row.run_id].turns) < 6
+            if row.run_id not in closed_by_truncation
         ),
         None,
     )
@@ -171,7 +185,7 @@ def build_execution_summary(
     sufficient = None
     if maximum_total_attempts is not None:
         remaining = max(0, maximum_total_attempts - attempts)
-        sufficient = remaining >= missing
+        sufficient = remaining >= fillable_missing
     return {
         "planned_conversations": len(planned_rows),
         "completed_conversations": sum(len(record.turns) == 6 for record in records),
@@ -179,6 +193,9 @@ def build_execution_summary(
         "failed_conversations": sum(not record.turns and bool(record.errors) for record in records),
         "successful_response_slots": successes,
         "missing_response_slots": missing,
+        "fillable_missing_response_slots": fillable_missing,
+        "unfillable_after_truncation_slots": unfillable_after_truncation,
+        "closed_by_truncation_conversations": len(closed_by_truncation),
         "technical_errors": len(errors),
         "http_attempts_used": attempts,
         "error_types": dict(Counter(event.result.error_type or "unknown" for event in errors)),
@@ -192,10 +209,12 @@ def build_execution_summary(
         "provider_mismatches": mismatch_count,
         "remaining_attempt_allowance": remaining,
         "remaining_allowance_sufficient": sufficient,
-        "missing_slots_can_be_filled": bool(missing and sufficient),
+        "missing_slots_can_be_filled": bool(fillable_missing and sufficient),
         "next_execution_order": next_order,
-        "resume_would_perform_useful_work": bool(missing and next_order is not None),
-        "can_resume_safely": mismatch_count == 0 and missing > 0 and next_order is not None,
+        "resume_would_perform_useful_work": bool(fillable_missing and next_order is not None),
+        "can_resume_safely": (
+            mismatch_count == 0 and fillable_missing > 0 and next_order is not None
+        ),
         "output_directory": str(store.root.resolve()),
     }
 
@@ -219,6 +238,11 @@ def print_execution_summary(label: str, summary: dict[str, Any]) -> None:
     print(f"Error types: {summary['error_types'] or {}}")
     print(f"Finish reasons: {summary['finish_reasons'] or {}}")
     print(f"Truncated responses: {summary['truncation_count']}")
+    print(
+        "Trajectories closed by truncation: "
+        f"{summary['closed_by_truncation_conversations']}; "
+        f"unfillable downstream slots={summary['unfillable_after_truncation_slots']}"
+    )
     print(f"Requested models: {summary['requested_models'] or {}}")
     print(f"Resolved models: {summary['resolved_models'] or {}}")
     print(f"Resolved providers: {summary['resolved_providers'] or {}}")

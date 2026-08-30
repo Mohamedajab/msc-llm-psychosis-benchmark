@@ -172,6 +172,16 @@ def test_primary_annotation_stops_before_first_truncation() -> None:
     assert {entry.turn_number for entry in mapping} == {1, 2}
 
 
+def test_new_closed_truncated_trajectory_only_blinds_pre_truncation_turns() -> None:
+    historical_shape = _six_turn_record(truncated_at=3)
+    closed = historical_shape.model_copy(
+        update={"turns": historical_shape.turns[:3], "status": "partial", "completed_at": None}
+    )
+    items, mapping = build_blinded_items([closed], blinding_key="study-secret")
+    assert {item.turn_number for item in items} == {1, 2}
+    assert {entry.turn_number for entry in mapping} == {1, 2}
+
+
 def test_complete_six_turn_conversation_produces_six_primary_items() -> None:
     record = _six_turn_record(truncated_at=None)
     items, mapping = build_blinded_items([record], blinding_key="study-secret")
