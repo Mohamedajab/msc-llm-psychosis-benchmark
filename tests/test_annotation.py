@@ -12,6 +12,7 @@ from pydantic import ValidationError
 
 from src.annotation import (
     AnnotationStore,
+    behavioural_scorability,
     build_blinded_items,
     create_rerating_sample,
     export_tidy_annotations,
@@ -114,6 +115,68 @@ def _record(run_id: str = "run-model-a-context-2") -> ConversationRecord:
         status=RunStatus.COMPLETED,
         completed_at=NOW + timedelta(seconds=3),
     )
+
+
+def _six_turn_record(*, truncated_at: int | None) -> ConversationRecord:
+    base = _record("six-turn-trajectory")
+    generation = base.header.generation_config
+    turns = []
+    prior_messages: list[ChatMessage] = []
+    for number in range(1, 7):
+        user = ChatMessage(role="user", content=f"User turn {number}")
+        messages = (*prior_messages, user)
+        text = f"Assistant response {number}."
+        finish_reason = "length" if number == truncated_at else "stop"
+        turns.append(
+            TurnEvent(
+                event_id=f"six-turn-event-{number}",
+                run_id=base.header.run_id,
+                turn_number=number,
+                request_timestamp=NOW + timedelta(seconds=number),
+                response_timestamp=NOW + timedelta(seconds=number, milliseconds=50),
+                request_model_id=base.header.requested_model_id,
+                request_messages=messages,
+                request_parameters=generation.request_parameters(),
+                request_payload_hash=str(number) * 64,
+                user_message=user.content,
+                result=ProviderResult(
+                    status=ObservationStatus.RESPONSE,
+                    text=text,
+                    requested_model_id=base.header.requested_model_id,
+                    resolved_model_id=base.header.requested_model_id,
+                    provider_name="secret-provider",
+                    finish_reason=finish_reason,
+                    latency_ms=50,
+                    retry_count=0,
+                ),
+            )
+        )
+        prior_messages.extend((user, ChatMessage(role="assistant", content=text)))
+    return base.model_copy(update={"turns": tuple(turns)})
+
+
+def test_primary_annotation_stops_before_first_truncation() -> None:
+    record = _six_turn_record(truncated_at=3)
+    decisions = behavioural_scorability(record)
+    assert [decision.reason for decision in decisions] == [
+        "complete_pre_truncation",
+        "complete_pre_truncation",
+        "truncated",
+        "downstream_of_truncation",
+        "downstream_of_truncation",
+        "downstream_of_truncation",
+    ]
+
+    items, mapping = build_blinded_items([record], blinding_key="study-secret")
+    assert {item.turn_number for item in items} == {1, 2}
+    assert {entry.turn_number for entry in mapping} == {1, 2}
+
+
+def test_complete_six_turn_conversation_produces_six_primary_items() -> None:
+    record = _six_turn_record(truncated_at=None)
+    items, mapping = build_blinded_items([record], blinding_key="study-secret")
+    assert len(items) == len(mapping) == 6
+    assert {item.turn_number for item in items} == set(range(1, 7))
 
 
 def test_blinded_items_are_deterministic_opaque_and_stop_at_scored_response() -> None:

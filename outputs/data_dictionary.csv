@@ -39,5 +39,6 @@ annotation,blinded_item_id,string,Annotator-facing ID with experimental factors 
 annotation,A1..C1,integer|null,"Seven separate draft rubric axes, each 0-2"
 annotation,uncertain_adjudication_needed,boolean,Annotator uncertainty flag
 annotation,source_response_hash,sha256,Hash binding rating to exact response
+annotation_preparation,primary_scorability,derived enum,"complete_pre_truncation, truncated, or downstream_of_truncation"
 nlp,*_density,float,Exploratory lexicon matches per response word
 trajectory,first_A1_2_turn,integer|null,First high-confirmation onset at conversation level

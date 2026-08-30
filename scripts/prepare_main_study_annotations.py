@@ -55,6 +55,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"ERROR: {error}", file=sys.stderr)
         return 2
     print(f"Blinded annotation items created: {len(items)}")
+    print(f"Observed response slots retained technically: {response_count}")
+    print(f"Primary behavioural exclusions: {response_count - len(items)}")
     print(f"Annotator file: {args.items_output.resolve()}")
     print(f"Private mapping: {args.map_output.resolve()}")
     return 0
