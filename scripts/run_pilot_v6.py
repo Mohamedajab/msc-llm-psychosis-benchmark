@@ -1,4 +1,4 @@
-"""Run the selection-bound final-pair Pilot V6; offline by default."""
+"""Run the original-pair generation-v4 Pilot V6; offline by default."""
 
 # ruff: noqa: E402
 from __future__ import annotations
@@ -33,12 +33,9 @@ from src.pilot_v6 import (
     print_safe_pilot_v6_assessment,
 )
 from src.provider_client import OpenRouterProvider
-from src.replacement_screening import SCREEN_VERSION
-from src.replacement_selection import selection_record_hash
 from src.storage import RawRunStore, atomic_write_json
 from src.study_execution import execute_manifest_rows, stored_http_attempts
 
-DEFAULT_SCREEN_ROOT = ROOT / "data" / "private" / SCREEN_VERSION
 DEFAULT_OUTPUT_ROOT = ROOT / "data" / "private" / PILOT_V6_VERSION
 DEFAULT_ASSESSMENT_ROOT = ROOT / "data" / "private" / "pilot-v6-qualification"
 DEFAULT_PREFLIGHT_ROOT = ROOT / "data" / "private" / "pilot-v6-preflight-failures"
@@ -67,7 +64,6 @@ def _store_catalogue_failure(
     *,
     root: str | Path,
     model_ids: dict[str, str],
-    selection_hash: str,
     error: Exception,
 ) -> Path:
     timestamp = datetime.now(UTC)
@@ -78,7 +74,7 @@ def _store_catalogue_failure(
             "record_type": "PILOT V6 PREFLIGHT FAILURE - NOT RESEARCH DATA",
             "timestamp": timestamp.isoformat(),
             "requested_models": model_ids,
-            "selection_record_hash": selection_hash,
+            "final_pair_source": "ORIGINAL_PAIR_V6",
             "generation_requests_made": 0,
             "error_type": type(error).__name__,
         },
@@ -87,9 +83,9 @@ def _store_catalogue_failure(
 
 def execute_live_pilot_v6(
     *,
-    selection_record_path: str | Path | None,
-    catalogue_record_path: str | Path | None,
-    screen_output_root: str | Path = DEFAULT_SCREEN_ROOT,
+    selection_record_path: str | Path | None = None,
+    catalogue_record_path: str | Path | None = None,
+    screen_output_root: str | Path | None = None,
     output_root: str | Path = DEFAULT_OUTPUT_ROOT,
     assessment_root: str | Path = DEFAULT_ASSESSMENT_ROOT,
     preflight_root: str | Path = DEFAULT_PREFLIGHT_ROOT,
@@ -100,27 +96,20 @@ def execute_live_pilot_v6(
     request_interval_seconds: float = MINIMUM_REQUEST_INTERVAL_SECONDS,
     repository_root: str | Path = ROOT,
 ):
-    if selection_record_path is None or catalogue_record_path is None:
-        raise PilotV6Error("Pilot V6 is NOT_CONFIGURED without a valid replacement selection")
     if request_interval_seconds < MINIMUM_REQUEST_INTERVAL_SECONDS:
         raise PilotV6Error("Pilot V6 request pacing must be at least five seconds")
-    selection, _, _, models, scripts, histories = load_pilot_v6_configuration(
+    _, _, _, models, scripts, histories = load_pilot_v6_configuration(
+        repository_root=repository_root,
         selection_record_path=selection_record_path,
         catalogue_record_path=catalogue_record_path,
         screen_output_root=screen_output_root,
-        repository_root=repository_root,
     )
     key = require_live_gates(
         live_requested=live_requested,
         live_confirmed=live_confirmed,
         environ=environ,
     )
-    rows = pilot_v6_rows(
-        selection_record_path=selection_record_path,
-        catalogue_record_path=catalogue_record_path,
-        screen_output_root=screen_output_root,
-        repository_root=repository_root,
-    )
+    rows = pilot_v6_rows(repository_root=repository_root)
     store = RawRunStore(output_root)
     prior_attempts = stored_http_attempts(store, [row.run_id for row in rows])
     successful = sum(
@@ -133,9 +122,6 @@ def execute_live_pilot_v6(
     remaining = MAX_HTTP_ATTEMPTS - prior_attempts
     if missing == 0:
         return assess_pilot_v6(
-            selection_record_path=selection_record_path,
-            catalogue_record_path=catalogue_record_path,
-            screen_output_root=screen_output_root,
             pilot_output_root=output_root,
             repository_root=repository_root,
             assessment_root=assessment_root,
@@ -167,7 +153,6 @@ def execute_live_pilot_v6(
         path = _store_catalogue_failure(
             root=preflight_root,
             model_ids=model_ids,
-            selection_hash=selection_record_hash(selection),
             error=error,
         )
         raise PilotV6Error(
@@ -184,9 +169,6 @@ def execute_live_pilot_v6(
         maximum_http_attempts=remaining,
     )
     return assess_pilot_v6(
-        selection_record_path=selection_record_path,
-        catalogue_record_path=catalogue_record_path,
-        screen_output_root=screen_output_root,
         pilot_output_root=output_root,
         repository_root=repository_root,
         assessment_root=assessment_root,
@@ -197,11 +179,8 @@ def execute_live_pilot_v6(
 def _print_offline(plan: dict[str, Any]) -> None:
     print("PILOT V6 OFFLINE PREFLIGHT - NO NETWORK CALL OCCURRED")
     print(f"pilot_v6={plan['status']}")
-    if plan["status"] == PilotV6Verdict.NOT_CONFIGURED.value:
-        print(f"blocker={plan['blocker']}")
-        print("network_requests=0")
-        return
-    print(f"replacement_model={plan['selected_replacement_model_id']}")
+    print(f"final_pair_source={plan['final_pair_source']}")
+    print(f"model_ids={plan['model_ids']}")
     print(
         f"generation={plan['generation_version']}; max_tokens={plan['max_tokens']}; "
         f"conversations={plan['planned_conversations']}; "
@@ -213,9 +192,6 @@ def _print_offline(plan: dict[str, Any]) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--selection-record", type=Path)
-    parser.add_argument("--catalogue-record", type=Path)
-    parser.add_argument("--screen-output-root", type=Path, default=DEFAULT_SCREEN_ROOT)
     parser.add_argument("--output-root", type=Path, default=DEFAULT_OUTPUT_ROOT)
     parser.add_argument("--assessment-root", type=Path, default=DEFAULT_ASSESSMENT_ROOT)
     parser.add_argument("--preflight-root", type=Path, default=DEFAULT_PREFLIGHT_ROOT)
@@ -229,9 +205,6 @@ def main(argv: list[str] | None = None) -> int:
         if not args.live:
             _print_offline(
                 build_pilot_v6_offline_plan(
-                    selection_record_path=args.selection_record,
-                    catalogue_record_path=args.catalogue_record,
-                    screen_output_root=args.screen_output_root,
                     repository_root=ROOT,
                 )
             )
@@ -244,9 +217,6 @@ def main(argv: list[str] | None = None) -> int:
             )
         load_dotenv(ROOT / ".env", override=False)
         assessment = execute_live_pilot_v6(
-            selection_record_path=args.selection_record,
-            catalogue_record_path=args.catalogue_record,
-            screen_output_root=args.screen_output_root,
             output_root=args.output_root,
             assessment_root=args.assessment_root,
             preflight_root=args.preflight_root,

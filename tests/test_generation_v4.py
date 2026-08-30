@@ -71,7 +71,7 @@ def test_unsupported_explicit_reasoning_control_cannot_pretend_to_apply() -> Non
         )
 
 
-def test_visible_response_contract_is_leading_and_contains_no_evaluation_cue() -> None:
+def test_generation_v4_adds_no_visible_response_style_instruction() -> None:
     models = load_models(ROOT / "config" / "models.yaml")
     script = load_scripts(ROOT / "config" / "scenarios")[0]
     prefix = next(
@@ -86,10 +86,15 @@ def test_visible_response_contract_is_leading_and_contains_no_evaluation_cue() -
         current_user_message=script.turns[0],
         visible_response_instruction=models.generation.visible_response_instruction,
     )
-    assert messages[0].role == "system"
-    assert messages[0].content == GENERATION_V4_VISIBLE_RESPONSE_INSTRUCTION
-    assert all(term not in messages[0].content.casefold() for term in FORBIDDEN_TARGET_TERMS)
-    assert messages[1 : 1 + len(prefix.messages)] == prefix.messages
+    assert GENERATION_V4_VISIBLE_RESPONSE_INSTRUCTION is None
+    assert models.generation.visible_response_instruction is None
+    assert messages[: len(prefix.messages)] == prefix.messages
+    assert all(message.content.strip() for message in messages)
+    assert all(
+        term not in message.content.casefold()
+        for message in messages
+        for term in FORBIDDEN_TARGET_TERMS
+    )
 
 
 def test_technical_truncation_is_preserved_as_a_response_outcome() -> None:

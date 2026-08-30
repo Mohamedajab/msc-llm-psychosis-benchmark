@@ -151,17 +151,15 @@ def test_runner_sends_complete_exact_history_to_provider_each_turn(
     contextual_prefix_length = (
         len(prefix.messages) if condition == ContextCondition.STANDARDISED_PRELOADED_CONTEXT else 0
     )
-    prefix_length = contextual_prefix_length + 1
+    prefix_length = contextual_prefix_length
     assert len(provider.calls) == 6
     assert [len(payload) for payload in provider.calls] == [
         prefix_length + (2 * turn_number) - 1 for turn_number in range(1, 7)
     ]
     for index, payload in enumerate(provider.calls):
         assert tuple(payload) == record.turns[index].request_messages
-        assert payload[0].role == "system"
-        assert payload[0].content == models.generation.visible_response_instruction
-        assert "research" not in payload[0].content.casefold()
-        assert "rubric" not in payload[0].content.casefold()
+        assert all(message.role != "system" for message in payload)
+        assert models.generation.visible_response_instruction is None
         for previous in range(index):
             offset = prefix_length + (2 * previous)
             assert payload[offset].content == script.turns[previous]

@@ -1,4 +1,4 @@
-"""Selection-bound Pilot V6 planning and fail-closed qualification.
+"""Original-pair Pilot V6 planning and fail-closed qualification.
 
 The predetermined minimum subset reuses the established monitoring fixed-belief
 technical scenario and crosses both final models with both context conditions.
@@ -9,11 +9,9 @@ from model behaviour.
 
 from __future__ import annotations
 
-import json
 import random
 import tempfile
-import uuid
-from datetime import UTC, datetime
+from datetime import datetime
 from enum import StrEnum
 from pathlib import Path
 from typing import Any
@@ -21,7 +19,6 @@ from typing import Any
 from pydantic import Field
 
 from src.config_loader import (
-    canonical_hash,
     configuration_bundle_hash,
     generation_for_model,
     load_histories,
@@ -37,16 +34,10 @@ from src.generation_profiles import (
 from src.payloads import build_target_messages
 from src.pilot_qualification import _assess_pilot
 from src.provider_client import DeterministicFixtureProvider
-from src.replacement_selection import (
-    ReplacementSelectionRecord,
-    selection_record_hash,
-    validate_replacement_selection_record,
-)
 from src.schemas import (
     ContextCondition,
     ManifestRow,
     ModelsConfig,
-    ModelSlot,
     RunStatus,
     StrictModel,
 )
@@ -58,6 +49,8 @@ PILOT_V6_ASSESSMENT_VERSION = "pilot-v6-qualification-v1.0.0"
 FINAL_CONFIGURATION_VERSION = "2.3.0"
 FINAL_STUDY_VERSION = "study-v2.1.0"
 MINIMAX_MODEL_ID = "minimax/minimax-m3:free"
+NEMOTRON_MODEL_ID = "nvidia/nemotron-3-super-120b-a12b:free"
+FINAL_PAIR_SOURCE = "ORIGINAL_PAIR_V6"
 SCRIPT_ID = "monitoring_fixed_belief_v1"
 GENERATION_VERSION = GENERATION_V4_VERSION
 MAX_COMPLETION_TOKENS = GENERATION_V4_MAX_COMPLETION_TOKENS
@@ -90,8 +83,8 @@ class PilotV6Assessment(StrictModel):
     study_version: str = FINAL_STUDY_VERSION
     configuration_version: str = FINAL_CONFIGURATION_VERSION
     generation_version: str = GENERATION_VERSION
-    selection_record_hash: str | None = None
-    selected_replacement_model_id: str | None = None
+    final_pair_source: str = FINAL_PAIR_SOURCE
+    intended_model_ids: dict[str, str] = Field(default_factory=dict)
     verdict: PilotV6Verdict
     failed_criteria: tuple[str, ...] = ()
     statistics: dict[str, Any] = Field(default_factory=dict)
@@ -99,22 +92,8 @@ class PilotV6Assessment(StrictModel):
     source_file_hashes: dict[str, str] = Field(default_factory=dict)
 
 
-def _catalogue_timestamp(path: str | Path) -> datetime:
-    try:
-        raw = json.loads(Path(path).read_text(encoding="utf-8"))
-        value = datetime.fromisoformat(str(raw["retrieved_at"]).replace("Z", "+00:00"))
-    except (OSError, KeyError, ValueError, json.JSONDecodeError) as error:
-        raise PilotV6Error("Selection catalogue timestamp is unavailable") from error
-    return value
-
-
-def build_selected_models_config(
-    *,
-    repository_root: str | Path,
-    selection: ReplacementSelectionRecord,
-    catalogue_record_path: str | Path,
-) -> ModelsConfig:
-    """Build the exact final-pair configuration without editing active files."""
+def build_original_pair_models_config(*, repository_root: str | Path) -> ModelsConfig:
+    """Build the exact prospective MiniMax/Nemotron pair without private evidence."""
 
     root = Path(repository_root)
     base = load_models(root / "config" / "models.yaml")
@@ -124,35 +103,22 @@ def build_selected_models_config(
         raise PilotV6Error("Frozen generation-v4 settings changed") from error
     if base.repetition_seeds != {1: 20260814, 2: 20260815}:
         raise PilotV6Error("Frozen repetition seeds changed")
-    selected = selection.selected_model_id
-    if (
-        not selected.endswith(":free")
-        or "placeholder" in selected.casefold()
-        or selected == MINIMAX_MODEL_ID
-    ):
-        raise PilotV6Error("Selected replacement identity is invalid or a placeholder")
-    minimax_parameter = base.model_slots["model_minimax"].completion_limit_parameter
-    if minimax_parameter is None:
-        raise PilotV6Error("MiniMax lacks a frozen completion-limit translation")
+    expected = {
+        "model_minimax": MINIMAX_MODEL_ID,
+        "model_nemotron": NEMOTRON_MODEL_ID,
+    }
+    if {name: slot.default_model_id for name, slot in base.model_slots.items()} != expected:
+        raise PilotV6Error("Frozen original-pair model identities changed")
+    if any(slot.completion_limit_parameter is None for slot in base.model_slots.values()):
+        raise PilotV6Error("Original pair lacks a frozen completion-limit translation")
     payload = base.model_dump(mode="json")
     payload.update(
         {
             "version": FINAL_CONFIGURATION_VERSION,
-            "catalogue_checked_at_utc": _catalogue_timestamp(catalogue_record_path).isoformat(),
-            "model_slots": {
-                "model_minimax": ModelSlot(
-                    default_model_id=MINIMAX_MODEL_ID,
-                    completion_limit_parameter=minimax_parameter,
-                ).model_dump(),
-                "model_replacement": ModelSlot(
-                    default_model_id=selected,
-                    completion_limit_parameter=selection.completion_limit_parameter,
-                ).model_dump(),
-            },
             "notes": [
-                "Prospective final Study V2 pair derived from governed replacement selection.",
-                f"Replacement selection record hash: {selection_record_hash(selection)}",
-                "Pilot V6 qualification and an active study-v2.1.0 bundle remain required.",
+                "Prospective final Study V2 original pair: MiniMax M3 and NVIDIA Nemotron 3 Super.",
+                "Pilot V6 jointly requalifies both endpoints under generation-v4.",
+                "Historical Pilot V4/V5 failures remain immutable under generation-v2/v3.",
                 "Provider identity is recorded; automatic fallback remains disabled.",
             ],
         }
@@ -162,18 +128,16 @@ def build_selected_models_config(
 
 def load_pilot_v6_configuration(
     *,
-    selection_record_path: str | Path,
-    catalogue_record_path: str | Path,
-    screen_output_root: str | Path,
     repository_root: str | Path,
-) -> tuple[ReplacementSelectionRecord, Any, Any, ModelsConfig, list[Any], list[Any]]:
+    selection_record_path: str | Path | None = None,
+    catalogue_record_path: str | Path | None = None,
+    screen_output_root: str | Path | None = None,
+) -> tuple[None, Any, Any, ModelsConfig, list[Any], list[Any]]:
+    # Legacy replacement arguments are intentionally non-authoritative. Keeping
+    # them as ignored keyword-only inputs avoids turning an API transition into
+    # permission to alter the frozen original-pair V6 design.
+    del selection_record_path, catalogue_record_path, screen_output_root
     root = Path(repository_root)
-    selection = validate_replacement_selection_record(
-        selection_record_path=selection_record_path,
-        catalogue_record_path=catalogue_record_path,
-        screen_output_root=screen_output_root,
-        repository_root=root,
-    )
     scripts = load_scripts(root / "config" / "scenarios")
     histories = load_histories(root / "config" / "histories")
     script = next((value for value in scripts if value.script_id == SCRIPT_ID), None)
@@ -182,26 +146,22 @@ def load_pilot_v6_configuration(
     prefix = next((value for value in histories if value.history_id == script.history_id), None)
     if prefix is None:
         raise PilotV6Error("Frozen Pilot V6 history is unavailable")
-    models = build_selected_models_config(
-        repository_root=root,
-        selection=selection,
-        catalogue_record_path=catalogue_record_path,
-    )
-    return selection, script, prefix, models, scripts, histories
+    models = build_original_pair_models_config(repository_root=root)
+    return None, script, prefix, models, scripts, histories
 
 
 def pilot_v6_rows(
     *,
-    selection_record_path: str | Path,
-    catalogue_record_path: str | Path,
-    screen_output_root: str | Path,
     repository_root: str | Path,
+    selection_record_path: str | Path | None = None,
+    catalogue_record_path: str | Path | None = None,
+    screen_output_root: str | Path | None = None,
 ) -> list[ManifestRow]:
     _, script, _, models, _, _ = load_pilot_v6_configuration(
+        repository_root=repository_root,
         selection_record_path=selection_record_path,
         catalogue_record_path=catalogue_record_path,
         screen_output_root=screen_output_root,
-        repository_root=repository_root,
     )
     cells = [(slot, condition) for slot in models.model_slots for condition in ContextCondition]
     random.Random(PILOT_RANDOM_SEED).shuffle(cells)
@@ -230,31 +190,18 @@ def pilot_v6_rows(
 
 def build_pilot_v6_offline_plan(
     *,
-    selection_record_path: str | Path | None,
-    catalogue_record_path: str | Path | None,
-    screen_output_root: str | Path,
     repository_root: str | Path,
+    selection_record_path: str | Path | None = None,
+    catalogue_record_path: str | Path | None = None,
+    screen_output_root: str | Path | None = None,
 ) -> dict[str, Any]:
-    if selection_record_path is None or catalogue_record_path is None:
-        return {
-            "pilot_version": PILOT_V6_VERSION,
-            "status": PilotV6Verdict.NOT_CONFIGURED.value,
-            "network_called": False,
-            "network_requests": 0,
-            "blocker": "replacement_selection_not_frozen",
-        }
-    selection, script, prefix, models, scripts, histories = load_pilot_v6_configuration(
+    _, script, prefix, models, scripts, histories = load_pilot_v6_configuration(
+        repository_root=repository_root,
         selection_record_path=selection_record_path,
         catalogue_record_path=catalogue_record_path,
         screen_output_root=screen_output_root,
-        repository_root=repository_root,
     )
-    rows = pilot_v6_rows(
-        selection_record_path=selection_record_path,
-        catalogue_record_path=catalogue_record_path,
-        screen_output_root=screen_output_root,
-        repository_root=repository_root,
-    )
+    rows = pilot_v6_rows(repository_root=repository_root)
     configuration_hash = configuration_bundle_hash(scripts, histories, models)
     with tempfile.TemporaryDirectory(prefix="pilot-v6-offline-") as temporary:
         provider = DeterministicFixtureProvider()
@@ -293,8 +240,8 @@ def build_pilot_v6_offline_plan(
         "status": "offline_preflight",
         "network_called": False,
         "network_requests": 0,
-        "selection_record_hash": selection_record_hash(selection),
-        "selected_replacement_model_id": selection.selected_model_id,
+        "final_pair_source": FINAL_PAIR_SOURCE,
+        "model_ids": {name: slot.default_model_id for name, slot in models.model_slots.items()},
         "configuration_version": models.version,
         "configuration_hash": configuration_hash,
         "generation_version": models.generation.version,
@@ -308,54 +255,24 @@ def build_pilot_v6_offline_plan(
     }
 
 
-def _not_configured_assessment(assessed_at: datetime | None = None) -> PilotV6Assessment:
-    return PilotV6Assessment(
-        assessment_id=uuid.uuid4().hex,
-        assessed_at=assessed_at or datetime.now(UTC),
-        verdict=PilotV6Verdict.NOT_CONFIGURED,
-        failed_criteria=("replacement_selection_not_frozen",),
-        statistics={
-            "expected_cells": PLANNED_CONVERSATIONS,
-            "present_cells": 0,
-            "completed_conversations": 0,
-            "successful_response_slots": 0,
-            "missing_response_slots": PLANNED_RESPONSE_SLOTS,
-            "technical_error_events": 0,
-            "http_attempts_used": 0,
-            "remaining_attempt_allowance": MAX_HTTP_ATTEMPTS,
-            "truncation_count": 0,
-            "finish_reasons": {},
-            "providers": {},
-        },
-        source_evidence_hash=canonical_hash([]),
-    )
-
-
 def assess_pilot_v6(
     *,
-    selection_record_path: str | Path | None,
-    catalogue_record_path: str | Path | None,
-    screen_output_root: str | Path,
     pilot_output_root: str | Path,
     repository_root: str | Path,
+    selection_record_path: str | Path | None = None,
+    catalogue_record_path: str | Path | None = None,
+    screen_output_root: str | Path | None = None,
     assessment_root: str | Path | None = None,
     persist: bool = False,
     assessed_at: datetime | None = None,
 ) -> PilotV6Assessment:
-    if selection_record_path is None or catalogue_record_path is None:
-        return _not_configured_assessment(assessed_at)
-    selection, script, prefix, models, scripts, histories = load_pilot_v6_configuration(
+    _, script, prefix, models, scripts, histories = load_pilot_v6_configuration(
+        repository_root=repository_root,
         selection_record_path=selection_record_path,
         catalogue_record_path=catalogue_record_path,
         screen_output_root=screen_output_root,
-        repository_root=repository_root,
     )
-    rows = pilot_v6_rows(
-        selection_record_path=selection_record_path,
-        catalogue_record_path=catalogue_record_path,
-        screen_output_root=screen_output_root,
-        repository_root=repository_root,
-    )
+    rows = pilot_v6_rows(repository_root=repository_root)
 
     def configuration_loader():  # noqa: ANN202
         return None, None, models, scripts, histories
@@ -430,8 +347,9 @@ def assess_pilot_v6(
     assessment = PilotV6Assessment(
         assessment_id=base.assessment_id,
         assessed_at=base.assessed_at,
-        selection_record_hash=selection_record_hash(selection),
-        selected_replacement_model_id=selection.selected_model_id,
+        intended_model_ids={
+            name: slot.default_model_id for name, slot in models.model_slots.items()
+        },
         verdict=verdict,
         failed_criteria=failed_criteria,
         statistics=base.statistics,
@@ -456,7 +374,8 @@ def print_safe_pilot_v6_assessment(assessment: PilotV6Assessment) -> None:
     stats = assessment.statistics
     print("PILOT V6 TECHNICAL QUALIFICATION - NOT RESEARCH DATA")
     print(f"verdict={assessment.verdict.value}")
-    print(f"selected_replacement_model_id={assessment.selected_replacement_model_id or 'none'}")
+    print(f"final_pair_source={assessment.final_pair_source}")
+    print(f"intended_model_ids={assessment.intended_model_ids}")
     print(
         f"cells={stats['present_cells']}/{stats['expected_cells']}; "
         f"completed_conversations={stats['completed_conversations']}/4"
@@ -472,5 +391,5 @@ def print_safe_pilot_v6_assessment(assessment: PilotV6Assessment) -> None:
     print(f"truncation_count={stats['truncation_count']}")
     print(f"failed_criteria={list(assessment.failed_criteria)}")
     print(f"source_evidence_hash={assessment.source_evidence_hash}")
-    if assessment.verdict == PilotV6Verdict.NOT_CONFIGURED:
+    if assessment.verdict in {PilotV6Verdict.NOT_CONFIGURED, PilotV6Verdict.NOT_RUN}:
         print("network_requests=0")

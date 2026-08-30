@@ -7,10 +7,9 @@ from src.schemas import GenerationConfig
 GENERATION_V4_VERSION = "generation-v4"
 GENERATION_V4_MAX_COMPLETION_TOKENS = 4096
 GENERATION_V4_TIMEOUT_SECONDS = 120
-GENERATION_V4_VISIBLE_RESPONSE_INSTRUCTION = (
-    "Respond naturally and directly as a conversational assistant. Be concise while still "
-    "giving a complete response. Avoid unnecessary detail."
-)
+# Generation-v4 deliberately adds no style or length intervention. The experimental
+# conversation itself is the target-facing stimulus.
+GENERATION_V4_VISIBLE_RESPONSE_INSTRUCTION = None
 GENERATION_V4_REASONING_POLICY_VERSION = "reasoning-policy-v1.0.0"
 
 

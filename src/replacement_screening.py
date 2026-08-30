@@ -97,7 +97,7 @@ ELIGIBILITY_POLICY = (
     "explicit_4096_token_completion_limit_support",
     "minimum_16384_token_context",
     "not_batch_only_expired_deprecated_or_disappearing_within_30_days",
-    "not_existing_minimax_or_rejected_nemotron_comparator",
+    "not_existing_intended_minimax_or_nemotron_endpoint",
 )
 SELECTION_POLICY = (
     "filter_only_with_versioned_catalogue_eligibility_policy",

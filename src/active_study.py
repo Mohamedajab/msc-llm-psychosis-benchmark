@@ -25,16 +25,12 @@ from src.config_loader import canonical_hash, load_models, load_scripts, resolve
 from src.manifest import generate_manifest, manifest_dataframe, validate_manifest
 from src.pilot_v6 import (
     FINAL_CONFIGURATION_VERSION,
+    FINAL_PAIR_SOURCE,
     FINAL_STUDY_VERSION,
     GENERATION_VERSION,
     PilotV6Verdict,
     assess_pilot_v6,
-    build_selected_models_config,
-)
-from src.replacement_selection import (
-    ReplacementSelectionRecord,
-    selection_record_hash,
-    validate_replacement_selection_record,
+    build_original_pair_models_config,
 )
 from src.schemas import ManifestRow, ModelsConfig, StrictModel
 
@@ -47,6 +43,7 @@ STATIC_PROTOCOL_INPUTS = (
     "config/main-study-governance.yaml",
     "config/rubric.yaml",
     "docs/EXECUTION_POLICY.md",
+    "docs/EVALUATION_FRAMEWORK_PRECEDENT.md",
     "docs/FINAL_STUDY_READINESS_WORKFLOW.md",
     "docs/GENERATION_V4_CALIBRATION.md",
     "docs/PROTOCOL_DEVIATION_STUDY_V2.md",
@@ -97,8 +94,7 @@ class ActiveBundleMetadata(StrictModel):
     planned_conversations: int = 72
     planned_response_slots: int = 432
     model_ids: dict[str, str]
-    replacement_selection_record_hash: str
-    replacement_screen_evidence_hash: str
+    final_pair_source: str
     pilot_v6_source_evidence_hash: str
     rubric_status: str
     items: tuple[ActiveBundleItem, ...]
@@ -170,43 +166,22 @@ def build_final_manifest(*, repository_root: str | Path, models: ModelsConfig) -
 def _validated_prerequisites(
     *,
     repository_root: Path,
-    selection_record_path: str | Path | None,
-    catalogue_record_path: str | Path | None,
-    screen_output_root: str | Path | None,
     pilot_output_root: str | Path | None,
-) -> tuple[ReplacementSelectionRecord, Any, ModelsConfig, list[ManifestRow]]:
-    if None in (
-        selection_record_path,
-        catalogue_record_path,
-        screen_output_root,
-        pilot_output_root,
-    ):
-        raise ActiveStudyError("Replacement selection and Pilot V6 PASS evidence are required")
-    selection = validate_replacement_selection_record(
-        selection_record_path=selection_record_path,
-        catalogue_record_path=catalogue_record_path,
-        screen_output_root=screen_output_root,
-        repository_root=repository_root,
-    )
+) -> tuple[Any, ModelsConfig, list[ManifestRow]]:
+    if pilot_output_root is None:
+        raise ActiveStudyError("Original-pair Pilot V6 PASS evidence is required")
     assessment = assess_pilot_v6(
-        selection_record_path=selection_record_path,
-        catalogue_record_path=catalogue_record_path,
-        screen_output_root=screen_output_root,
         pilot_output_root=pilot_output_root,
         repository_root=repository_root,
         persist=False,
     )
     if assessment.verdict != PilotV6Verdict.PASS:
         raise ActiveStudyError(f"Pilot V6 qualification is {assessment.verdict.value}, not PASS")
-    if assessment.selection_record_hash != selection_record_hash(selection):
-        raise ActiveStudyError("Pilot V6 evidence is bound to a different replacement selection")
-    models = build_selected_models_config(
-        repository_root=repository_root,
-        selection=selection,
-        catalogue_record_path=catalogue_record_path,
-    )
+    if assessment.final_pair_source != FINAL_PAIR_SOURCE:
+        raise ActiveStudyError("Pilot V6 evidence does not qualify the frozen original pair")
+    models = build_original_pair_models_config(repository_root=repository_root)
     rows = build_final_manifest(repository_root=repository_root, models=models)
-    return selection, assessment, models, rows
+    return assessment, models, rows
 
 
 def freeze_active_study_bundle(
@@ -221,7 +196,11 @@ def freeze_active_study_bundle(
     created_at: datetime | None = None,
     software_commit: str | None = None,
 ) -> ActiveBundleMetadata:
-    """Create the final bundle only after recomputed screen and Pilot V6 PASS."""
+    """Create the original-pair final bundle only after a recomputed Pilot V6 PASS."""
+
+    # The replacement arguments are retained for call-site compatibility only.
+    # They are not prerequisites and cannot authorise the original-pair path.
+    del selection_record_path, catalogue_record_path, screen_output_root
 
     repo = Path(repository_root).resolve()
     artifacts = Path(artifact_root).resolve()
@@ -234,11 +213,8 @@ def freeze_active_study_bundle(
         raise ActiveStudyError(
             "Final study artifacts already exist; silent replacement is forbidden"
         )
-    selection, assessment, models, rows = _validated_prerequisites(
+    assessment, models, rows = _validated_prerequisites(
         repository_root=repo,
-        selection_record_path=selection_record_path,
-        catalogue_record_path=catalogue_record_path,
-        screen_output_root=screen_output_root,
         pilot_output_root=pilot_output_root,
     )
     if any("placeholder" in value.casefold() for value in resolve_model_ids(models).values()):
@@ -289,26 +265,20 @@ def freeze_active_study_bundle(
             )
         evidence_dir = stage / "evidence"
         evidence_dir.mkdir(parents=True, exist_ok=True)
-        selection_bytes = json.dumps(
-            selection.model_dump(mode="json"), sort_keys=True, indent=2
-        ).encode()
         assessment_bytes = json.dumps(
             assessment.model_dump(mode="json"), sort_keys=True, indent=2
         ).encode()
-        (evidence_dir / "replacement-selection.json").write_bytes(selection_bytes)
         (evidence_dir / "pilot-v6-assessment.json").write_bytes(assessment_bytes)
         metadata = ActiveBundleMetadata(
             created_at=created,
             software_commit=software_commit or _git_commit(repo),
             model_ids=resolve_model_ids(models),
             generation_profile_hash=canonical_hash(models.generation),
-            replacement_selection_record_hash=selection_record_hash(selection),
-            replacement_screen_evidence_hash=selection.technical_screen_evidence_hash,
+            final_pair_source=FINAL_PAIR_SOURCE,
             pilot_v6_source_evidence_hash=assessment.source_evidence_hash,
             rubric_status="draft_pending_human_approval",
             items=tuple(items),
             evidence_references={
-                "replacement_selection": "evidence/replacement-selection.json",
                 "pilot_v6_assessment": "evidence/pilot-v6-assessment.json",
             },
         )
@@ -333,6 +303,9 @@ def verify_active_study_bundle(
 ) -> ActiveBundleMetadata:
     """Verify bundle integrity plus equality with current collection sources."""
 
+    # Replacement evidence is non-authoritative on the original-pair V6 path.
+    del selection_record_path, catalogue_record_path, screen_output_root
+
     bundle = Path(bundle_root)
     metadata_path = bundle / "bundle.json"
     if not metadata_path.is_file():
@@ -356,17 +329,12 @@ def verify_active_study_bundle(
         if not current.is_file() or _sha256_bytes(_canonical_bytes(current)) != item.sha256:
             raise ActiveStudyError(f"Current-source mismatch: {item.source_path}")
 
-    selection, assessment, models, rows = _validated_prerequisites(
+    assessment, models, rows = _validated_prerequisites(
         repository_root=repo,
-        selection_record_path=selection_record_path,
-        catalogue_record_path=catalogue_record_path,
-        screen_output_root=screen_output_root,
         pilot_output_root=pilot_output_root,
     )
-    if metadata.replacement_selection_record_hash != selection_record_hash(selection):
-        raise ActiveStudyError("Active bundle selection record is stale")
-    if metadata.replacement_screen_evidence_hash != selection.technical_screen_evidence_hash:
-        raise ActiveStudyError("Active bundle replacement-screen evidence is stale")
+    if metadata.final_pair_source != FINAL_PAIR_SOURCE:
+        raise ActiveStudyError("Active bundle final-pair source is invalid")
     if metadata.pilot_v6_source_evidence_hash != assessment.source_evidence_hash:
         raise ActiveStudyError("Active bundle Pilot V6 evidence is stale")
     if metadata.model_ids != resolve_model_ids(models):
@@ -375,7 +343,7 @@ def verify_active_study_bundle(
         raise ActiveStudyError("Active bundle generation profile is stale")
     final_models = load_models(artifacts / FINAL_MODELS_RELATIVE_PATH)
     if final_models != models:
-        raise ActiveStudyError("Final model configuration differs from recomputed selection")
+        raise ActiveStudyError("Final model configuration differs from recomputed original pair")
     final_rows = _load_manifest(artifacts / FINAL_MANIFEST_RELATIVE_PATH)
     errors = validate_manifest(
         final_rows,
@@ -385,5 +353,5 @@ def verify_active_study_bundle(
     actual_csv = manifest_dataframe(final_rows).to_csv(index=False)
     expected_csv = manifest_dataframe(rows).to_csv(index=False)
     if errors or actual_csv != expected_csv:
-        raise ActiveStudyError("Final manifest differs from recomputed selected-model design")
+        raise ActiveStudyError("Final manifest differs from recomputed original-pair design")
     return metadata

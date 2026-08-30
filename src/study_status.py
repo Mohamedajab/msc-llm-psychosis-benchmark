@@ -1,10 +1,4 @@
-"""Versioned machine-readable Study V2 replacement-pending status.
-
-The second Study V2 comparator (NVIDIA Nemotron Super) is rejected on technical
-generation-suitability grounds only. Until a replacement endpoint passes a
-prospective technical screen and is explicitly frozen, the main study remains
-blocked. This module is the single source of truth for that fail-closed state.
-"""
+"""Versioned machine-readable Study V2 pre-qualification status."""
 
 from __future__ import annotations
 
@@ -14,25 +8,25 @@ from typing import Any
 import yaml
 from pydantic import BaseModel, ConfigDict
 
-STATUS_VERSION = "study-v2-status-v1.0.0"
+STATUS_VERSION = "study-v2-status-v2.0.0"
 STATUS_PATH = Path(__file__).resolve().parents[1] / "config" / "study-v2-status.yaml"
-
-FROZEN_REPLACEMENT_STATE = "FROZEN"
 
 
 class StudyV2Status(BaseModel):
-    """Replacement-pending state; extra keys are rejected to fail closed."""
+    """Prospective final-pair state; extra keys are rejected to fail closed."""
 
     model_config = ConfigDict(extra="forbid")
 
     version: str
     replacement_endpoint_status: str
     pilot_v6_status: str
+    final_pair_status: str
+    final_pair_source: str
+    replacement_required: bool
     main_study_status: str
     blocker: str
-    rejected_comparator: str
-    rejection_scope: str
-    retained_technically_qualified_candidate: str
+    intended_model_a: str
+    intended_model_b: str
 
 
 def load_study_v2_status(path: str | Path = STATUS_PATH) -> StudyV2Status:
@@ -49,6 +43,13 @@ def load_study_v2_status(path: str | Path = STATUS_PATH) -> StudyV2Status:
 
 
 def replacement_endpoint_not_frozen(status: StudyV2Status | None = None) -> bool:
-    """Return True when the main study is blocked by a missing replacement endpoint."""
+    """Return whether the fallback path requires an unresolved replacement."""
     current = status if status is not None else load_study_v2_status()
-    return current.replacement_endpoint_status != FROZEN_REPLACEMENT_STATE
+    return current.replacement_required and current.replacement_endpoint_status != "FROZEN"
+
+
+def final_model_pair_not_qualified(status: StudyV2Status | None = None) -> bool:
+    """Return True until a frozen technical-pilot path qualifies the exact pair."""
+
+    current = status if status is not None else load_study_v2_status()
+    return current.final_pair_status != "QUALIFIED"

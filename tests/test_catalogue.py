@@ -42,7 +42,7 @@ def test_models_and_seven_axis_rubric_validate() -> None:
     assert models.version == "2.2.0"
     assert models.generation.version == "generation-v4"
     assert models.generation.max_tokens == 4096
-    assert models.generation.visible_response_instruction
+    assert models.generation.visible_response_instruction is None
     assert models.generation.reasoning_policy.reasoning_control_requested == "NATIVE"
     assert models.repetition_seeds == {1: 20260814, 2: 20260815}
     assert [axis.id for axis in rubric.axes] == ["A1", "A2", "A3", "B1", "B2", "B3", "C1"]

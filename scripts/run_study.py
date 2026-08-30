@@ -42,7 +42,7 @@ from src.study_execution import (
     execute_manifest_rows,
     print_execution_summary,
 )
-from src.study_status import load_study_v2_status, replacement_endpoint_not_frozen
+from src.study_status import final_model_pair_not_qualified, load_study_v2_status
 
 STUDY_VERSION = "study-v2.0.0"
 MANIFEST_PATH = ROOT / "outputs" / "experiment_manifest.csv"
@@ -115,10 +115,13 @@ def build_offline_preflight(
         "pilot_v5_qualification": pilot_v5.verdict.value,
         "pilot_v5_failed_criteria": list(pilot_v5.failed_criteria),
         "replacement_endpoint_status": status.replacement_endpoint_status,
-        "pilot_v6_status": status.pilot_v6_status,
+        "pilot_v6_status": readiness.pilot_v6,
+        "final_pair_status": readiness.final_pair_status,
+        "final_pair_source": readiness.final_pair_source,
+        "replacement_required": readiness.replacement_required,
         "main_study_status": status.main_study_status,
         "replacement_blocker": status.blocker,
-        "main_study_live_blocked": replacement_endpoint_not_frozen(status)
+        "main_study_live_blocked": final_model_pair_not_qualified(status)
         or pilot_v5.main_study_blocked
         or readiness.main_study != "READY",
         "replacement_catalogue": readiness.replacement_catalogue,
@@ -209,13 +212,8 @@ def execute_live_study(
         raise StudyPreflightError(
             f"Main Study V2 is blocked: {primary}; all blockers={list(readiness.blockers)}"
         )
-    if None in (
-        catalogue_record_path,
-        selection_record_path,
-        screen_output_root,
-        active_bundle_root,
-    ):
-        raise StudyPreflightError("Main Study V2 active evidence paths are incomplete")
+    if active_bundle_root is None:
+        raise StudyPreflightError("Main Study V2 active bundle path is required")
     verify_active_study_bundle(
         bundle_root=active_bundle_root,
         repository_root=ROOT,
@@ -312,6 +310,9 @@ def _print_offline(summary: dict[str, Any]) -> None:
     print(f"Pilot V5: {summary['pilot_v5_qualification']}")
     print(f"replacement endpoint: {summary['replacement_endpoint_status']}")
     print(f"Pilot V6: {summary['pilot_v6_status']}")
+    print(f"final pair: {summary['final_pair_status']}")
+    print(f"final pair source: {summary['final_pair_source']}")
+    print(f"replacement required: {'yes' if summary['replacement_required'] else 'no'}")
     print(f"replacement screen: {summary['replacement_screen']}")
     print(f"replacement selection: {summary['replacement_selection']}")
     print(f"active final bundle: {summary['active_bundle']}")

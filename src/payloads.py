@@ -30,7 +30,7 @@ def build_target_messages(
     current_user_message: str,
     visible_response_instruction: str | None = None,
 ) -> tuple[ChatMessage, ...]:
-    """Return the exact visible-response contract, history and current user turn."""
+    """Return the optional instruction, history and current user turn exactly."""
     if condition == ContextCondition.STANDARDISED_PRELOADED_CONTEXT and prefix is None:
         raise ValueError("The standardised context condition requires its frozen prefix")
     messages: list[ChatMessage] = []

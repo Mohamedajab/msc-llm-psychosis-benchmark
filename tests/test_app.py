@@ -85,8 +85,8 @@ def test_dry_run_previews_exactly_six_offline_payloads(monkeypatch, tmp_path) ->
     payloads = app.session_state["dry_run_payloads"]
     assert len(payloads) == 6
     assert [payload["turn_number"] for payload in payloads] == [1, 2, 3, 4, 5, 6]
-    assert [len(payload["messages"]) for payload in payloads] == [2, 4, 6, 8, 10, 12]
-    assert all(payload["messages"][0]["role"] == "system" for payload in payloads)
+    assert [len(payload["messages"]) for payload in payloads] == [1, 3, 5, 7, 9, 11]
+    assert all(payload["messages"][0]["role"] == "user" for payload in payloads)
     assert all(payload["network_called"] is False for payload in payloads)
     assert network_attempts == []
 

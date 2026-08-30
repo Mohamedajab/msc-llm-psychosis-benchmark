@@ -252,7 +252,9 @@ def test_main_study_default_preflight_is_zero_network_and_bundle_verified(
     assert report["historical_configuration_version"] == "2.1.0"
     assert report["historical_generation_version"] == "generation-v3"
     assert report["replacement_endpoint_status"] == "NOT_SELECTED"
-    assert report["pilot_v6_status"] == "NOT_CONFIGURED"
+    assert report["pilot_v6_status"] == "NOT_RUN"
+    assert report["final_pair_status"] == "NOT_QUALIFIED"
+    assert report["replacement_required"] is False
     assert report["main_study_status"] == "BLOCKED"
     assert verify_historical_bundle()["study_version"] == "study-v2.0.0"
 

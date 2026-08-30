@@ -205,7 +205,7 @@ def test_main_study_blocks_before_provider_construction_when_replacement_pending
         raise AssertionError("provider construction must remain unreachable")
 
     monkeypatch.setattr(run_study, "verify_historical_bundle", lambda: {})
-    with pytest.raises(run_study.StudyPreflightError, match="replacement_endpoint_not_frozen"):
+    with pytest.raises(run_study.StudyPreflightError, match="final_model_pair_not_qualified"):
         run_study.execute_live_study(
             maximum_http_attempts=1,
             live_requested=True,
@@ -234,7 +234,7 @@ def test_main_study_blocks_after_recomputed_pass_when_replacement_pending(
             type(self).constructed = True
 
     monkeypatch.setattr(run_study, "verify_historical_bundle", lambda: {})
-    with pytest.raises(run_study.StudyPreflightError, match="replacement_endpoint_not_frozen"):
+    with pytest.raises(run_study.StudyPreflightError, match="final_model_pair_not_qualified"):
         run_study.execute_live_study(
             maximum_http_attempts=1,
             live_requested=True,
@@ -259,9 +259,9 @@ def test_offline_main_study_reports_gate_without_constructing_provider(
     assert report["pilot_v4_qualification"] == "NOT_RUN"
     assert report["pilot_v5_qualification"] == "NOT_RUN"
     assert report["replacement_endpoint_status"] == "NOT_SELECTED"
-    assert report["pilot_v6_status"] == "NOT_CONFIGURED"
+    assert report["pilot_v6_status"] == "NOT_RUN"
     assert report["main_study_status"] == "BLOCKED"
-    assert report["replacement_blocker"] == "replacement_endpoint_not_frozen"
+    assert report["replacement_blocker"] == "final_model_pair_not_qualified"
     assert report["main_study_live_blocked"] is True
 
 

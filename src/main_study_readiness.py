@@ -18,6 +18,8 @@ from src.schemas import StrictModel
 
 READINESS_VERSION = "main-study-readiness-v1.0.0"
 GOVERNANCE_VERSION = "main-study-governance-v1.0.0"
+ORIGINAL_PAIR_SOURCE = "ORIGINAL_PAIR_V6"
+NO_FINAL_PAIR_SOURCE = "NONE"
 
 
 class ReadinessState(StrEnum):
@@ -28,6 +30,8 @@ class ReadinessState(StrEnum):
     NOT_CREATED = "NOT_CREATED"
     INVALID = "INVALID"
     PASS = "PASS"
+    NOT_QUALIFIED = "NOT_QUALIFIED"
+    QUALIFIED = "QUALIFIED"
     BLOCKED = "BLOCKED"
     READY = "READY"
 
@@ -48,6 +52,9 @@ class MainStudyReadiness(StrictModel):
     replacement_screen: str
     replacement_selection: str
     pilot_v6: str
+    final_pair_status: str
+    final_pair_source: str
+    replacement_required: bool
     active_bundle: str
     governance: str
     main_study: str
@@ -122,22 +129,30 @@ def evaluate_main_study_readiness(
             selection_state = ReadinessState.INVALID.value
             screen_state = ReadinessState.INVALID.value
             safe["selection_error_type"] = type(error).__name__
-    if selection_state != ReadinessState.PASS.value:
-        blockers.extend(("replacement_endpoint_not_frozen", "replacement_screen_not_pass"))
-
-    pilot_state = ReadinessState.NOT_CONFIGURED.value
     pilot_assessment = assess_pilot_v6(
-        selection_record_path=(selection_record_path if selection is not None else None),
-        catalogue_record_path=(catalogue_record_path if selection is not None else None),
-        screen_output_root=screen_output_root or root / "data" / "raw" / "replacement-screens",
-        pilot_output_root=pilot_output_root or root / "data" / "raw" / "runs",
+        pilot_output_root=(
+            pilot_output_root or root / "data" / "private" / "technical-pilot-v6.0.0"
+        ),
         repository_root=root,
         persist=False,
     )
     pilot_state = pilot_assessment.verdict.value
     safe["pilot_v6_source_evidence_hash"] = pilot_assessment.source_evidence_hash
-    if pilot_assessment.verdict != PilotV6Verdict.PASS:
-        blockers.append("pilot_v6_not_pass")
+    if pilot_assessment.verdict == PilotV6Verdict.PASS:
+        final_pair_status = ReadinessState.QUALIFIED.value
+        final_pair_source = ORIGINAL_PAIR_SOURCE
+        replacement_required = False
+    else:
+        final_pair_status = ReadinessState.NOT_QUALIFIED.value
+        final_pair_source = NO_FINAL_PAIR_SOURCE
+        replacement_required = pilot_assessment.verdict == PilotV6Verdict.FAIL
+        blockers.extend(("final_model_pair_not_qualified", "pilot_v6_not_pass"))
+    safe["final_pair_source"] = final_pair_source
+    safe["replacement_required"] = replacement_required
+    if replacement_required and selection_state != ReadinessState.PASS.value:
+        blockers.extend(("replacement_endpoint_not_frozen", "replacement_screen_not_pass"))
+    elif replacement_required:
+        blockers.append("replacement_pair_pilot_v7_not_pass")
 
     active_state = ReadinessState.NOT_CREATED.value
     if active_bundle_root is not None and Path(active_bundle_root).is_dir():
@@ -182,6 +197,9 @@ def evaluate_main_study_readiness(
         replacement_screen=screen_state,
         replacement_selection=selection_state,
         pilot_v6=pilot_state,
+        final_pair_status=final_pair_status,
+        final_pair_source=final_pair_source,
+        replacement_required=replacement_required,
         active_bundle=active_state,
         governance=governance_state,
         main_study=ReadinessState.READY.value if ready else ReadinessState.BLOCKED.value,
