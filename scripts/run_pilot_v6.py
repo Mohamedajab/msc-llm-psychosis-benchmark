@@ -153,6 +153,8 @@ def execute_live_pilot_v6(
             tuple(model_ids.values()),
             minimum_context_tokens=models.provider_routing.minimum_context_tokens,
             timeout_seconds=min(20, models.generation.timeout_seconds),
+            required_completion_tokens=models.generation.max_tokens,
+            completion_limit_parameter=models.generation.completion_limit_parameter,
         )
     except (OSError, RuntimeError, ValueError) as error:
         path = _store_catalogue_failure(

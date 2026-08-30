@@ -251,10 +251,10 @@ def test_configured_offline_plan_freezes_final_pair_generation_and_subset(tmp_pa
         "model_minimax": MINIMAX_MODEL_ID,
         "model_replacement": REPLACEMENT,
     }
-    assert models.generation.version == "generation-v3"
+    assert models.generation.version == "generation-v4"
     assert models.generation.temperature == 0.2
     assert models.generation.top_p == 1.0
-    assert models.generation.max_tokens == 1024
+    assert models.generation.max_tokens == 4096
     assert models.repetition_seeds == {1: 20260814, 2: 20260815}
     plan = build_pilot_v6_offline_plan(
         selection_record_path=selection,
@@ -377,7 +377,7 @@ def test_pilot_v6_namespace_ignores_other_evidence_but_rejects_mixed_v6_run(
     output = tmp_path / "pilot"
     for namespace in (
         "technical-pilot-v5_foreign",
-        "replacement-screen-v1.0.0_foreign",
+        "replacement-screen-v2.0.0_foreign",
         "study-v2.1.0_foreign",
         "demo-fixture_foreign",
     ):
@@ -641,8 +641,9 @@ def test_final_freeze_creates_exact_72_row_selected_pair_and_safe_bundle(tmp_pat
         tmp_path
     )
     assert metadata.study_version == "study-v2.1.0"
-    assert metadata.configuration_version == "2.2.0"
-    assert metadata.generation_version == "generation-v3"
+    assert metadata.configuration_version == "2.3.0"
+    assert metadata.generation_version == "generation-v4"
+    assert len(metadata.generation_profile_hash) == 64
     assert metadata.planned_conversations == 72
     assert metadata.planned_response_slots == 432
     assert metadata.model_ids == {

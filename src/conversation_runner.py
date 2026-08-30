@@ -112,6 +112,7 @@ class ConversationRunner:
                 prefix=prefix,
                 completed_exchanges=exchanges,
                 current_user_message=user_message,
+                visible_response_instruction=header.generation_config.visible_response_instruction,
             )
             payloads.append(
                 {
@@ -153,6 +154,7 @@ class ConversationRunner:
                 prefix=prefix,
                 completed_exchanges=exchanges,
                 current_user_message=user_message,
+                visible_response_instruction=header.generation_config.visible_response_instruction,
             )
             parameters = header.generation_config.request_parameters()
             request_time = utc_now()

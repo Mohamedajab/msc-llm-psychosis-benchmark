@@ -25,8 +25,8 @@ from src.replacement_screening import (
 from src.schemas import StrictModel
 from src.storage import atomic_write_json
 
-SELECTION_RECORD_VERSION = "replacement-selection-record-v1.0.0"
-SELECTION_NAMESPACE = "replacement-selection-v1.0.0"
+SELECTION_RECORD_VERSION = "replacement-selection-record-v2.0.0"
+SELECTION_NAMESPACE = "replacement-selection-v2.0.0"
 SELECTION_REASON_CODE = "first_technical_pass_in_frozen_catalogue_order"
 
 
@@ -86,7 +86,7 @@ def _load_catalogue_record(path: str | Path) -> tuple[dict[str, Any], Path]:
     except (OSError, json.JSONDecodeError) as error:
         raise ReplacementSelectionError("Catalogue evidence is malformed") from error
     if record.get("catalogue_evidence_version") != CATALOGUE_EVIDENCE_VERSION:
-        raise ReplacementSelectionError("Catalogue evidence version is not frozen v1.0.0")
+        raise ReplacementSelectionError("Catalogue evidence version is not frozen v2.0.0")
     if record.get("selection_policy_version") != SELECTION_POLICY_VERSION:
         raise ReplacementSelectionError("Catalogue selection policy version mismatch")
     if record.get("generation_requests_made") != 0:

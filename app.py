@@ -1,9 +1,8 @@
 # ruff: noqa: E501
 """Professional local dashboard for the controlled six-turn benchmark.
 
-Normal import and Streamlit startup are deliberately offline.  The only code path
-that constructs an OpenRouter client or checks its catalogue is the explicitly
-confirmed live technical-pilot button handler.
+Normal import and Streamlit startup are deliberately offline. Live technical workflows
+remain command-line only so this explanatory dashboard cannot bypass their evidence gates.
 """
 
 from __future__ import annotations
@@ -19,7 +18,6 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from scripts.run_pilot_v5 import DEFAULT_SCRIPT_ID, PILOT_VERSION, execute_live_pilot_v5
 from src.annotation import (
     AnnotationError,
     AnnotationPersistenceError,
@@ -85,7 +83,6 @@ VIEWS: tuple[str, ...] = (
 EXECUTION_MODES: tuple[str, ...] = (
     "Dry run (offline payload preview)",
     "Deterministic fixture (offline execution)",
-    "OpenRouter (live technical pilot)",
 )
 
 
@@ -272,7 +269,7 @@ def render_overview(configuration: LocalConfiguration) -> None:
     st.subheader("Research questions")
     questions = (
         "RQ1 — How does presentation level affect belief-confirming and harm-enabling responses across a six-turn exchange?",
-        "RQ2 — How do MiniMax M3 and NVIDIA Nemotron Super differ on the primary A1, A2, and A3 outcomes?",
+        "RQ2 — How do MiniMax M3 and the governed selected replacement differ on the primary A1, A2, and A3 outcomes?",
         "RQ3 — Does standardised preloaded context change response trajectories compared with no preloaded context?",
         "RQ4 — At what turn do high-risk confirmation or protective safety intervention first appear, persist, or recover?",
     )
@@ -303,7 +300,7 @@ def render_overview(configuration: LocalConfiguration) -> None:
             ),
             (
                 "Technical pilot",
-                "Pilot V1-V3 preserved; Pilot V4 failed immutably; Pilot V5 plans four conversations / 24 responses / 32 attempts",
+                "Pilot V1-V3 preserved; Pilot V4 and V5 failed immutably; generation calibration is technical method evidence; Pilot V6 is not configured",
                 "Engineering and feasibility evidence; descriptive only",
             ),
             (
@@ -324,24 +321,16 @@ def _selection_controls(
     mode = st.selectbox("Execution mode", options=EXECUTION_MODES)
     model_slot = ""
     fixture_profile = "safe"
-    if mode == EXECUTION_MODES[2]:
-        script_id = DEFAULT_SCRIPT_ID
-        condition = ContextCondition.NO_PRELOADED_CONTEXT
-        st.caption(
-            "Live pilot scope is fixed: one frozen scenario × every configured model "
-            "× both context conditions."
-        )
-    else:
-        script_id = st.selectbox(
-            "Frozen six-turn script",
-            options=sorted(script_lookup),
-            format_func=lambda value: script_lookup[value].title,
-        )
-        condition = st.selectbox(
-            "Context condition",
-            options=list(ContextCondition),
-            format_func=lambda value: value.value.replace("_", " "),
-        )
+    script_id = st.selectbox(
+        "Frozen six-turn script",
+        options=sorted(script_lookup),
+        format_func=lambda value: script_lookup[value].title,
+    )
+    condition = st.selectbox(
+        "Context condition",
+        options=list(ContextCondition),
+        format_func=lambda value: value.value.replace("_", " "),
+    )
     if mode == EXECUTION_MODES[1]:
         fixture_profile = st.selectbox(
             "Fixture response profile",
@@ -431,14 +420,10 @@ def render_runner(configuration: LocalConfiguration) -> None:
     left, right = st.columns([3, 2])
     with left:
         script, condition, mode, model_slot, fixture_profile = _selection_controls(configuration)
-        run_id_input = (
-            ""
-            if mode == EXECUTION_MODES[2]
-            else st.text_input(
-                "Run identifier",
-                value="friday-demo-run",
-                help="Existing matching runs resume safely; successful turns are never overwritten.",
-            )
+        run_id_input = st.text_input(
+            "Run identifier",
+            value="friday-demo-run",
+            help="Existing matching runs resume safely; successful turns are never overwritten.",
         )
     prefix = history_for_script(script, configuration.histories)
     with right:
@@ -516,48 +501,6 @@ def render_runner(configuration: LocalConfiguration) -> None:
             else:
                 st.session_state.current_run_id = record.header.run_id
                 _render_run_result(record)
-
-    else:
-        st.info(f"TECHNICAL PILOT V5 - DESCRIPTIVE ONLY · {PILOT_VERSION}")
-        st.write("The bounded pilot will use these exact configured model IDs:")
-        for model_id in resolved_models.values():
-            st.code(model_id, language=None)
-        key_present = bool(os.getenv("OPENROUTER_API_KEY", "").strip())
-        environment_gate = os.getenv("RUN_LIVE_PILOT") == "1"
-        if not key_present:
-            st.warning(
-                "OPENROUTER_API_KEY is not present in this process. Live execution remains disabled; dry-run and fixture modes still work."
-            )
-        if not environment_gate:
-            st.warning("RUN_LIVE_PILOT is not 1. Live execution remains disabled.")
-        live_confirmation = st.checkbox(
-            "I give final confirmation to contact OpenRouter for the fixed four-conversation, 24-response-slot, maximum 32-attempt Pilot V5."
-        )
-        live_button = st.button(
-            "Run or resume live technical pilot",
-            type="primary",
-            disabled=not (key_present and environment_gate and live_confirmation),
-        )
-        st.caption(
-            "No catalogue check or generation request occurs until the enabled button is clicked. The API key is never displayed or stored."
-        )
-        if live_button:
-            try:
-                with st.spinner("Checking all exact slugs, then running the bounded pilot…"):
-                    summary = execute_live_pilot_v5(
-                        output_root=RAW_RUN_DIR,
-                        live_requested=True,
-                        live_confirmed=True,
-                    )
-            except (FileExistsError, OSError, RuntimeError, ValueError) as error:
-                st.error(str(error))
-            else:
-                st.success(
-                    "Completed/resumed "
-                    f"{summary['completed_conversations']}/{summary['planned_conversations']} "
-                    "Pilot V5 conversations."
-                )
-                st.json(summary)
 
 
 def _metadata_frame(record: ConversationRecord) -> pd.DataFrame:
@@ -1167,17 +1110,8 @@ def render_qa(configuration: LocalConfiguration) -> None:
         ".\\.venv\\Scripts\\python.exe -m streamlit run app.py",
         language="powershell",
     )
-    st.markdown(
-        "**Optional live Pilot V5 gate (model IDs remain fixed in versioned configuration)**"
-    )
-    st.code(
-        '$env:OPENROUTER_API_KEY = "<paste-key-in-your-private-terminal>"\n'
-        '$env:RUN_LIVE_PILOT = "1"\n'
-        ".\\.venv\\Scripts\\python.exe -m streamlit run app.py",
-        language="powershell",
-    )
     st.caption(
-        "Normal app startup, tests, manifest generation, dry-run preview, NLP, and fixture execution remain offline. Live access is gated in Experiment Runner."
+        "App startup, tests, manifest preview, NLP, and fixture execution remain offline. Live replacement screening, Pilot V6 and Study V2 use separate guarded command-line workflows."
     )
 
 

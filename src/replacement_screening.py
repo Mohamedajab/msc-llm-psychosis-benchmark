@@ -28,6 +28,11 @@ from src.config_loader import (
     load_scripts,
 )
 from src.conversation_runner import ConversationRunner, create_run_header, payload_hash
+from src.generation_profiles import (
+    GENERATION_V4_MAX_COMPLETION_TOKENS,
+    GENERATION_V4_VERSION,
+    require_generation_v4,
+)
 from src.payloads import build_target_messages
 from src.provider_client import DeterministicFixtureProvider, TargetProvider
 from src.schemas import (
@@ -44,14 +49,14 @@ from src.storage import RawRunStore, atomic_write_json, safe_filename
 from src.study_execution import result_http_attempts, resume_or_new_header
 
 CATALOGUE_ENDPOINT = "https://openrouter.ai/api/v1/models"
-CATALOGUE_EVIDENCE_VERSION = "replacement-catalogue-v1.0.0"
-SCREEN_VERSION = "replacement-screen-v1.0.0"
-SCREEN_ASSESSMENT_VERSION = "replacement-screen-qualification-v1.0.0"
-SELECTION_POLICY_VERSION = "replacement-selection-policy-v1.0.0"
+CATALOGUE_EVIDENCE_VERSION = "replacement-catalogue-v2.0.0"
+SCREEN_VERSION = "replacement-screen-v2.0.0"
+SCREEN_ASSESSMENT_VERSION = "replacement-screen-qualification-v2.0.0"
+SELECTION_POLICY_VERSION = "replacement-selection-policy-v2.0.0"
 SCREEN_LABEL = "TECHNICAL REPLACEMENT SCREEN - NOT RESEARCH DATA"
 SCRIPT_ID = "monitoring_fixed_belief_v1"
-GENERATION_VERSION = "generation-v3"
-MAX_COMPLETION_TOKENS = 1024
+GENERATION_VERSION = GENERATION_V4_VERSION
+MAX_COMPLETION_TOKENS = GENERATION_V4_MAX_COMPLETION_TOKENS
 MINIMUM_CONTEXT_TOKENS = 16_384
 MAX_HTTP_ATTEMPTS = 16
 MINIMUM_REQUEST_INTERVAL_SECONDS = 5.0
@@ -87,7 +92,7 @@ ELIGIBILITY_POLICY = (
     "zero_prompt_and_completion_price",
     "text_input_and_output",
     "advertised_seed_support",
-    "explicit_1024_token_completion_limit_support",
+    "explicit_4096_token_completion_limit_support",
     "minimum_16384_token_context",
     "not_batch_only_expired_deprecated_or_disappearing_within_30_days",
     "not_existing_minimax_or_rejected_nemotron_comparator",
@@ -123,6 +128,7 @@ CATALOGUE_FIELDS = (
     "pricing",
     "architecture",
     "supported_parameters",
+    "reasoning",
     "context_length",
     "top_provider",
     "max_completion_tokens",
@@ -155,7 +161,7 @@ class ReplacementScreenAssessment(StrictModel):
     screen_version: str = SCREEN_VERSION
     selection_policy_version: str = SELECTION_POLICY_VERSION
     candidate_model_id: str
-    study_version: str = "study-v2.0.0"
+    study_version: str = "study-v2.1.0"
     generation_version: str = GENERATION_VERSION
     frozen_criteria: tuple[str, ...] = SCREEN_CRITERIA
     verdict: ScreenVerdict
@@ -297,7 +303,7 @@ def evaluate_catalogue_candidate(
     if maximum_completion is None:
         reasons.append("maximum_completion_capability_unverifiable")
     elif maximum_completion < MAX_COMPLETION_TOKENS:
-        reasons.append("maximum_completion_capability_below_1024")
+        reasons.append("maximum_completion_capability_below_4096")
 
     context_length = entry.get("context_length")
     if not isinstance(context_length, int) or context_length < MINIMUM_CONTEXT_TOKENS:
@@ -337,7 +343,7 @@ def evaluate_catalogue_candidate(
         "maximum_completion_capability": maximum_completion,
         "completion_limit_parameter": completion_parameter,
         "relevant_supported_parameters": sorted(
-            set(supported_parameters) & ({"seed"} | COMPLETE_LIMIT_PARAMETERS)
+            set(supported_parameters) & ({"seed", "reasoning"} | COMPLETE_LIMIT_PARAMETERS)
         ),
         "expiration_date": expiration.isoformat() if expiration else None,
         "specialisation_warnings": list(warnings),
@@ -415,8 +421,12 @@ def load_screen_configuration(
     histories = load_histories(root / "config" / "histories")
     models = load_models(root / "config" / "models.yaml")
     generation = generation_for_repetition(models, REPETITION)
-    if generation.version != GENERATION_VERSION or generation.max_tokens != MAX_COMPLETION_TOKENS:
-        raise ReplacementScreenError("Replacement screen requires frozen generation-v3/1024")
+    try:
+        require_generation_v4(generation)
+    except ValueError as error:
+        raise ReplacementScreenError(
+            "Replacement screen requires the complete frozen generation-v4 profile"
+        ) from error
     script = next((value for value in scripts if value.script_id == SCRIPT_ID), None)
     if script is None or script.presentation_level.value != "fixed_belief":
         raise ReplacementScreenError("Frozen fixed-belief technical scenario is unavailable")
@@ -723,6 +733,7 @@ def assess_replacement_screen(
                     if prior.turn_number < event.turn_number
                 ],
                 current_user_message=script.turns[event.turn_number - 1],
+                visible_response_instruction=generation.visible_response_instruction,
             )
             expected_parameters = generation.request_parameters()
             if (

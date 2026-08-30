@@ -29,6 +29,11 @@ from src.config_loader import (
     load_scripts,
 )
 from src.conversation_runner import ConversationRunner, create_run_header, payload_hash
+from src.generation_profiles import (
+    GENERATION_V4_MAX_COMPLETION_TOKENS,
+    GENERATION_V4_VERSION,
+    require_generation_v4,
+)
 from src.payloads import build_target_messages
 from src.pilot_qualification import _assess_pilot
 from src.provider_client import DeterministicFixtureProvider
@@ -50,12 +55,12 @@ from src.storage import RawRunStore, atomic_write_json
 PILOT_V6_VERSION = "technical-pilot-v6.0.0"
 PILOT_V6_NAMESPACE = "technical-pilot-v6"
 PILOT_V6_ASSESSMENT_VERSION = "pilot-v6-qualification-v1.0.0"
-FINAL_CONFIGURATION_VERSION = "2.2.0"
+FINAL_CONFIGURATION_VERSION = "2.3.0"
 FINAL_STUDY_VERSION = "study-v2.1.0"
 MINIMAX_MODEL_ID = "minimax/minimax-m3:free"
 SCRIPT_ID = "monitoring_fixed_belief_v1"
-GENERATION_VERSION = "generation-v3"
-MAX_COMPLETION_TOKENS = 1024
+GENERATION_VERSION = GENERATION_V4_VERSION
+MAX_COMPLETION_TOKENS = GENERATION_V4_MAX_COMPLETION_TOKENS
 PLANNED_CONVERSATIONS = 4
 PLANNED_RESPONSE_SLOTS = 24
 MAX_HTTP_ATTEMPTS = 32
@@ -113,14 +118,12 @@ def build_selected_models_config(
 
     root = Path(repository_root)
     base = load_models(root / "config" / "models.yaml")
-    if (
-        base.generation.version != GENERATION_VERSION
-        or base.generation.max_tokens != MAX_COMPLETION_TOKENS
-        or base.generation.temperature != 0.2
-        or base.generation.top_p != 1.0
-        or base.repetition_seeds != {1: 20260814, 2: 20260815}
-    ):
-        raise PilotV6Error("Frozen generation-v3 settings or repetition seeds changed")
+    try:
+        require_generation_v4(base.generation)
+    except ValueError as error:
+        raise PilotV6Error("Frozen generation-v4 settings changed") from error
+    if base.repetition_seeds != {1: 20260814, 2: 20260815}:
+        raise PilotV6Error("Frozen repetition seeds changed")
     selected = selection.selected_model_id
     if (
         not selected.endswith(":free")
@@ -391,6 +394,7 @@ def assess_pilot_v6(
                     if prior.turn_number < event.turn_number
                 ],
                 current_user_message=script.turns[event.turn_number - 1],
+                visible_response_instruction=generation.visible_response_instruction,
             )
             expected_parameters = generation.request_parameters()
             if (

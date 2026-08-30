@@ -245,6 +245,10 @@ def test_main_study_default_preflight_is_zero_network_and_bundle_verified(
     assert report["network_called"] is False
     assert report["planned_conversations"] == 72
     assert report["planned_response_slots"] == 432
+    assert report["configuration_version"] == "2.2.0"
+    assert report["generation_version"] == "generation-v4"
+    assert report["historical_configuration_version"] == "2.1.0"
+    assert report["historical_generation_version"] == "generation-v3"
     assert report["replacement_endpoint_status"] == "NOT_SELECTED"
     assert report["pilot_v6_status"] == "NOT_CONFIGURED"
     assert report["main_study_status"] == "BLOCKED"

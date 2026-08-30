@@ -229,7 +229,7 @@ def test_exact_zero_price_general_candidate_is_eligible() -> None:
             "expired_or_disappearing",
         ),
         ({"status": "deprecated"}, "expired_deprecated"),
-        ({"top_provider": {"max_completion_tokens": 512}}, "below_1024"),
+        ({"top_provider": {"max_completion_tokens": 512}}, "below_4096"),
         ({"top_provider": {}}, "capability_unverifiable"),
     ],
 )
@@ -262,7 +262,7 @@ def test_semantically_equivalent_completion_limit_parameter_is_accepted() -> Non
     result = evaluate_catalogue_candidate(
         _entry(
             supported_parameters=["seed", "max_completion_tokens"],
-            top_provider={"max_completion_tokens": 1024},
+            top_provider={"max_completion_tokens": 4096},
         ),
         retrieved_at=NOW,
     )
@@ -729,9 +729,9 @@ def test_candidate_namespace_is_isolated_from_pilots_screens_and_study(tmp_path:
 
 def test_default_private_paths_are_git_ignored_and_cannot_be_tracked() -> None:
     candidates = [
-        "data/private/replacement-catalogue-v1.0.0/example.json",
-        "data/private/replacement-screen-v1.0.0/example/run.json",
-        "data/private/replacement-screen-v1.0.0-assessments/example.json",
+        "data/private/replacement-catalogue-v2.0.0/example.json",
+        "data/private/replacement-screen-v2.0.0/example/run.json",
+        "data/private/replacement-screen-v2.0.0-assessments/example.json",
     ]
     for candidate in candidates:
         subprocess.run(

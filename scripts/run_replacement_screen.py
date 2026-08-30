@@ -156,6 +156,7 @@ def print_offline_plan(plan: Mapping[str, Any]) -> None:
     print(f"catalogue_status={plan['catalogue_status']}")
     print(f"planned_context_cells={plan['planned_conversations']}")
     print(f"planned_response_slots={plan['planned_response_slots']}")
+    print(f"generation={plan['generation_version']}; completion_envelope={plan['max_tokens']}")
     print(f"maximum_http_attempts={plan['maximum_http_attempts']}")
     print(f"minimum_post_start_interval_seconds={plan['minimum_request_interval_seconds']}")
     print("network_requests=0")

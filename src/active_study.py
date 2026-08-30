@@ -21,7 +21,7 @@ import pandas as pd
 import yaml
 from pydantic import Field
 
-from src.config_loader import load_models, load_scripts, resolve_model_ids
+from src.config_loader import canonical_hash, load_models, load_scripts, resolve_model_ids
 from src.manifest import generate_manifest, manifest_dataframe, validate_manifest
 from src.pilot_v6 import (
     FINAL_CONFIGURATION_VERSION,
@@ -38,7 +38,7 @@ from src.replacement_selection import (
 )
 from src.schemas import ManifestRow, ModelsConfig, StrictModel
 
-ACTIVE_BUNDLE_VERSION = "active-study-bundle-v1.0.0"
+ACTIVE_BUNDLE_VERSION = "active-study-bundle-v2.0.0"
 ACTIVE_PROTOCOL_DIRECTORY = "study-v2.1.0"
 FINAL_MODELS_RELATIVE_PATH = Path("config/final/study-v2.1.0/models.yaml")
 FINAL_MANIFEST_RELATIVE_PATH = Path("outputs/study-v2.1.0/experiment_manifest.csv")
@@ -48,6 +48,8 @@ STATIC_PROTOCOL_INPUTS = (
     "config/rubric.yaml",
     "docs/EXECUTION_POLICY.md",
     "docs/FINAL_STUDY_READINESS_WORKFLOW.md",
+    "docs/GENERATION_V4_CALIBRATION.md",
+    "docs/PROTOCOL_DEVIATION_STUDY_V2.md",
     "docs/PROVIDER_POLICY.md",
     "docs/RESEARCH_PROTOCOL.md",
     "outputs/data_dictionary.csv",
@@ -57,6 +59,7 @@ STATIC_PROTOCOL_INPUTS = (
     "src/active_study.py",
     "src/config_loader.py",
     "src/conversation_runner.py",
+    "src/generation_profiles.py",
     "src/main_study_readiness.py",
     "src/manifest.py",
     "src/payloads.py",
@@ -88,6 +91,7 @@ class ActiveBundleMetadata(StrictModel):
     study_version: str = FINAL_STUDY_VERSION
     configuration_version: str = FINAL_CONFIGURATION_VERSION
     generation_version: str = GENERATION_VERSION
+    generation_profile_hash: str
     created_at: datetime
     software_commit: str
     planned_conversations: int = 72
@@ -297,6 +301,7 @@ def freeze_active_study_bundle(
             created_at=created,
             software_commit=software_commit or _git_commit(repo),
             model_ids=resolve_model_ids(models),
+            generation_profile_hash=canonical_hash(models.generation),
             replacement_selection_record_hash=selection_record_hash(selection),
             replacement_screen_evidence_hash=selection.technical_screen_evidence_hash,
             pilot_v6_source_evidence_hash=assessment.source_evidence_hash,
@@ -366,6 +371,8 @@ def verify_active_study_bundle(
         raise ActiveStudyError("Active bundle Pilot V6 evidence is stale")
     if metadata.model_ids != resolve_model_ids(models):
         raise ActiveStudyError("Active bundle model identities are stale")
+    if metadata.generation_profile_hash != canonical_hash(models.generation):
+        raise ActiveStudyError("Active bundle generation profile is stale")
     final_models = load_models(artifacts / FINAL_MODELS_RELATIVE_PATH)
     if final_models != models:
         raise ActiveStudyError("Final model configuration differs from recomputed selection")
