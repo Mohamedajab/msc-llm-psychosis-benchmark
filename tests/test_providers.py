@@ -53,6 +53,34 @@ def test_catalogue_can_require_generation_v4_envelope_and_parameter() -> None:
         )
 
 
+def test_catalogue_derives_deterministic_completion_parameter_preference() -> None:
+    model_id = "example/model:free"
+    entry = {
+        "id": model_id,
+        "pricing": {"prompt": "0", "completion": "0"},
+        "architecture": {"input_modalities": ["text"], "output_modalities": ["text"]},
+        "supported_parameters": ["seed", "max_tokens", "max_completion_tokens"],
+        "context_length": 65_536,
+        "top_provider": {"max_completion_tokens": 4096},
+    }
+    result = qualify_catalogue_entry(
+        model_id,
+        entry,
+        minimum_context_tokens=8192,
+        required_completion_tokens=4096,
+    )
+    assert result["completion_limit_parameter"] == "max_completion_tokens"
+
+    entry["supported_parameters"] = ["seed"]
+    with pytest.raises(RuntimeError, match="no supported completion-limit"):
+        qualify_catalogue_entry(
+            model_id,
+            entry,
+            minimum_context_tokens=8192,
+            required_completion_tokens=4096,
+        )
+
+
 def test_openrouter_success_captures_provenance_and_usage() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.headers["authorization"] == "Bearer secret-test-key"

@@ -90,6 +90,23 @@ def generation_for_repetition(config: ModelsConfig, repetition: int) -> Generati
     return config.generation.model_copy(update={"seed": seed})
 
 
+def generation_for_model(
+    config: ModelsConfig, model_slot: str, repetition: int
+) -> GenerationConfig:
+    """Bind semantic generation settings to one catalogue-verified API field."""
+
+    try:
+        parameter = config.model_slots[model_slot].completion_limit_parameter
+    except KeyError as error:
+        raise ConfigurationError(f"Unknown configured model slot: {model_slot}") from error
+    generation = generation_for_repetition(config, repetition)
+    if generation.version == "generation-v4":
+        if parameter is None:
+            raise ConfigurationError(f"{model_slot} lacks a verified completion-limit parameter")
+        return generation.model_copy(update={"completion_limit_parameter": parameter})
+    return generation
+
+
 def canonical_hash(value: Any) -> str:
     """Return a stable SHA-256 over JSON-compatible configuration content."""
     if isinstance(value, BaseModel):
@@ -140,6 +157,8 @@ def configuration_bundle_hash(
         generation.pop("completion_limit_parameter", None)
         generation.pop("visible_response_instruction", None)
         generation.pop("reasoning_policy", None)
+        for slot in model_payload["model_slots"].values():
+            slot.pop("completion_limit_parameter", None)
     # Provider routing was introduced for Study V2. Historical configuration hashes
     # must remain reproducible without rewriting Pilot V1-V3 evidence.
     if models.version.startswith("1."):

@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import hashlib
 import re
-import tempfile
 import uuid
 from collections import Counter
 from collections.abc import Iterable, Mapping
@@ -34,7 +33,10 @@ from src.generation_profiles import (
     require_generation_v4,
 )
 from src.payloads import build_target_messages
-from src.provider_client import DeterministicFixtureProvider, TargetProvider
+from src.provider_client import (
+    TargetProvider,
+    select_completion_limit_parameter,
+)
 from src.schemas import (
     ContextCondition,
     GenerationConfig,
@@ -49,10 +51,10 @@ from src.storage import RawRunStore, atomic_write_json, safe_filename
 from src.study_execution import result_http_attempts, resume_or_new_header
 
 CATALOGUE_ENDPOINT = "https://openrouter.ai/api/v1/models"
-CATALOGUE_EVIDENCE_VERSION = "replacement-catalogue-v2.0.0"
-SCREEN_VERSION = "replacement-screen-v2.0.0"
-SCREEN_ASSESSMENT_VERSION = "replacement-screen-qualification-v2.0.0"
-SELECTION_POLICY_VERSION = "replacement-selection-policy-v2.0.0"
+CATALOGUE_EVIDENCE_VERSION = "replacement-catalogue-v2.1.0"
+SCREEN_VERSION = "replacement-screen-v2.1.0"
+SCREEN_ASSESSMENT_VERSION = "replacement-screen-qualification-v2.1.0"
+SELECTION_POLICY_VERSION = "replacement-selection-policy-v2.1.0"
 SCREEN_LABEL = "TECHNICAL REPLACEMENT SCREEN - NOT RESEARCH DATA"
 SCRIPT_ID = "monitoring_fixed_belief_v1"
 GENERATION_VERSION = GENERATION_V4_VERSION
@@ -105,6 +107,7 @@ SELECTION_POLICY = (
     "screen_in_frozen_order_and_stop_on_first_pass",
     "retain_every_attempted_candidate_and_verdict",
     "change_rule_only_for_a_documented_genuine_technical_defect",
+    "prefer_max_completion_tokens_then_max_tokens_for_equivalent_4096_envelope",
 )
 SCREEN_CRITERIA = (
     "exactly_two_frozen_context_cells",
@@ -293,11 +296,10 @@ def evaluate_catalogue_candidate(
     supported_parameters = tuple(str(value) for value in entry.get("supported_parameters") or ())
     if "seed" not in supported_parameters:
         reasons.append("seed_not_advertised")
-    completion_parameter = next(
-        (value for value in sorted(COMPLETE_LIMIT_PARAMETERS) if value in supported_parameters),
-        None,
-    )
-    if completion_parameter is None:
+    try:
+        completion_parameter = select_completion_limit_parameter(supported_parameters)
+    except RuntimeError:
+        completion_parameter = None
         reasons.append("explicit_completion_limit_parameter_not_advertised")
     maximum_completion = _maximum_completion_capability(entry)
     if maximum_completion is None:
@@ -490,29 +492,32 @@ def build_offline_screen_plan(
     candidate = validate_candidate_model_id(candidate_model_id)
     script, prefix, generation = load_screen_configuration(repository_root)
     rows = screen_rows(candidate, repository_root)
-    configuration_hash = screen_configuration_hash(script, prefix, generation)
     runs: list[dict[str, Any]] = []
-    with tempfile.TemporaryDirectory(prefix="replacement-screen-offline-") as temporary:
-        provider = DeterministicFixtureProvider()
-        runner = ConversationRunner(provider, RawRunStore(temporary))
-        for row in rows:
-            header = _expected_header(
-                row=row,
-                script=script,
-                generation=generation,
-                configuration_hash=configuration_hash,
+    for row in rows:
+        exchanges: list[tuple[str, str]] = []
+        message_counts: list[int] = []
+        for turn_number, user_message in enumerate(script.turns, start=1):
+            messages = build_target_messages(
+                condition=row.context_condition,
+                prefix=(
+                    prefix
+                    if row.context_condition == ContextCondition.STANDARDISED_PRELOADED_CONTEXT
+                    else None
+                ),
+                completed_exchanges=exchanges,
+                current_user_message=user_message,
+                visible_response_instruction=generation.visible_response_instruction,
             )
-            payloads = runner.dry_run(header=header, script=script, prefix=prefix)
-            runs.append(
-                {
-                    "execution_order": row.execution_order,
-                    "context_condition": row.context_condition.value,
-                    "payload_count": len(payloads),
-                    "message_counts": [len(payload["messages"]) for payload in payloads],
-                }
-            )
-        if provider.calls:
-            raise ReplacementScreenError("Offline replacement screen called a provider")
+            message_counts.append(len(messages))
+            exchanges.append((user_message, f"<assistant response {turn_number}>"))
+        runs.append(
+            {
+                "execution_order": row.execution_order,
+                "context_condition": row.context_condition.value,
+                "payload_count": 6,
+                "message_counts": message_counts,
+            }
+        )
     return {
         "screen_version": SCREEN_VERSION,
         "selection_policy_version": SELECTION_POLICY_VERSION,
@@ -522,12 +527,13 @@ def build_offline_screen_plan(
         "network_requests": 0,
         "catalogue_status": "NOT_FETCHED",
         "generation_version": generation.version,
-        "max_tokens": generation.max_tokens,
+        "completion_envelope_tokens": generation.completion_envelope_tokens,
+        "completion_limit_parameter": "PENDING_CATALOGUE_VERIFICATION",
         "planned_conversations": len(rows),
         "planned_response_slots": len(rows) * 6,
         "maximum_http_attempts": MAX_HTTP_ATTEMPTS,
         "minimum_request_interval_seconds": MINIMUM_REQUEST_INTERVAL_SECONDS,
-        "configuration_hash": configuration_hash,
+        "configuration_hash": None,
         "contexts": [row.context_condition.value for row in rows],
         "runs": runs,
     }
@@ -573,10 +579,16 @@ def execute_screen_conversations(
     output_root: str | Path,
     provider: TargetProvider,
     maximum_http_attempts: int,
+    completion_limit_parameter: str,
 ) -> None:
     """Run from the first missing turn, stopping the invocation after a new 429."""
 
-    script, prefix, generation = load_screen_configuration(repository_root)
+    script, prefix, semantic_generation = load_screen_configuration(repository_root)
+    if completion_limit_parameter not in COMPLETE_LIMIT_PARAMETERS:
+        raise ReplacementScreenError("Completion-limit translation is not verified")
+    generation = semantic_generation.model_copy(
+        update={"completion_limit_parameter": completion_limit_parameter}
+    )
     rows = screen_rows(candidate_model_id, repository_root)
     store = RawRunStore(candidate_store_root(output_root, candidate_model_id))
     configuration_hash = screen_configuration_hash(script, prefix, generation)
@@ -633,10 +645,9 @@ def assess_replacement_screen(
     """Recompute a fail-closed verdict from one candidate's private evidence."""
 
     candidate = validate_candidate_model_id(candidate_model_id)
-    script, prefix, generation = load_screen_configuration(repository_root)
+    script, prefix, semantic_generation = load_screen_configuration(repository_root)
     rows = screen_rows(candidate, repository_root)
     expected = {row.run_id: row for row in rows}
-    configuration_hash = screen_configuration_hash(script, prefix, generation)
     root = candidate_store_root(output_root, candidate)
     files = _source_files(root)
     source_hash, source_file_hashes = _source_hashes(root, files)
@@ -663,6 +674,7 @@ def assess_replacement_screen(
     providers: Counter[str] = Counter()
     resolved_models: Counter[str] = Counter()
     event_ids: set[str] = set()
+    completion_parameters: set[str] = set()
 
     for run_id, row in expected.items():
         directory = store.run_directory(run_id)
@@ -680,6 +692,17 @@ def assess_replacement_screen(
             integrity_failures.add("malformed_or_non_contiguous_evidence")
             continue
         header = record.header
+        completion_parameter = header.generation_config.completion_limit_parameter
+        if completion_parameter not in COMPLETE_LIMIT_PARAMETERS:
+            integrity_failures.add("completion_limit_parameter_unverified")
+            mapped_generation = semantic_generation
+            configuration_hash = ""
+        else:
+            completion_parameters.add(completion_parameter)
+            mapped_generation = semantic_generation.model_copy(
+                update={"completion_limit_parameter": completion_parameter}
+            )
+            configuration_hash = screen_configuration_hash(script, prefix, mapped_generation)
         if (
             header.study_version != SCREEN_VERSION
             or header.data_status != "technical_pilot"
@@ -694,7 +717,7 @@ def assess_replacement_screen(
             or header.repetition != REPETITION
             or header.configuration_version != SELECTION_POLICY_VERSION
             or header.configuration_hash != configuration_hash
-            or header.generation_config != generation
+            or header.generation_config != mapped_generation
         ):
             integrity_failures.add("mixed_candidate_or_frozen_metadata_mismatch")
         if [event.turn_number for event in record.turns] != list(range(1, len(record.turns) + 1)):
@@ -733,9 +756,13 @@ def assess_replacement_screen(
                     if prior.turn_number < event.turn_number
                 ],
                 current_user_message=script.turns[event.turn_number - 1],
-                visible_response_instruction=generation.visible_response_instruction,
+                visible_response_instruction=mapped_generation.visible_response_instruction,
             )
-            expected_parameters = generation.request_parameters()
+            try:
+                expected_parameters = mapped_generation.request_parameters()
+            except ValueError:
+                integrity_failures.add("completion_limit_parameter_unverified")
+                expected_parameters = {}
             if (
                 event.request_messages != expected_messages
                 or event.request_parameters != expected_parameters
@@ -783,6 +810,9 @@ def assess_replacement_screen(
                 finish_reasons[finish_reason] += 1
             if result.truncated:
                 truncations += 1
+
+    if len(completion_parameters) > 1:
+        integrity_failures.add("mixed_completion_limit_parameters")
 
     missing = PLANNED_RESPONSE_SLOTS - successful
     remaining = max(0, MAX_HTTP_ATTEMPTS - attempts)
@@ -853,6 +883,9 @@ def assess_replacement_screen(
             "finish_reasons": dict(finish_reasons),
             "providers": dict(providers),
             "resolved_models": dict(resolved_models),
+            "completion_limit_parameter": (
+                next(iter(completion_parameters)) if len(completion_parameters) == 1 else None
+            ),
             "source_file_count": len(files),
         },
         source_evidence_hash=source_hash,

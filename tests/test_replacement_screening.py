@@ -73,6 +73,7 @@ class ScreenFixtureProvider(DeterministicFixtureProvider):
         self.interval: float | None = None
         self.routing = None
         self.catalogue_calls = 0
+        self.sent_parameters: list[dict[str, object]] = []
 
     def set_request_attempt_budget(self, maximum: int) -> None:
         self.maximum = maximum
@@ -94,6 +95,7 @@ class ScreenFixtureProvider(DeterministicFixtureProvider):
         return _entry(model_id)
 
     def generate(self, **kwargs):  # noqa: ANN003, ANN202
+        self.sent_parameters.append(kwargs["generation"].request_parameters())
         if self.request_attempt_count >= self.maximum:
             return ProviderResult(
                 status=ObservationStatus.PROVIDER_ERROR,
@@ -119,6 +121,7 @@ def _write_complete(root: Path, candidate: str = CANDIDATE) -> list[Path]:
         output_root=root,
         provider=ScreenFixtureProvider(),
         maximum_http_attempts=MAX_HTTP_ATTEMPTS,
+        completion_limit_parameter="max_tokens",
     )
     return sorted(candidate_store_root(root, candidate).rglob("turn-*-success.json"))
 
@@ -215,6 +218,10 @@ def test_exact_zero_price_general_candidate_is_eligible() -> None:
         ({"is_batch_only": True}, "batch_only"),
         ({"supported_parameters": ["max_tokens"]}, "seed_not_advertised"),
         (
+            {"supported_parameters": ["seed"], "top_provider": {"max_completion_tokens": 4096}},
+            "explicit_completion_limit_parameter_not_advertised",
+        ),
+        (
             {"architecture": {"input_modalities": ["image"], "output_modalities": ["text"]}},
             "text_input_not_advertised",
         ),
@@ -268,6 +275,55 @@ def test_semantically_equivalent_completion_limit_parameter_is_accepted() -> Non
     )
     assert result["eligible"] is True
     assert result["completion_limit_parameter"] == "max_completion_tokens"
+
+
+def test_both_completion_fields_use_versioned_preference() -> None:
+    result = evaluate_catalogue_candidate(
+        _entry(
+            supported_parameters=["seed", "max_tokens", "max_completion_tokens"],
+        ),
+        retrieved_at=NOW,
+    )
+    assert result["eligible"] is True
+    assert result["completion_limit_parameter"] == "max_completion_tokens"
+
+
+def test_catalogue_verified_max_completion_tokens_is_sent_and_recorded(
+    tmp_path: Path,
+) -> None:
+    class MaxCompletionProvider(ScreenFixtureProvider):
+        def get_exact_model_catalogue_entry(
+            self, model_id: str, timeout_seconds: float = 20
+        ) -> dict[str, object]:
+            self.catalogue_calls += 1
+            return _entry(
+                model_id,
+                supported_parameters=["seed", "temperature", "max_completion_tokens"],
+            )
+
+    instances: list[MaxCompletionProvider] = []
+
+    def factory(*, api_key: str) -> MaxCompletionProvider:
+        provider = MaxCompletionProvider(api_key=api_key)
+        instances.append(provider)
+        return provider
+
+    assessment = run_replacement_screen.execute_live_screen(
+        candidate_model_id=CANDIDATE,
+        live_requested=True,
+        live_confirmed=True,
+        environ={"RUN_LIVE_SCREEN": "1", "OPENROUTER_API_KEY": "test-only"},
+        output_root=tmp_path / "screen",
+        catalogue_root=tmp_path / "catalogue",
+        provider_factory=factory,
+    )
+    assert assessment.verdict == ScreenVerdict.PASS
+    assert assessment.statistics["completion_limit_parameter"] == "max_completion_tokens"
+    assert len(instances[0].sent_parameters) == 12
+    assert all(
+        parameters["max_completion_tokens"] == 4096 for parameters in instances[0].sent_parameters
+    )
+    assert all("max_tokens" not in parameters for parameters in instances[0].sent_parameters)
 
 
 def test_specialisation_is_flagged_and_ordered_after_general_models() -> None:
@@ -416,7 +472,12 @@ def test_clean_mocked_screen_passes_with_exact_namespace_and_policy(tmp_path: Pa
     assert instances[0].retry_429 is False
     assert instances[0].interval == 5.0
     assert instances[0].routing.allow_fallbacks is False
+    assert instances[0].routing.require_parameters is True
     assert instances[0].catalogue_calls == 1
+    assert all(parameters["max_tokens"] == 4096 for parameters in instances[0].sent_parameters)
+    assert all(
+        "max_completion_tokens" not in parameters for parameters in instances[0].sent_parameters
+    )
     candidate_root = candidate_store_root(tmp_path / "screen", CANDIDATE)
     assert all(path.name.startswith(SCREEN_VERSION) for path in candidate_root.iterdir())
 
@@ -465,6 +526,7 @@ def test_http_429_is_append_only_and_not_immediately_retried(tmp_path: Path) -> 
         output_root=tmp_path,
         provider=provider,
         maximum_http_attempts=16,
+        completion_limit_parameter="max_tokens",
     )
     assert provider.request_attempt_count == 1
     errors = list(candidate_store_root(tmp_path, CANDIDATE).rglob("turn-01-error-01.json"))
@@ -500,6 +562,7 @@ def test_later_resume_preserves_errors_and_successes_append_only(tmp_path: Path)
         output_root=tmp_path,
         provider=FirstAttempt429(),
         maximum_http_attempts=16,
+        completion_limit_parameter="max_tokens",
     )
     error_path = next(candidate_store_root(tmp_path, CANDIDATE).rglob("*-error-01.json"))
     error_bytes = error_path.read_bytes()
@@ -509,6 +572,7 @@ def test_later_resume_preserves_errors_and_successes_append_only(tmp_path: Path)
         output_root=tmp_path,
         provider=ScreenFixtureProvider(),
         maximum_http_attempts=15,
+        completion_limit_parameter="max_tokens",
     )
     success_files = sorted(candidate_store_root(tmp_path, CANDIDATE).rglob("*-success.json"))
     success_bytes = {path: path.read_bytes() for path in success_files}
@@ -518,6 +582,7 @@ def test_later_resume_preserves_errors_and_successes_append_only(tmp_path: Path)
         output_root=tmp_path,
         provider=ScreenFixtureProvider(),
         maximum_http_attempts=4,
+        completion_limit_parameter="max_tokens",
     )
     assert error_path.read_bytes() == error_bytes
     assert all(path.read_bytes() == content for path, content in success_bytes.items())
@@ -549,6 +614,7 @@ def test_partial_screen_is_incomplete_when_attempt_budget_can_finish(tmp_path: P
         output_root=tmp_path,
         provider=ScreenFixtureProvider(),
         maximum_http_attempts=3,
+        completion_limit_parameter="max_tokens",
     )
     result = assess(
         candidate_model_id=CANDIDATE,
@@ -729,9 +795,9 @@ def test_candidate_namespace_is_isolated_from_pilots_screens_and_study(tmp_path:
 
 def test_default_private_paths_are_git_ignored_and_cannot_be_tracked() -> None:
     candidates = [
-        "data/private/replacement-catalogue-v2.0.0/example.json",
-        "data/private/replacement-screen-v2.0.0/example/run.json",
-        "data/private/replacement-screen-v2.0.0-assessments/example.json",
+        "data/private/replacement-catalogue-v2.1.0/example.json",
+        "data/private/replacement-screen-v2.1.0/example/run.json",
+        "data/private/replacement-screen-v2.1.0-assessments/example.json",
     ]
     for candidate in candidates:
         subprocess.run(

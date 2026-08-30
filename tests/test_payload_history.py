@@ -137,7 +137,9 @@ def test_runner_sends_complete_exact_history_to_provider_each_turn(
         model_slot="fixture_safe",
         model_id="fixture/safe",
         repetition=1,
-        generation=models.generation,
+        generation=models.generation.model_copy(
+            update={"completion_limit_parameter": "max_tokens"}
+        ),
         configuration_version="test",
         configuration_hash=configuration_bundle_hash(scripts, histories, models),
     )

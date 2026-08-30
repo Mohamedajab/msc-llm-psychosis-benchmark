@@ -25,6 +25,18 @@ from src.schemas import (
     TokenUsage,
 )
 
+COMPLETION_LIMIT_PARAMETER_PREFERENCE = ("max_completion_tokens", "max_tokens")
+
+
+def select_completion_limit_parameter(supported_parameters: Sequence[str]) -> str:
+    """Choose the frozen equivalent API field using a content-blind preference."""
+
+    supported = set(supported_parameters)
+    for parameter in COMPLETION_LIMIT_PARAMETER_PREFERENCE:
+        if parameter in supported:
+            return parameter
+    raise RuntimeError("Target endpoint advertises no supported completion-limit parameter")
+
 
 class TargetProvider(ABC):
     """Provider contract whose only input is the exact outgoing payload."""
@@ -78,11 +90,16 @@ def qualify_catalogue_entry(
     context_length = entry.get("context_length")
     if not isinstance(context_length, int) or context_length < minimum_context_tokens:
         raise RuntimeError(f"Target endpoint context is below {minimum_context_tokens} tokens")
-    if completion_limit_parameter is not None and completion_limit_parameter not in (
-        entry.get("supported_parameters") or []
+    supported_parameters = tuple(entry.get("supported_parameters") or ())
+    selected_completion_parameter = completion_limit_parameter
+    if required_completion_tokens is not None and selected_completion_parameter is None:
+        selected_completion_parameter = select_completion_limit_parameter(supported_parameters)
+    if (
+        selected_completion_parameter is not None
+        and selected_completion_parameter not in supported_parameters
     ):
         raise RuntimeError(
-            f"Target endpoint does not advertise {completion_limit_parameter} support"
+            f"Target endpoint does not advertise {selected_completion_parameter} support"
         )
     top_provider = entry.get("top_provider")
     if required_completion_tokens is not None:
@@ -105,7 +122,7 @@ def qualify_catalogue_entry(
         "seed_supported": True,
         "context_length": context_length,
         "required_completion_tokens": required_completion_tokens,
-        "completion_limit_parameter": completion_limit_parameter,
+        "completion_limit_parameter": selected_completion_parameter,
     }
 
 
@@ -277,6 +294,7 @@ class OpenRouterProvider(TargetProvider):
         timeout_seconds: float = 20,
         required_completion_tokens: int | None = None,
         completion_limit_parameter: str | None = None,
+        completion_limit_parameters: Mapping[str, str] | None = None,
     ) -> dict[str, dict[str, Any]]:
         """Validate identity, free pricing, modality, seed and context in one GET."""
 
@@ -297,7 +315,11 @@ class OpenRouterProvider(TargetProvider):
                 by_id.get(model_id, {}),
                 minimum_context_tokens=minimum_context_tokens,
                 required_completion_tokens=required_completion_tokens,
-                completion_limit_parameter=completion_limit_parameter,
+                completion_limit_parameter=(
+                    completion_limit_parameters.get(model_id)
+                    if completion_limit_parameters is not None
+                    else completion_limit_parameter
+                ),
             )
             for model_id in requested
         }

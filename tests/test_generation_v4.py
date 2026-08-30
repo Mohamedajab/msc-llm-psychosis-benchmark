@@ -52,8 +52,14 @@ def test_active_generation_v4_profile_is_complete_and_machine_readable() -> None
     assert generation.visible_response_instruction == GENERATION_V4_VISIBLE_RESPONSE_INSTRUCTION
     assert generation.reasoning_policy.reasoning_control_capability == "UNKNOWN"
     assert generation.reasoning_policy.reasoning_control_requested == "NATIVE"
-    assert generation.request_parameters()["reasoning"] == {"exclude": True}
-    assert generation.request_parameters()["max_tokens"] == 4096
+    assert generation.timeout_seconds == 120
+    assert generation.completion_limit_parameter is None
+    assert {slot.completion_limit_parameter for slot in models.model_slots.values()} == {
+        "max_tokens"
+    }
+    parameters = generation.request_parameters(completion_limit_parameter="max_tokens")
+    assert parameters["reasoning"] == {"exclude": True}
+    assert parameters["max_tokens"] == 4096
 
 
 def test_unsupported_explicit_reasoning_control_cannot_pretend_to_apply() -> None:

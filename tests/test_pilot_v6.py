@@ -77,6 +77,7 @@ class AttemptFixture(DeterministicFixtureProvider):
         self.interval: float | None = None
         self.routing = None
         self.catalogue_checked = False
+        self.sent_parameters: list[tuple[str, dict[str, object]]] = []
 
     def set_request_attempt_budget(self, maximum: int) -> None:
         self.maximum = maximum
@@ -93,9 +94,15 @@ class AttemptFixture(DeterministicFixtureProvider):
     def validate_exact_models_strict(self, model_ids, **kwargs) -> None:  # noqa: ANN001, ANN003
         assert tuple(model_ids) == (MINIMAX_MODEL_ID, REPLACEMENT)
         assert kwargs["minimum_context_tokens"] == 16_384
+        assert kwargs["required_completion_tokens"] == 4096
+        assert kwargs["completion_limit_parameters"] == {
+            MINIMAX_MODEL_ID: "max_tokens",
+            REPLACEMENT: "max_tokens",
+        }
         self.catalogue_checked = True
 
     def generate(self, **kwargs):  # noqa: ANN003, ANN202
+        self.sent_parameters.append((kwargs["model_id"], kwargs["generation"].request_parameters()))
         if self.request_attempt_count >= self.maximum:
             return ProviderResult(
                 status=ObservationStatus.PROVIDER_ERROR,
@@ -127,6 +134,7 @@ def _prerequisites(tmp_path: Path) -> tuple[Path, Path, Path]:
         output_root=screen_root,
         provider=screen_provider,
         maximum_http_attempts=SCREEN_MAX_ATTEMPTS,
+        completion_limit_parameter="max_tokens",
     )
     _, selection_path = create_replacement_selection(
         candidate_model_id=REPLACEMENT,
@@ -479,7 +487,10 @@ def test_mocked_live_path_enforces_routing_pacing_catalogue_and_passes(tmp_path:
     assert instances[0].retry_429 is False
     assert instances[0].interval == 5.0
     assert instances[0].routing.allow_fallbacks is False
+    assert instances[0].routing.require_parameters is True
     assert instances[0].catalogue_checked is True
+    assert len(instances[0].sent_parameters) == 24
+    assert all(parameters["max_tokens"] == 4096 for _, parameters in instances[0].sent_parameters)
 
 
 def test_catalogue_failure_is_append_only_and_sends_zero_generation_posts(tmp_path: Path) -> None:

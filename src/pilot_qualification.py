@@ -12,7 +12,7 @@ from typing import Any
 
 from pydantic import Field
 
-from src.config_loader import configuration_bundle_hash, generation_for_repetition
+from src.config_loader import configuration_bundle_hash, generation_for_model
 from src.schemas import ObservationStatus, StrictModel
 from src.storage import RawRunStore, atomic_write_json
 from src.study_execution import result_http_attempts
@@ -162,7 +162,7 @@ def _assess_pilot(
             integrity_failures.add("malformed_or_non_contiguous_evidence")
             continue
         header = record.header
-        expected_generation = generation_for_repetition(models, row.repetition)
+        expected_generation = generation_for_model(models, row.model_slot, row.repetition)
         if (
             header.study_version != pilot_version
             or header.data_status != "technical_pilot"

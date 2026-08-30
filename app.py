@@ -30,7 +30,7 @@ from src.config_loader import (
     ConfigurationError,
     canonical_hash,
     configuration_bundle_hash,
-    generation_for_repetition,
+    generation_for_model,
     load_histories,
     load_models,
     load_rubric,
@@ -205,7 +205,16 @@ def create_or_resume_header(
         model_slot=model_slot,
         model_id=model_id,
         repetition=1,
-        generation=generation_for_repetition(configuration.models, 1),
+        generation=(
+            generation_for_model(configuration.models, model_slot, 1)
+            if model_slot in configuration.models.model_slots
+            else configuration.models.generation.model_copy(
+                update={
+                    "seed": configuration.models.repetition_seeds[1],
+                    "completion_limit_parameter": "max_tokens",
+                }
+            )
+        ),
         configuration_version=configuration.models.version,
         configuration_hash=configuration.bundle_hash,
     )
@@ -456,7 +465,7 @@ def render_runner(configuration: LocalConfiguration) -> None:
                     model_slot=model_slot,
                     model_id=resolved_models[model_slot],
                     repetition=1,
-                    generation=generation_for_repetition(configuration.models, 1),
+                    generation=generation_for_model(configuration.models, model_slot, 1),
                     configuration_version=configuration.models.version,
                     configuration_hash=configuration.bundle_hash,
                 )

@@ -133,6 +133,9 @@ def execute_live_screen(
     if not evaluations[0]["eligible"]:
         reasons = ",".join(evaluations[0]["rejection_reasons"])
         raise ReplacementScreenError(f"Candidate is technically ineligible: {reasons}")
+    completion_parameter = evaluations[0]["completion_limit_parameter"]
+    if completion_parameter not in {"max_tokens", "max_completion_tokens"}:
+        raise ReplacementScreenError("Catalogue did not verify a completion-limit translation")
 
     execute_screen_conversations(
         candidate_model_id=candidate,
@@ -140,6 +143,7 @@ def execute_live_screen(
         output_root=output_root,
         provider=provider,
         maximum_http_attempts=remaining,
+        completion_limit_parameter=completion_parameter,
     )
     return assess_replacement_screen(
         candidate_model_id=candidate,
@@ -156,7 +160,11 @@ def print_offline_plan(plan: Mapping[str, Any]) -> None:
     print(f"catalogue_status={plan['catalogue_status']}")
     print(f"planned_context_cells={plan['planned_conversations']}")
     print(f"planned_response_slots={plan['planned_response_slots']}")
-    print(f"generation={plan['generation_version']}; completion_envelope={plan['max_tokens']}")
+    print(
+        f"generation={plan['generation_version']}; "
+        f"completion_envelope={plan['completion_envelope_tokens']}; "
+        f"completion_limit_parameter={plan['completion_limit_parameter']}"
+    )
     print(f"maximum_http_attempts={plan['maximum_http_attempts']}")
     print(f"minimum_post_start_interval_seconds={plan['minimum_request_interval_seconds']}")
     print("network_requests=0")

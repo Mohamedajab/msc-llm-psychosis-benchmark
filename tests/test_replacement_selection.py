@@ -91,6 +91,7 @@ def _complete_screen(root: Path, candidate: str) -> None:
         output_root=root,
         provider=SelectionFixtureProvider(),
         maximum_http_attempts=MAX_HTTP_ATTEMPTS,
+        completion_limit_parameter="max_tokens",
     )
     assert (
         assess_replacement_screen(
@@ -134,6 +135,7 @@ def test_missing_or_incomplete_first_candidate_blocks_selection(tmp_path: Path) 
         output_root=tmp_path / "screens",
         provider=SelectionFixtureProvider(),
         maximum_http_attempts=2,
+        completion_limit_parameter="max_tokens",
     )
     incomplete = determine_replacement_selection(
         catalogue_record_path=catalogue,
@@ -225,6 +227,7 @@ def test_selection_record_is_append_only_idempotent_and_recomputed(tmp_path: Pat
     assert len(list(selections.glob("*.json"))) == 1
     assert first.response_content_consulted is False
     assert first.substantive_outcome_used is False
+    assert first.completion_limit_parameter == "max_tokens"
     assert (
         validate_replacement_selection_record(
             selection_record_path=first_path,
@@ -234,6 +237,32 @@ def test_selection_record_is_append_only_idempotent_and_recomputed(tmp_path: Pat
         )
         == first
     )
+
+
+def test_selection_freezes_catalogue_verified_completion_translation(tmp_path: Path) -> None:
+    entry = _entry(FIRST)
+    entry["supported_parameters"] = ["seed", "max_completion_tokens", "temperature"]
+    catalogue = persist_catalogue_evidence(
+        build_catalogue_evidence([entry], retrieved_at=NOW), tmp_path / "catalogue"
+    )
+    screens = tmp_path / "screens"
+    execute_screen_conversations(
+        candidate_model_id=FIRST,
+        repository_root=ROOT,
+        output_root=screens,
+        provider=SelectionFixtureProvider(),
+        maximum_http_attempts=MAX_HTTP_ATTEMPTS,
+        completion_limit_parameter="max_completion_tokens",
+    )
+    record, _ = create_replacement_selection(
+        candidate_model_id=FIRST,
+        catalogue_record_path=catalogue,
+        screen_output_root=screens,
+        repository_root=ROOT,
+        selection_root=tmp_path / "selections",
+        selected_at=NOW,
+    )
+    assert record.completion_limit_parameter == "max_completion_tokens"
 
 
 def test_tampered_catalogue_order_or_selection_record_fails_closed(tmp_path: Path) -> None:

@@ -31,7 +31,9 @@ def _inputs(tmp_path: Path, run_id: str = "test-run"):
         model_slot="fixture_safe",
         model_id="fixture/safe",
         repetition=1,
-        generation=models.generation,
+        generation=models.generation.model_copy(
+            update={"completion_limit_parameter": "max_tokens"}
+        ),
         configuration_version="test-config",
         configuration_hash=configuration_bundle_hash(scripts, histories, models),
     )

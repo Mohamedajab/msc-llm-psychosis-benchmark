@@ -148,13 +148,20 @@ def execute_live_pilot_v6(
     provider.set_minimum_request_interval(request_interval_seconds)
     provider.set_provider_routing(models.provider_routing)
     model_ids = resolve_model_ids(models)
+    completion_parameters = {
+        slot.default_model_id: slot.completion_limit_parameter
+        for slot in models.model_slots.values()
+        if slot.completion_limit_parameter is not None
+    }
+    if set(completion_parameters) != set(model_ids.values()):
+        raise PilotV6Error("Every final model requires a frozen completion-limit translation")
     try:
         provider.validate_exact_models_strict(
             tuple(model_ids.values()),
             minimum_context_tokens=models.provider_routing.minimum_context_tokens,
             timeout_seconds=min(20, models.generation.timeout_seconds),
-            required_completion_tokens=models.generation.max_tokens,
-            completion_limit_parameter=models.generation.completion_limit_parameter,
+            required_completion_tokens=models.generation.completion_envelope_tokens,
+            completion_limit_parameters=completion_parameters,
         )
     except (OSError, RuntimeError, ValueError) as error:
         path = _store_catalogue_failure(

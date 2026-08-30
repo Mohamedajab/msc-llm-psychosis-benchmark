@@ -8,7 +8,7 @@ import uuid
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import Field
 
@@ -25,8 +25,8 @@ from src.replacement_screening import (
 from src.schemas import StrictModel
 from src.storage import atomic_write_json
 
-SELECTION_RECORD_VERSION = "replacement-selection-record-v2.0.0"
-SELECTION_NAMESPACE = "replacement-selection-v2.0.0"
+SELECTION_RECORD_VERSION = "replacement-selection-record-v2.1.0"
+SELECTION_NAMESPACE = "replacement-selection-v2.1.0"
 SELECTION_REASON_CODE = "first_technical_pass_in_frozen_catalogue_order"
 
 
@@ -52,6 +52,9 @@ class ReplacementSelectionDecision(StrictModel):
     candidate_ordering_hash: str
     candidate_screen_verdicts: dict[str, str] = Field(default_factory=dict)
     selected_screen_evidence_hash: str | None = None
+    selected_completion_limit_parameter: Literal["max_tokens", "max_completion_tokens"] | None = (
+        None
+    )
 
 
 class ReplacementSelectionRecord(StrictModel):
@@ -60,6 +63,7 @@ class ReplacementSelectionRecord(StrictModel):
     selection_policy_version: str = SELECTION_POLICY_VERSION
     screening_policy_version: str = SCREEN_VERSION
     selected_model_id: str
+    completion_limit_parameter: Literal["max_tokens", "max_completion_tokens"]
     catalogue_evidence_hash: str
     catalogue_record_sha256: str
     candidate_ordering: tuple[str, ...]
@@ -86,7 +90,7 @@ def _load_catalogue_record(path: str | Path) -> tuple[dict[str, Any], Path]:
     except (OSError, json.JSONDecodeError) as error:
         raise ReplacementSelectionError("Catalogue evidence is malformed") from error
     if record.get("catalogue_evidence_version") != CATALOGUE_EVIDENCE_VERSION:
-        raise ReplacementSelectionError("Catalogue evidence version is not frozen v2.0.0")
+        raise ReplacementSelectionError("Catalogue evidence version is not the frozen revision")
     if record.get("selection_policy_version") != SELECTION_POLICY_VERSION:
         raise ReplacementSelectionError("Catalogue selection policy version mismatch")
     if record.get("generation_requests_made") != 0:
@@ -126,6 +130,9 @@ def determine_replacement_selection(
     catalogue_hash = str(catalogue["catalogue_evidence_hash"])
     record_hash = sha256_file(source)
     ordering_hash = canonical_hash(list(ordering))
+    evaluations = {
+        str(value["exact_model_id"]): value for value in catalogue["candidate_evaluations"]
+    }
     if not ordering:
         return ReplacementSelectionDecision(
             status=SelectionStatus.BLOCKED,
@@ -147,11 +154,14 @@ def determine_replacement_selection(
         verdicts[candidate] = assessment.verdict.value
         if assessment.verdict == ScreenVerdict.PASS:
             statistics = assessment.statistics
+            catalogue_parameter = evaluations[candidate].get("completion_limit_parameter")
             if (
                 statistics.get("successful_response_slots") != 12
                 or statistics.get("missing_response_slots") != 0
                 or statistics.get("truncation_count") != 0
                 or statistics.get("resolved_model_mismatch_count") != 0
+                or catalogue_parameter not in {"max_tokens", "max_completion_tokens"}
+                or statistics.get("completion_limit_parameter") != catalogue_parameter
             ):
                 raise ReplacementSelectionError("PASS assessment lacks frozen technical totals")
             return ReplacementSelectionDecision(
@@ -163,6 +173,7 @@ def determine_replacement_selection(
                 candidate_ordering_hash=ordering_hash,
                 candidate_screen_verdicts=verdicts,
                 selected_screen_evidence_hash=assessment.source_evidence_hash,
+                selected_completion_limit_parameter=str(catalogue_parameter),
             )
         if assessment.verdict in {ScreenVerdict.NOT_RUN, ScreenVerdict.INCOMPLETE}:
             return ReplacementSelectionDecision(
@@ -218,10 +229,13 @@ def create_replacement_selection(
         raise ReplacementSelectionError(
             "Requested candidate is not the first technical PASS in frozen catalogue order"
         )
+    if decision.selected_completion_limit_parameter is None:
+        raise ReplacementSelectionError("Selected candidate lacks a verified completion mapping")
     timestamp = selected_at or datetime.now(UTC)
     candidate = ReplacementSelectionRecord(
         selection_id=uuid.uuid4().hex,
         selected_model_id=decision.selected_model_id,
+        completion_limit_parameter=decision.selected_completion_limit_parameter,
         catalogue_evidence_hash=decision.catalogue_evidence_hash,
         catalogue_record_sha256=decision.catalogue_record_sha256,
         candidate_ordering=decision.candidate_ordering,
@@ -289,6 +303,7 @@ def validate_replacement_selection_record(
     )
     expected = {
         "selected_model_id": decision.selected_model_id,
+        "completion_limit_parameter": decision.selected_completion_limit_parameter,
         "catalogue_evidence_hash": decision.catalogue_evidence_hash,
         "catalogue_record_sha256": decision.catalogue_record_sha256,
         "candidate_ordering": decision.candidate_ordering,

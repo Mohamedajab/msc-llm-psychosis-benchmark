@@ -154,7 +154,9 @@ def test_routing_policy_and_truncation_are_recorded_without_reasoning() -> None:
     result = provider.generate(
         model_id="model/test:free",
         messages=[],
-        generation=models.generation,
+        generation=models.generation.model_copy(
+            update={"completion_limit_parameter": "max_tokens"}
+        ),
     )
     assert captured["provider"] == {"allow_fallbacks": False, "require_parameters": True}
     assert "models" not in captured

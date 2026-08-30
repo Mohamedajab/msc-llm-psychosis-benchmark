@@ -6,7 +6,7 @@ from collections import Counter
 from collections.abc import Iterable
 from typing import Any
 
-from src.config_loader import configuration_bundle_hash, generation_for_repetition
+from src.config_loader import configuration_bundle_hash, generation_for_model
 from src.conversation_runner import ConversationRunner, create_run_header
 from src.schemas import (
     ConversationRecord,
@@ -84,7 +84,7 @@ def execute_manifest_rows(
             break
         script = by_script[row.script_id]
         prefix = by_history[script.history_id]
-        generation = generation_for_repetition(models, row.repetition)
+        generation = generation_for_model(models, row.model_slot, row.repetition)
         candidate = create_run_header(
             study_version=row.study_version,
             run_id=row.run_id,

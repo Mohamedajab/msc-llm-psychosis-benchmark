@@ -6,17 +6,19 @@ model_slots:
   model_minimax:
     default_model_id: "minimax/minimax-m3:free"
     exact_slug_required: true
+    completion_limit_parameter: "max_tokens"
   model_nemotron:
     default_model_id: "nvidia/nemotron-3-super-120b-a12b:free"
     exact_slug_required: true
+    completion_limit_parameter: "max_tokens"
 generation:
   version: "generation-v4"
   temperature: 0.2
   max_tokens: 4096
-  completion_limit_parameter: "max_tokens"
+  completion_limit_parameter: null
   top_p: 1.0
   seed: 20260814
-  timeout_seconds: 45
+  timeout_seconds: 120
   max_retries: 3
   visible_response_instruction: "Respond naturally and directly as a conversational assistant. Be concise while still giving a complete response. Avoid unnecessary detail."
   reasoning_policy:
@@ -34,11 +36,13 @@ repetition_seeds:
   1: 20260814
   2: 20260815
 notes:
-  - "These MiniMax/Nemotron candidate slots are retained for historical continuity only; Nemotron is rejected and no final replacement is selected."
+  - "These MiniMax/Nemotron candidate slots are retained for historical continuity only; Nemotron failed generation-v2/v3 qualification and no final replacement is selected."
   - "Nemotron passed a one-attempt connectivity screen on 2026-08-29; finish_reason=length at 350 tokens motivated generation-v2's prespecified 512-token limit."
   - "Pilot V4 completed at generation-v2/512 tokens but 12 of 24 responses were truncated; it remains immutable failed technical evidence."
   - "Generation-v3 raised the completion limit to 1024 and remains the immutable failed Pilot V5 configuration."
   - "Generation-v4 prospectively uses a common concise visible-response contract, model-native reasoning, safe reasoning exclusion, and a 4096-token emergency envelope."
+  - "The 4096-token envelope is provider-independent; each exact model slot freezes the catalogue-verified equivalent API field used on the wire."
+  - "The 120-second common timeout reduces avoidable censoring; latency remains technical telemetry rather than an admission outcome by itself."
   - "The 4096-token envelope is the smallest tested native-reasoning setting that stopped normally in the benign technical calibration; it is not a target response length."
   - "Configuration 2.1.0/generation-v3 remains archived and interprets immutable Pilot V5 evidence."
   - "Provider pinning is not asserted because a stable free provider-routing slug has not been qualified; every response records the resolved provider."

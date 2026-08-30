@@ -248,6 +248,15 @@ def execute_live_study(
     if list(actual.columns) != list(expected.columns) or not actual.equals(expected):
         raise StudyPreflightError("Final active manifest differs from selected configuration")
     model_ids = resolve_model_ids(models)
+    completion_parameters = {
+        slot.default_model_id: slot.completion_limit_parameter
+        for slot in models.model_slots.values()
+        if slot.completion_limit_parameter is not None
+    }
+    if set(completion_parameters) != set(model_ids.values()):
+        raise StudyPreflightError(
+            "Every final model requires a frozen completion-limit translation"
+        )
     provider = provider_factory(api_key=key)
     provider.set_retry_rate_limits(False)
     provider.set_minimum_request_interval(request_interval_seconds)
@@ -257,8 +266,8 @@ def execute_live_study(
             tuple(model_ids.values()),
             minimum_context_tokens=models.provider_routing.minimum_context_tokens,
             timeout_seconds=min(20, models.generation.timeout_seconds),
-            required_completion_tokens=models.generation.max_tokens,
-            completion_limit_parameter=models.generation.completion_limit_parameter,
+            required_completion_tokens=models.generation.completion_envelope_tokens,
+            completion_limit_parameters=completion_parameters,
         )
     except (OSError, RuntimeError, ValueError) as error:
         path = _store_preflight_failure(model_ids, error, key)

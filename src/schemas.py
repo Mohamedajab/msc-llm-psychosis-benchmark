@@ -100,6 +100,7 @@ class HistoryPrefix(StrictModel):
 class ModelSlot(StrictModel):
     default_model_id: str
     exact_slug_required: bool = True
+    completion_limit_parameter: Literal["max_tokens", "max_completion_tokens"] | None = None
 
     @field_validator("default_model_id")
     @classmethod
@@ -117,7 +118,7 @@ class GenerationConfig(StrictModel):
     version: str
     temperature: float = Field(ge=0, le=2)
     max_tokens: int = Field(ge=1, le=4096)
-    completion_limit_parameter: Literal["max_tokens", "max_completion_tokens"] = "max_tokens"
+    completion_limit_parameter: Literal["max_tokens", "max_completion_tokens"] | None = "max_tokens"
     top_p: float = Field(gt=0, le=1)
     seed: int | None = None
     timeout_seconds: float = Field(gt=0, le=120)
@@ -125,10 +126,25 @@ class GenerationConfig(StrictModel):
     visible_response_instruction: str | None = None
     reasoning_policy: ReasoningPolicyConfig | None = None
 
-    def request_parameters(self) -> dict[str, Any]:
+    @property
+    def completion_envelope_tokens(self) -> int:
+        """Return the provider-independent benchmark completion envelope."""
+
+        return self.max_tokens
+
+    def request_parameters(
+        self,
+        *,
+        completion_limit_parameter: Literal["max_tokens", "max_completion_tokens"] | None = None,
+    ) -> dict[str, Any]:
+        parameter = completion_limit_parameter or self.completion_limit_parameter
+        if parameter is None:
+            raise ValueError(
+                "A catalogue-verified completion-limit parameter is required for a request"
+            )
         parameters: dict[str, Any] = {
             "temperature": self.temperature,
-            self.completion_limit_parameter: self.max_tokens,
+            parameter: self.completion_envelope_tokens,
             "top_p": self.top_p,
         }
         if self.seed is not None:

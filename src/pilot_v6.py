@@ -23,7 +23,7 @@ from pydantic import Field
 from src.config_loader import (
     canonical_hash,
     configuration_bundle_hash,
-    generation_for_repetition,
+    generation_for_model,
     load_histories,
     load_models,
     load_scripts,
@@ -131,14 +131,23 @@ def build_selected_models_config(
         or selected == MINIMAX_MODEL_ID
     ):
         raise PilotV6Error("Selected replacement identity is invalid or a placeholder")
+    minimax_parameter = base.model_slots["model_minimax"].completion_limit_parameter
+    if minimax_parameter is None:
+        raise PilotV6Error("MiniMax lacks a frozen completion-limit translation")
     payload = base.model_dump(mode="json")
     payload.update(
         {
             "version": FINAL_CONFIGURATION_VERSION,
             "catalogue_checked_at_utc": _catalogue_timestamp(catalogue_record_path).isoformat(),
             "model_slots": {
-                "model_minimax": ModelSlot(default_model_id=MINIMAX_MODEL_ID).model_dump(),
-                "model_replacement": ModelSlot(default_model_id=selected).model_dump(),
+                "model_minimax": ModelSlot(
+                    default_model_id=MINIMAX_MODEL_ID,
+                    completion_limit_parameter=minimax_parameter,
+                ).model_dump(),
+                "model_replacement": ModelSlot(
+                    default_model_id=selected,
+                    completion_limit_parameter=selection.completion_limit_parameter,
+                ).model_dump(),
             },
             "notes": [
                 "Prospective final Study V2 pair derived from governed replacement selection.",
@@ -251,8 +260,8 @@ def build_pilot_v6_offline_plan(
         provider = DeterministicFixtureProvider()
         runner = ConversationRunner(provider, RawRunStore(temporary))
         runs = []
-        generation = generation_for_repetition(models, REPETITION)
         for row in rows:
+            generation = generation_for_model(models, row.model_slot, REPETITION)
             header = create_run_header(
                 study_version=PILOT_V6_VERSION,
                 run_id=row.run_id,
@@ -366,8 +375,8 @@ def assess_pilot_v6(
     request_integrity_failures: set[str] = set()
     store = RawRunStore(pilot_output_root)
     event_ids: set[str] = set()
-    generation = generation_for_repetition(models, REPETITION)
     for row in rows:
+        generation = generation_for_model(models, row.model_slot, REPETITION)
         if not (store.run_directory(row.run_id) / "run.json").is_file():
             continue
         try:
