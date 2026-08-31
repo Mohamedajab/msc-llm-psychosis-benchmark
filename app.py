@@ -648,6 +648,10 @@ def _render_main_study_progress(preflight_ready: bool = False) -> None:
                 "The saved finish-metadata anomaly has a validated runtime amendment. "
                 "Resume continues at the first missing turn; the saved response is not regenerated."
             )
+        elif progress.resume_reason == "worker_not_running":
+            st.warning(
+                "The previous worker is no longer running. Resume from the first missing response."
+            )
         elif progress.upstream_error_code is not None:
             detail = progress.upstream_error_message or "Temporary upstream provider failure"
             st.warning(

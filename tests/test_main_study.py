@@ -31,6 +31,7 @@ from src.main_study import (
     save_job_state,
 )
 from src.provider_client import DeterministicFixtureProvider, TargetProvider
+from src.runtime_amendments import use_runtime_target_message_builder
 from src.schemas import ObservationStatus, ProviderResult
 from src.storage import RawRunStore
 from src.study_execution import execute_manifest_rows
@@ -158,6 +159,28 @@ class HardStopProvider(FixtureProvider):
         )
 
 
+class AssistantCueProvider(TargetProvider):
+    provider_name = "fixture"
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def generate(self, *, model_id, messages, generation):  # noqa: ANN001
+        del messages, generation
+        self.calls += 1
+        return ProviderResult(
+            status=ObservationStatus.RESPONSE,
+            text="The saved target response includes the word delusional.",
+            requested_model_id=model_id,
+            resolved_model_id=model_id,
+            provider_name="fixture",
+            finish_reason="stop",
+            latency_ms=1,
+            retry_count=0,
+            http_attempts=1,
+        )
+
+
 def _header(row, scripts, histories, models):  # noqa: ANN001, ANN202
     script = next(script for script in scripts if script.script_id == row.script_id)
     return create_run_header(
@@ -277,6 +300,8 @@ def test_partial_progress_and_eta_are_derived_from_raw_evidence(tmp_path: Path) 
         state_path=state_path,
         now=now,
     )
+    assert progress.status == JobStatus.RESUMABLE
+    assert progress.resume_reason == "worker_not_running"
     assert progress.responses_complete == 3
     assert progress.conversations_complete == 0
     assert progress.current_execution_order == row.execution_order
@@ -338,6 +363,48 @@ def test_resume_keeps_successes_and_reconstructs_failed_turn_history(tmp_path: P
     assert len(resumed.turns) == 6
     assert resumed.turns[2].request_messages == failed_messages
     assert all(path.read_bytes() == content for path, content in saved.items())
+
+
+def test_resume_allows_forbidden_cue_only_in_saved_assistant_history(tmp_path: Path) -> None:
+    scripts, histories, models, rows = planned_study(ROOT)
+    row = rows[0]
+    script = next(value for value in scripts if value.script_id == row.script_id)
+    prefix = next(value for value in histories if value.history_id == script.history_id)
+    store = RawRunStore(tmp_path / "raw")
+    header = _header(row, scripts, histories, models)
+    first_provider = AssistantCueProvider()
+    partial = ConversationRunner(first_provider, store).run_or_resume(
+        header=header,
+        script=script,
+        prefix=prefix,
+        should_stop=lambda: first_provider.calls == 1,
+        require_stop_finish_reason=True,
+    )
+    assert len(partial.turns) == 1
+    saved_text = partial.turns[0].result.text
+    saved_files = {
+        path: path.read_bytes() for path in store.run_directory(row.run_id).glob("*-success.json")
+    }
+
+    request = next_study_request(repository_root=ROOT, raw_root=store.root)
+    assert request is not None
+    assert request.run_id == row.run_id
+    assert request.turn_number == 2
+
+    provider = DeterministicFixtureProvider()
+    with use_runtime_target_message_builder():
+        resumed = ConversationRunner(provider, store).run_or_resume(
+            header=header,
+            script=script,
+            prefix=prefix,
+            require_stop_finish_reason=True,
+        )
+    assert len(resumed.turns) == 6
+    assert len(provider.calls) == 5
+    assert provider.calls[0][-2].role == "assistant"
+    assert provider.calls[0][-2].content == saved_text
+    for path, content in saved_files.items():
+        assert path.read_bytes() == content
 
 
 def test_embedded_upstream_error_makes_blocked_study_safely_resumable(tmp_path: Path) -> None:

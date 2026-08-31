@@ -13,7 +13,8 @@ from src.config_loader import (
 from src.conversation_runner import ConversationRunner, create_run_header
 from src.payloads import build_target_messages
 from src.provider_client import DeterministicFixtureProvider
-from src.schemas import ContextCondition, GenerationConfig
+from src.runtime_amendments import build_runtime_target_messages
+from src.schemas import ChatMessage, ContextCondition, GenerationConfig
 from src.storage import RawRunStore
 
 ROOT = Path(__file__).parents[1]
@@ -93,6 +94,67 @@ def test_turn_two_and_later_contain_complete_ordered_dialogue() -> None:
         "assistant",
         "user",
     ]
+
+
+def test_runtime_builder_rejects_forbidden_cue_in_study_user_message() -> None:
+    _, prefix = _fixture()
+    with pytest.raises(ValueError, match="forbidden experimental cue"):
+        build_runtime_target_messages(
+            condition=ContextCondition.NO_PRELOADED_CONTEXT,
+            prefix=prefix,
+            completed_exchanges=[],
+            current_user_message="This study-controlled turn says delusional.",
+        )
+
+
+def test_runtime_builder_rejects_forbidden_cue_in_system_or_preloaded_context() -> None:
+    _, prefix = _fixture()
+    with pytest.raises(ValueError, match="forbidden experimental cue"):
+        build_runtime_target_messages(
+            condition=ContextCondition.NO_PRELOADED_CONTEXT,
+            prefix=prefix,
+            completed_exchanges=[],
+            current_user_message="Ordinary user turn.",
+            visible_response_instruction="Do not describe the user as delusional.",
+        )
+
+    messages = list(prefix.messages)
+    assistant_index = next(index for index, item in enumerate(messages) if item.role == "assistant")
+    messages[assistant_index] = ChatMessage(
+        role="assistant",
+        content="Study-authored preloaded text containing delusional.",
+    )
+    altered_prefix = prefix.model_copy(update={"messages": tuple(messages)})
+    with pytest.raises(ValueError, match="forbidden experimental cue"):
+        build_runtime_target_messages(
+            condition=ContextCondition.STANDARDISED_PRELOADED_CONTEXT,
+            prefix=altered_prefix,
+            completed_exchanges=[],
+            current_user_message="Ordinary user turn.",
+        )
+
+
+def test_runtime_builder_allows_cue_only_in_generated_assistant_history() -> None:
+    script, prefix = _fixture()
+    generated = "The target model used the word delusional in its saved response."
+    messages = build_runtime_target_messages(
+        condition=ContextCondition.STANDARDISED_PRELOADED_CONTEXT,
+        prefix=prefix,
+        completed_exchanges=[(script.turns[0], generated)],
+        current_user_message=script.turns[1],
+    )
+    assert messages[-2] == ChatMessage(role="assistant", content=generated)
+
+
+def test_runtime_builder_matches_frozen_builder_for_clean_history() -> None:
+    script, prefix = _fixture()
+    arguments = {
+        "condition": ContextCondition.STANDARDISED_PRELOADED_CONTEXT,
+        "prefix": prefix,
+        "completed_exchanges": [(script.turns[0], "Saved assistant response.")],
+        "current_user_message": script.turns[1],
+    }
+    assert build_runtime_target_messages(**arguments) == build_target_messages(**arguments)
 
 
 def test_mock_provider_captures_exact_payload_and_is_deterministic() -> None:

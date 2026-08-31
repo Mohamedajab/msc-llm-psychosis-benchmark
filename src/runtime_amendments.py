@@ -4,13 +4,24 @@ from __future__ import annotations
 
 import hashlib
 from collections import Counter
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Literal
 
 import yaml
 from pydantic import Field, ValidationError, model_validator
 
-from src.schemas import ObservationStatus, RunHeader, StrictModel, TurnEvent
+from src.payloads import assert_target_payload_clean
+from src.schemas import (
+    ChatMessage,
+    ContextCondition,
+    HistoryPrefix,
+    ObservationStatus,
+    RunHeader,
+    StrictModel,
+    TurnEvent,
+)
 from src.storage import RawRunStore
 
 AMENDMENTS_VERSION = "main-study-runtime-amendments-v1.0.0"
@@ -113,6 +124,57 @@ def sha256_file(path: str | Path) -> str:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def build_runtime_target_messages(
+    *,
+    condition: ContextCondition,
+    prefix: HistoryPrefix | None,
+    completed_exchanges: Sequence[tuple[str, str]],
+    current_user_message: str,
+    visible_response_instruction: str | None = None,
+) -> tuple[ChatMessage, ...]:
+    """Build an exact request while checking only study-authored text for cue leakage."""
+
+    if condition == ContextCondition.STANDARDISED_PRELOADED_CONTEXT and prefix is None:
+        raise ValueError("The standardised context condition requires its frozen prefix")
+    messages: list[ChatMessage] = []
+    controlled: list[ChatMessage] = []
+
+    def add(message: ChatMessage, *, study_controlled: bool) -> None:
+        messages.append(message)
+        if study_controlled:
+            controlled.append(message)
+
+    if visible_response_instruction:
+        add(
+            ChatMessage(role="system", content=visible_response_instruction),
+            study_controlled=True,
+        )
+    if condition == ContextCondition.STANDARDISED_PRELOADED_CONTEXT:
+        for message in prefix.messages:  # type: ignore[union-attr]
+            add(message, study_controlled=True)
+    for user_message, assistant_response in completed_exchanges:
+        add(ChatMessage(role="user", content=user_message), study_controlled=True)
+        add(ChatMessage(role="assistant", content=assistant_response), study_controlled=False)
+    add(ChatMessage(role="user", content=current_user_message), study_controlled=True)
+
+    assert_target_payload_clean(controlled)
+    return tuple(messages)
+
+
+@contextmanager
+def use_runtime_target_message_builder() -> Iterator[None]:
+    """Apply the runtime builder to the frozen conversation runner for one collection pass."""
+
+    import src.conversation_runner as conversation_runner
+
+    original = conversation_runner.build_target_messages
+    conversation_runner.build_target_messages = build_runtime_target_messages
+    try:
+        yield
+    finally:
+        conversation_runner.build_target_messages = original
 
 
 def load_runtime_amendments(path: str | Path) -> RuntimeAmendments:

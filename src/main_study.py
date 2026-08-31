@@ -26,7 +26,6 @@ from src.config_loader import (
 )
 from src.conversation_runner import create_run_header, payload_hash
 from src.main_study_readiness import evaluate_main_study_readiness
-from src.payloads import build_target_messages
 from src.pilot_v6 import (
     FINAL_PAIR_SOURCE,
     MINIMAX_MODEL_ID,
@@ -36,7 +35,12 @@ from src.pilot_v6 import (
     build_original_pair_models_config,
 )
 from src.provider_errors import classify_error_type, classify_provider_result
-from src.runtime_amendments import audit_finish_metadata, load_runtime_amendments
+from src.runtime_amendments import (
+    audit_finish_metadata,
+    build_runtime_target_messages,
+    load_runtime_amendments,
+    use_runtime_target_message_builder,
+)
 from src.schemas import ErrorEvent, ManifestRow, ModelsConfig, RunHeader, StrictModel
 from src.storage import RawRunStore, atomic_write_json
 from src.study_audit import audit_study_evidence
@@ -253,7 +257,7 @@ def reconstruct_request_hash(
     preceding = [event for event in successes if event.turn_number < turn_number]
     if [event.turn_number for event in preceding] != list(range(1, turn_number)):
         raise MainStudyError("Cannot reconstruct a request from non-contiguous history")
-    messages = build_target_messages(
+    messages = build_runtime_target_messages(
         condition=row.context_condition,
         prefix=prefix,
         completed_exchanges=[(event.user_message, event.result.text or "") for event in preceding],
@@ -386,6 +390,11 @@ def load_study_progress(
         else None
     )
     status = state.status
+    worker_state_is_stale = status in {
+        JobStatus.RUNNING,
+        JobStatus.RESUMING,
+        JobStatus.WAITING_TO_RETRY,
+    } and not worker_is_active(Path(state_path).parent)
     if summary["truncation_count"] or summary["provider_mismatches"] or finish_audit.hard_blocked:
         status = JobStatus.BLOCKED
     elif summary["successful_response_slots"] == PLANNED_RESPONSES:
@@ -398,9 +407,15 @@ def load_study_progress(
     ):
         status = JobStatus.RESUMABLE
     elif (
-        status in {JobStatus.BLOCKED, JobStatus.STOPPED}
-        and finish_audit.approved_anomaly_count
+        worker_state_is_stale
         and next_request is not None
+        and summary["http_attempts_used"] < MAXIMUM_HTTP_ATTEMPTS
+    ):
+        status = JobStatus.RESUMABLE
+    elif (
+        status in {JobStatus.BLOCKED, JobStatus.STOPPED}
+        and next_request is not None
+        and next_request.technical_amendment_ids_in_history
         and summary["http_attempts_used"] < MAXIMUM_HTTP_ATTEMPTS
     ):
         status = JobStatus.RESUMABLE
@@ -459,7 +474,11 @@ def load_study_progress(
             if classification is not None
             else (
                 "approved_finish_metadata_amendment"
-                if status == JobStatus.RESUMABLE and finish_audit.approved_anomaly_count
+                if status == JobStatus.RESUMABLE
+                and next_request is not None
+                and next_request.technical_amendment_ids_in_history
+                else "worker_not_running"
+                if status == JobStatus.RESUMABLE and worker_state_is_stale
                 else None
             )
         ),
@@ -743,22 +762,23 @@ def run_study_worker(
                 save_job_state(state_path, state)
 
             try:
-                execute_batch(
-                    maximum_http_attempts=remaining_attempts,
-                    live_requested=True,
-                    live_confirmed=True,
-                    protocol_confirmed=True,
-                    output_root=Path(raw_root),
-                    request_interval_seconds=REQUEST_INTERVAL_SECONDS,
-                    environ=dict(os.environ if environ is None else environ),
-                    pilot_output_root=Path(pilot_v6_root),
-                    active_bundle_root=Path(active_bundle_root),
-                    final_artifact_root=root,
-                    governance_path=Path(governance_path),
-                    on_turn_start=on_turn_start,
-                    should_stop=lambda: stop_requested(job_directory),
-                    stop_on_error=True,
-                )
+                with use_runtime_target_message_builder():
+                    execute_batch(
+                        maximum_http_attempts=remaining_attempts,
+                        live_requested=True,
+                        live_confirmed=True,
+                        protocol_confirmed=True,
+                        output_root=Path(raw_root),
+                        request_interval_seconds=REQUEST_INTERVAL_SECONDS,
+                        environ=dict(os.environ if environ is None else environ),
+                        pilot_output_root=Path(pilot_v6_root),
+                        active_bundle_root=Path(active_bundle_root),
+                        final_artifact_root=root,
+                        governance_path=Path(governance_path),
+                        on_turn_start=on_turn_start,
+                        should_stop=lambda: stop_requested(job_directory),
+                        stop_on_error=True,
+                    )
             except (OSError, RuntimeError, ValueError) as error:
                 message = str(error)
                 error_type = (
