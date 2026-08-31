@@ -44,3 +44,26 @@ when every recorded identity, usage and integrity field matches the immutable ev
 observation remains classified as finish metadata unreported/unknown for later audit and
 sensitivity analysis. Scientific prompts, model identities and generation-v4 settings are
 unchanged.
+
+## 31 August 2026 — embedded upstream 402 requires manual recovery
+
+Collection reached 34 of 72 completed conversations and 204 of 432 saved responses. The next
+cell was execution order 35, turn 1, using MiniMax. OpenRouter returned outer HTTP status 200
+with a structured upstream error code 402. The error event and all 204 successful responses
+remain unchanged.
+
+The missing request was reconstructed from the frozen manifest, scenario, context condition,
+repetition, seed and generation-v4 configuration. Its reconstructed payload hash matched the
+stored failed-request hash:
+
+`f341bbc53d95ea9fa5b253396e47db048ba864668365784fae2510de8154d6c2`
+
+The runtime policy now distinguishes this condition from automatic transient recovery. An
+embedded `upstream_http_402` remains non-retryable by the worker, but an operator may explicitly
+resume after the stored evidence and request hash pass the usual integrity checks. A repeated
+402 stops again and requires another deliberate review. Outer HTTP 402 and other permanent
+400, 401 and 403 errors remain hard stops.
+
+No successful response is regenerated. The exact model, provider-routing policy, prompts,
+generation settings and study design are unchanged, and neither provider fallback nor model
+substitution is enabled.

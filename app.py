@@ -643,7 +643,13 @@ def _render_main_study_progress(preflight_ready: bool = False) -> None:
             )
         )
     elif progress.status == JobStatus.RESUMABLE:
-        if progress.resume_reason == "approved_finish_metadata_amendment":
+        if progress.operator_resume_required and progress.resume_reason == "upstream_http_402":
+            st.warning(
+                "The previous request stopped because the upstream provider returned HTTP 402. "
+                "Existing study evidence is intact. Resume will retry only the first missing "
+                "request using the unchanged frozen protocol."
+            )
+        elif progress.resume_reason == "approved_finish_metadata_amendment":
             st.warning(
                 "The saved finish-metadata anomaly has a validated runtime amendment. "
                 "Resume continues at the first missing turn; the saved response is not regenerated."
@@ -766,8 +772,15 @@ def render_main_study() -> None:
     hard_blocked = progress is not None and progress.status == JobStatus.BLOCKED
     can_launch = current.ready and not hard_blocked
     action = "Resume" if is_resume else "Start"
+    operator_recovery = bool(progress is not None and progress.operator_resume_required)
+    confirmation_text = (
+        "I understand this will resume the frozen main-study data collection from the first "
+        "missing response."
+        if operator_recovery
+        else f"I understand this will {action.lower()} the frozen main-study data collection."
+    )
     confirmed = st.checkbox(
-        f"I understand this will {action.lower()} the frozen main-study data collection.",
+        confirmation_text,
         disabled=not can_launch,
     )
     if not can_launch:
@@ -787,6 +800,7 @@ def render_main_study() -> None:
                     active_bundle_root=ACTIVE_BUNDLE_DIR,
                     governance_path=GOVERNANCE_PATH,
                     environ=dict(os.environ),
+                    operator_resume_confirmed=(operator_recovery and confirmed),
                 )
             except (OSError, RuntimeError, ValueError) as error:
                 st.error(f"The study worker could not start: {error}")

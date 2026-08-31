@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -126,6 +127,18 @@ class EmbeddedUpstreamErrorAfterTwo(TargetProvider):
             retry_count=0,
             http_attempts=1,
         )
+
+
+class OperatorRecoverable402(TargetProvider):
+    provider_name = "fixture"
+
+    def generate(self, *, model_id, messages, generation):  # noqa: ANN001
+        del messages, generation
+        return _technical_error(
+            "provider_body_error",
+            message=repr({"message": "Upstream provider unavailable", "code": 402}),
+            http_status=200,
+        ).model_copy(update={"requested_model_id": model_id})
 
 
 class HardStopProvider(FixtureProvider):
@@ -455,6 +468,175 @@ def test_embedded_upstream_error_makes_blocked_study_safely_resumable(tmp_path: 
         store.append_success(resumed.turns[0])
 
 
+def test_upstream_402_requires_confirmation_and_preserves_failed_request(
+    tmp_path: Path,
+) -> None:
+    scripts, histories, models, rows = planned_study(ROOT)
+    row = rows[0]
+    script = next(value for value in scripts if value.script_id == row.script_id)
+    prefix = next(value for value in histories if value.history_id == script.history_id)
+    store = RawRunStore(tmp_path / "raw")
+    failed = ConversationRunner(OperatorRecoverable402(), store).run_or_resume(
+        header=_header(row, scripts, histories, models),
+        script=script,
+        prefix=prefix,
+    )
+    state_path = tmp_path / "job" / "state.json"
+    save_job_state(
+        state_path,
+        StudyJobState(
+            status=JobStatus.BLOCKED,
+            message="Collection stopped after non-retryable error: upstream_http_402.",
+        ),
+    )
+
+    progress = load_study_progress(
+        repository_root=ROOT,
+        raw_root=store.root,
+        state_path=state_path,
+    )
+    request = next_study_request(repository_root=ROOT, raw_root=store.root)
+    assert progress.status == JobStatus.RESUMABLE
+    assert progress.operator_resume_required is True
+    assert progress.resume_reason == "upstream_http_402"
+    assert request is not None
+    assert request.turn_number == 1
+    assert request.request_payload_hash == failed.errors[0].request_payload_hash
+    assert len(store.error_events(row.run_id)) == 1
+
+    preflight = run_main_study_preflight(
+        repository_root=ROOT,
+        raw_root=store.root,
+        job_root=state_path.parent,
+        pilot_v6_root=ROOT / "data/private/technical-pilot-v6.0.0",
+        active_bundle_root=ROOT / "protocol/study-v2.1.0",
+        governance_path=ROOT / "config/main-study-governance.yaml",
+        environ={"OPENROUTER_API_KEY": "test-only"},
+    )
+    assert preflight.ready is True
+    with pytest.raises(MainStudyError, match="explicit operator confirmation"):
+        main_study.launch_study_worker(
+            repository_root=ROOT,
+            job_root=state_path.parent,
+            raw_root=store.root,
+            pilot_v6_root=tmp_path / "pilot",
+            active_bundle_root=tmp_path / "bundle",
+            governance_path=tmp_path / "governance.yaml",
+            environ={},
+            popen=lambda *_, **__: pytest.fail("worker must not start without confirmation"),
+        )
+    assert main_study.read_worker_lock(state_path.parent) is None
+
+    actual_pid = 24680
+
+    def claim_reserved_worker(command, **options):  # noqa: ANN003, ANN202
+        del options
+        token = command[command.index("--lock-token") + 1]
+        main_study.claim_worker(state_path.parent, token, actual_pid)
+        return SimpleNamespace(pid=13579)
+
+    launched_pid = main_study.launch_study_worker(
+        repository_root=ROOT,
+        job_root=state_path.parent,
+        raw_root=store.root,
+        pilot_v6_root=tmp_path / "pilot",
+        active_bundle_root=tmp_path / "bundle",
+        governance_path=tmp_path / "governance.yaml",
+        environ={},
+        operator_resume_confirmed=True,
+        popen=claim_reserved_worker,
+        process_running=lambda value: value == actual_pid,
+    )
+    assert launched_pid == actual_pid
+    lock = main_study.read_worker_lock(state_path.parent)
+    assert lock is not None
+    release_worker(state_path.parent, lock["token"])
+
+
+def test_manual_402_resume_skips_completed_work_and_keeps_error(tmp_path: Path) -> None:
+    scripts, histories, models, rows = planned_study(ROOT)
+    store = RawRunStore(tmp_path / "raw")
+    first, second = rows[:2]
+    for row, provider in (
+        (first, DeterministicFixtureProvider()),
+        (second, OperatorRecoverable402()),
+    ):
+        script = next(value for value in scripts if value.script_id == row.script_id)
+        prefix = next(value for value in histories if value.history_id == script.history_id)
+        ConversationRunner(provider, store).run_or_resume(
+            header=_header(row, scripts, histories, models),
+            script=script,
+            prefix=prefix,
+        )
+    first_files = {path: path.read_bytes() for path in store.run_directory(first.run_id).iterdir()}
+    failed_hash = store.error_events(second.run_id)[0].request_payload_hash
+    provider = FixtureProvider()
+
+    execute_manifest_rows(
+        rows=[first, second],
+        scripts=scripts,
+        histories=histories,
+        models=models,
+        provider=provider,
+        store=store,
+        data_status="main_study",
+        maximum_http_attempts=10,
+        require_stop_finish_reason=True,
+    )
+
+    assert len(provider.calls) == 6
+    assert len(store.successful_turns(first.run_id)) == 6
+    assert len(store.successful_turns(second.run_id)) == 6
+    assert store.successful_turns(second.run_id)[0].request_payload_hash == failed_hash
+    assert len(store.error_events(second.run_id)) == 1
+    for path, content in first_files.items():
+        assert path.read_bytes() == content
+
+    already_complete = FixtureProvider()
+    execute_manifest_rows(
+        rows=[first, second],
+        scripts=scripts,
+        histories=histories,
+        models=models,
+        provider=already_complete,
+        store=store,
+        data_status="main_study",
+        maximum_http_attempts=10,
+        require_stop_finish_reason=True,
+    )
+    assert already_complete.calls == []
+
+
+def test_manual_402_recovery_fails_closed_when_request_hash_differs(tmp_path: Path) -> None:
+    scripts, histories, models, rows = planned_study(ROOT)
+    row = rows[0]
+    script = next(value for value in scripts if value.script_id == row.script_id)
+    prefix = next(value for value in histories if value.history_id == script.history_id)
+    store = RawRunStore(tmp_path / "raw")
+    ConversationRunner(OperatorRecoverable402(), store).run_or_resume(
+        header=_header(row, scripts, histories, models),
+        script=script,
+        prefix=prefix,
+    )
+    error_path = next(store.run_directory(row.run_id).glob("turn-01-error-*.json"))
+    value = json.loads(error_path.read_text(encoding="utf-8"))
+    value["request_payload_hash"] = "0" * 64
+    error_path.write_text(json.dumps(value), encoding="utf-8")
+
+    with pytest.raises(MainStudyError, match="does not match the reconstructed request"):
+        main_study.launch_study_worker(
+            repository_root=ROOT,
+            job_root=tmp_path / "job",
+            raw_root=store.root,
+            pilot_v6_root=tmp_path / "pilot",
+            active_bundle_root=tmp_path / "bundle",
+            governance_path=tmp_path / "governance.yaml",
+            environ={},
+            operator_resume_confirmed=True,
+            popen=lambda *_, **__: pytest.fail("worker must not start after a hash mismatch"),
+        )
+
+
 def test_main_study_attempt_ceiling_remains_576() -> None:
     assert MAXIMUM_HTTP_ATTEMPTS == 576
 
@@ -533,6 +715,267 @@ def test_duplicate_worker_reservation_is_prevented(tmp_path: Path) -> None:
             reserve_worker(tmp_path)
     finally:
         release_worker(tmp_path, token)
+
+
+def test_worker_records_its_real_pid_before_preflight(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    job_root = tmp_path / "job"
+    observed: dict[str, int] = {}
+    save_job_state(
+        job_root / "state.json",
+        StudyJobState(
+            status=JobStatus.RUNNING,
+            worker_pid=11111,
+            last_error_type="upstream_http_502",
+            upstream_error_code=502,
+            upstream_error_message="Previous temporary failure",
+        ),
+    )
+
+    def preflight(**kwargs):  # noqa: ANN003, ANN202
+        del kwargs
+        state = load_job_state(job_root / "state.json")
+        lock = main_study.read_worker_lock(job_root)
+        assert lock is not None
+        observed["state_pid"] = state.worker_pid or 0
+        observed["lock_pid"] = lock["pid"]
+        assert state.last_error_type is None
+        assert state.upstream_error_code is None
+        assert state.upstream_error_message is None
+        return _ready_preflight()
+
+    monkeypatch.setattr(main_study, "run_main_study_preflight", preflight)
+    monkeypatch.setattr(
+        main_study,
+        "load_study_progress",
+        lambda **_: _progress(JobStatus.COMPLETE, 432),
+    )
+    token = reserve_worker(job_root)
+    result = run_study_worker(
+        repository_root=ROOT,
+        job_root=job_root,
+        raw_root=tmp_path / "raw",
+        pilot_v6_root=tmp_path / "pilot",
+        active_bundle_root=tmp_path / "bundle",
+        governance_path=tmp_path / "governance.yaml",
+        lock_token=token,
+        environ={"RUN_LIVE_STUDY": "1", "OPENROUTER_API_KEY": "test"},
+    )
+    assert result == 0
+    assert observed == {"state_pid": main_study.os.getpid(), "lock_pid": main_study.os.getpid()}
+    finished = load_job_state(job_root / "state.json")
+    assert finished.status == JobStatus.COMPLETE
+    assert finished.worker_pid is None
+
+
+def test_interrupted_catalogue_validation_is_resumable_and_releases_lock(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    job_root = tmp_path / "job"
+    raw_root = tmp_path / "raw"
+    monkeypatch.setattr(main_study, "run_main_study_preflight", lambda **_: _ready_preflight())
+    monkeypatch.setattr(
+        main_study,
+        "load_study_progress",
+        lambda **_: _progress(JobStatus.RUNNING, 203),
+    )
+    monkeypatch.setattr(main_study, "_stored_errors", lambda *_, **__: [])
+
+    def interrupted(**kwargs):  # noqa: ANN003, ANN202
+        del kwargs
+        raise KeyboardInterrupt
+
+    token = reserve_worker(job_root)
+    result = run_study_worker(
+        repository_root=ROOT,
+        job_root=job_root,
+        raw_root=raw_root,
+        pilot_v6_root=tmp_path / "pilot",
+        active_bundle_root=tmp_path / "bundle",
+        governance_path=tmp_path / "governance.yaml",
+        lock_token=token,
+        environ={"RUN_LIVE_STUDY": "1", "OPENROUTER_API_KEY": "test"},
+        execute_batch=interrupted,
+    )
+    assert result == 130
+    state = load_job_state(job_root / "state.json")
+    assert state.status == JobStatus.RESUMABLE
+    assert state.worker_pid is None
+    assert state.last_error_type == "catalogue_validation_interrupted"
+    assert state.resume_reason == "catalogue_validation_interrupted"
+    assert main_study.read_worker_lock(job_root) is None
+    assert not raw_root.exists()
+
+
+def test_interrupted_local_preflight_is_resumable_and_releases_lock(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    job_root = tmp_path / "job"
+
+    def interrupted(**kwargs):  # noqa: ANN003, ANN202
+        del kwargs
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(main_study, "run_main_study_preflight", interrupted)
+    token = reserve_worker(job_root)
+    result = run_study_worker(
+        repository_root=ROOT,
+        job_root=job_root,
+        raw_root=tmp_path / "raw",
+        pilot_v6_root=tmp_path / "pilot",
+        active_bundle_root=tmp_path / "bundle",
+        governance_path=tmp_path / "governance.yaml",
+        lock_token=token,
+        environ={"RUN_LIVE_STUDY": "1", "OPENROUTER_API_KEY": "test"},
+    )
+    assert result == 130
+    state = load_job_state(job_root / "state.json")
+    assert state.status == JobStatus.RESUMABLE
+    assert state.last_error_type == "worker_preflight_interrupted"
+    assert state.worker_pid is None
+    assert main_study.read_worker_lock(job_root) is None
+
+
+def test_catalogue_failure_retries_without_changing_raw_evidence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    job_root = tmp_path / "job"
+    raw_root = tmp_path / "raw"
+    calls = 0
+    sleeps: list[float] = []
+    monkeypatch.setattr(main_study, "run_main_study_preflight", lambda **_: _ready_preflight())
+    monkeypatch.setattr(
+        main_study,
+        "load_study_progress",
+        lambda **_: _progress(JobStatus.RUNNING, 203),
+    )
+    monkeypatch.setattr(main_study, "_stored_errors", lambda *_, **__: [])
+
+    def unavailable(**kwargs):  # noqa: ANN003, ANN202
+        nonlocal calls
+        del kwargs
+        calls += 1
+        raise RuntimeError("Catalogue qualification failed before POST")
+
+    token = reserve_worker(job_root)
+    result = run_study_worker(
+        repository_root=ROOT,
+        job_root=job_root,
+        raw_root=raw_root,
+        pilot_v6_root=tmp_path / "pilot",
+        active_bundle_root=tmp_path / "bundle",
+        governance_path=tmp_path / "governance.yaml",
+        lock_token=token,
+        environ={"RUN_LIVE_STUDY": "1", "OPENROUTER_API_KEY": "test"},
+        maximum_auto_resumes=1,
+        execute_batch=unavailable,
+        sleep=sleeps.append,
+    )
+    assert result == 1
+    assert calls == 2
+    assert sleeps == [30]
+    state = load_job_state(job_root / "state.json")
+    assert state.status == JobStatus.RESUMABLE
+    assert state.last_error_type == "catalogue_preflight_error"
+    assert state.worker_pid is None
+    assert main_study.read_worker_lock(job_root) is None
+    assert not raw_root.exists()
+    assert main_study.classify_error_type("catalogue_preflight_error").retryable is True
+
+
+def test_launcher_waits_for_claim_and_returns_the_worker_pid(tmp_path: Path) -> None:
+    job_root = tmp_path / "job"
+    captured: dict[str, object] = {}
+    actual_worker_pid = 24680
+
+    def fake_popen(command, **options):  # noqa: ANN003, ANN202
+        captured["options"] = options
+        token = command[command.index("--lock-token") + 1]
+        main_study.claim_worker(job_root, token, actual_worker_pid)
+        return SimpleNamespace(pid=13579)
+
+    pid = main_study.launch_study_worker(
+        repository_root=ROOT,
+        job_root=job_root,
+        raw_root=tmp_path / "raw",
+        pilot_v6_root=tmp_path / "pilot",
+        active_bundle_root=tmp_path / "bundle",
+        governance_path=tmp_path / "governance.yaml",
+        environ={},
+        popen=fake_popen,
+        process_running=lambda value: value == actual_worker_pid,
+    )
+    assert pid == actual_worker_pid
+    if main_study.os.name == "nt":
+        flags = captured["options"]["creationflags"]
+        assert flags & main_study.subprocess.CREATE_NO_WINDOW
+        assert flags & main_study.subprocess.CREATE_NEW_PROCESS_GROUP
+    lock = main_study.read_worker_lock(job_root)
+    assert lock is not None
+    release_worker(job_root, lock["token"])
+
+
+def test_failed_worker_startup_clears_reservation_and_stale_running_state(
+    tmp_path: Path,
+) -> None:
+    job_root = tmp_path / "job"
+    save_job_state(
+        job_root / "state.json",
+        StudyJobState(status=JobStatus.RUNNING, worker_pid=11111),
+    )
+    times = iter((0.0, 1.0))
+
+    with pytest.raises(MainStudyError, match="startup handshake"):
+        main_study.launch_study_worker(
+            repository_root=ROOT,
+            job_root=job_root,
+            raw_root=tmp_path / "raw",
+            pilot_v6_root=tmp_path / "pilot",
+            active_bundle_root=tmp_path / "bundle",
+            governance_path=tmp_path / "governance.yaml",
+            environ={},
+            startup_timeout_seconds=0.5,
+            popen=lambda *_, **__: SimpleNamespace(pid=22222),
+            sleep=lambda _: None,
+            monotonic=lambda: next(times),
+            process_running=lambda _: False,
+        )
+    assert main_study.read_worker_lock(job_root) is None
+    state = load_job_state(job_root / "state.json")
+    assert state.status == JobStatus.RESUMABLE
+    assert state.worker_pid is None
+    assert state.last_error_type == "worker_start_failed"
+    assert state.recoverable is True
+
+
+def test_process_creation_failure_clears_stale_running_state(tmp_path: Path) -> None:
+    job_root = tmp_path / "job"
+    save_job_state(
+        job_root / "state.json",
+        StudyJobState(status=JobStatus.RUNNING, worker_pid=11111),
+    )
+
+    def fail_to_start(*args, **kwargs):  # noqa: ANN002, ANN003, ANN202
+        del args, kwargs
+        raise OSError("synthetic process creation failure")
+
+    with pytest.raises(OSError, match="synthetic process creation failure"):
+        main_study.launch_study_worker(
+            repository_root=ROOT,
+            job_root=job_root,
+            raw_root=tmp_path / "raw",
+            pilot_v6_root=tmp_path / "pilot",
+            active_bundle_root=tmp_path / "bundle",
+            governance_path=tmp_path / "governance.yaml",
+            environ={},
+            popen=fail_to_start,
+        )
+    assert main_study.read_worker_lock(job_root) is None
+    state = load_job_state(job_root / "state.json")
+    assert state.status == JobStatus.RESUMABLE
+    assert state.worker_pid is None
+    assert state.last_error_type == "worker_start_failed"
 
 
 def test_safe_stop_is_persisted_and_worker_stops_before_a_request(

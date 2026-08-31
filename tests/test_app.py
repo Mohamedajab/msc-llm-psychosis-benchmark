@@ -66,6 +66,40 @@ class RecoverableInterruptionProvider(TargetProvider):
         )
 
 
+class Manual402Provider(TargetProvider):
+    provider_name = "fixture"
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def generate(self, *, model_id, messages, generation):  # noqa: ANN001
+        del messages, generation
+        self.calls += 1
+        if self.calls == 2:
+            return ProviderResult(
+                status=ObservationStatus.PROVIDER_ERROR,
+                requested_model_id=model_id,
+                provider_name="openrouter",
+                latency_ms=1,
+                retry_count=0,
+                http_attempts=1,
+                http_status=200,
+                error_type="provider_body_error",
+                error_message=repr({"message": "Upstream provider unavailable", "code": 402}),
+            )
+        return ProviderResult(
+            status=ObservationStatus.RESPONSE,
+            text="saved fixture response",
+            requested_model_id=model_id,
+            resolved_model_id=model_id,
+            provider_name="fixture",
+            finish_reason="stop",
+            latency_ms=1,
+            retry_count=0,
+            http_attempts=1,
+        )
+
+
 def _assert_no_exceptions(app: AppTest) -> None:
     assert not app.exception, [exception.message for exception in app.exception]
 
@@ -220,6 +254,58 @@ def test_collection_page_offers_resume_for_embedded_upstream_failure(monkeypatch
     )
     assert _button(app, "Resume Main Study").disabled is True
     assert not any(button.label == "Start Main Study" for button in app.button)
+    assert network_attempts == []
+
+
+def test_collection_page_requires_explicit_confirmation_for_upstream_402(
+    monkeypatch, tmp_path
+) -> None:
+    scripts, histories, models, rows = planned_study(PROJECT_ROOT)
+    row = rows[0]
+    script = next(item for item in scripts if item.script_id == row.script_id)
+    prefix = next(item for item in histories if item.history_id == script.history_id)
+    generation = generation_for_model(models, row.model_slot, row.repetition)
+    header = create_run_header(
+        study_version=row.study_version,
+        run_id=row.run_id,
+        data_status="main_study",
+        script=script,
+        condition=row.context_condition,
+        model_slot=row.model_slot,
+        model_id=row.requested_model_id,
+        repetition=row.repetition,
+        generation=generation,
+        configuration_version=models.version,
+        configuration_hash=configuration_bundle_hash(scripts, histories, models),
+    )
+    store = RawRunStore(tmp_path / "raw" / "study-v2")
+    ConversationRunner(Manual402Provider(), store).run_or_resume(
+        header=header,
+        script=script,
+        prefix=prefix,
+    )
+    save_job_state(
+        tmp_path / "private" / "main-study-job" / "state.json",
+        StudyJobState(
+            status=JobStatus.BLOCKED,
+            message="Collection stopped after non-retryable error: upstream_http_402.",
+        ),
+    )
+
+    app, network_attempts = _offline_app(monkeypatch, tmp_path)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-only")
+    _navigate(app, "Collection")
+    _assert_no_exceptions(app)
+    assert any("Study status: RESUMABLE" in warning.value for warning in app.warning)
+    assert any("upstream provider returned HTTP 402" in warning.value for warning in app.warning)
+    confirmation = next(item for item in app.checkbox if "first missing response" in item.label)
+    assert confirmation.disabled is False
+    assert _button(app, "Resume Main Study").disabled is True
+
+    confirmation.check()
+    app.run(timeout=60)
+    _assert_no_exceptions(app)
+    assert _button(app, "Resume Main Study").disabled is False
     assert network_attempts == []
 
 

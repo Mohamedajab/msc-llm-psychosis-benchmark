@@ -53,6 +53,8 @@ DEFAULT_INITIAL_RETRY_WAIT_SECONDS = 30
 DEFAULT_MAXIMUM_RETRY_WAIT_SECONDS = 120
 DEFAULT_MAXIMUM_AUTO_RESUMES = 5
 REQUEST_INTERVAL_SECONDS = 5.0
+WORKER_STARTUP_TIMEOUT_SECONDS = 5.0
+WORKER_STARTUP_POLL_SECONDS = 0.05
 
 
 class JobStatus(StrEnum):
@@ -119,6 +121,7 @@ class StudyProgress(StrictModel):
     resume_reason: str | None = None
     upstream_error_code: int | None = None
     upstream_error_message: str | None = None
+    operator_resume_required: bool = False
     response_counts_by_model: dict[str, int] = Field(default_factory=dict)
     message: str = ""
 
@@ -148,6 +151,12 @@ class NextStudyRequest(StrictModel):
 
 def utc_now() -> datetime:
     return datetime.now(UTC)
+
+
+def _worker_log(event: str, **metadata: Any) -> None:
+    details = " ".join(f"{key}={value}" for key, value in metadata.items())
+    suffix = f" {details}" if details else ""
+    print(f"{utc_now().isoformat()} worker_pid={os.getpid()} event={event}{suffix}", flush=True)
 
 
 def default_paths(repository_root: str | Path) -> dict[str, Path]:
@@ -402,7 +411,7 @@ def load_study_progress(
     elif (
         status in {JobStatus.BLOCKED, JobStatus.STOPPED}
         and classification is not None
-        and classification.retryable
+        and (classification.retryable or classification.manual_resume_allowed)
         and summary["http_attempts_used"] < MAXIMUM_HTTP_ATTEMPTS
     ):
         status = JobStatus.RESUMABLE
@@ -487,6 +496,11 @@ def load_study_progress(
         ),
         upstream_error_message=(
             classification.upstream_error_message if classification is not None else None
+        ),
+        operator_resume_required=(
+            status == JobStatus.RESUMABLE
+            and classification is not None
+            and classification.manual_resume_allowed
         ),
         response_counts_by_model=_model_response_counts(rows, store),
         message=(
@@ -610,6 +624,11 @@ def _finish_state(
     now: Callable[[], datetime],
 ) -> None:
     finished = now()
+    _worker_log(
+        "state_finished",
+        status=status.value,
+        last_error=state.last_error_type or "none",
+    )
     save_job_state(
         state_path,
         state.model_copy(
@@ -617,7 +636,9 @@ def _finish_state(
                 "status": status,
                 "updated_at": finished,
                 "finished_at": finished,
+                "worker_pid": None,
                 "next_retry_at": None,
+                "recoverable": status == JobStatus.RESUMABLE,
                 "message": message,
                 "current_execution_order": None,
                 "current_turn": None,
@@ -652,31 +673,69 @@ def run_study_worker(
     job_directory = Path(job_root)
     state_path = job_directory / "state.json"
     claim_worker(job_directory, lock_token, os.getpid())
+    _worker_log("lock_claimed")
     try:
         clear_stop_request(job_directory)
-        preflight = run_main_study_preflight(
-            repository_root=root,
-            raw_root=raw_root,
-            job_root=job_directory,
-            pilot_v6_root=pilot_v6_root,
-            active_bundle_root=active_bundle_root,
-            governance_path=governance_path,
-            environ=dict(os.environ if environ is None else environ),
-            ignore_worker_pid=os.getpid(),
-        )
         previous = load_job_state(state_path)
         started = previous.started_at or now()
-        if not preflight.ready:
+        state = previous.model_copy(
+            update={
+                "status": JobStatus.RUNNING,
+                "started_at": started,
+                "updated_at": now(),
+                "finished_at": None,
+                "worker_pid": os.getpid(),
+                "next_retry_at": None,
+                "last_error_type": None,
+                "recoverable": False,
+                "resume_reason": None,
+                "upstream_error_code": None,
+                "upstream_error_message": None,
+                "message": "Main-study worker started; preflight is running.",
+            }
+        )
+        save_job_state(state_path, state)
+        _worker_log("preflight_start")
+        try:
+            preflight = run_main_study_preflight(
+                repository_root=root,
+                raw_root=raw_root,
+                job_root=job_directory,
+                pilot_v6_root=pilot_v6_root,
+                active_bundle_root=active_bundle_root,
+                governance_path=governance_path,
+                environ=dict(os.environ if environ is None else environ),
+                ignore_worker_pid=os.getpid(),
+            )
+        except KeyboardInterrupt:
+            state = state.model_copy(
+                update={
+                    "last_error_type": "worker_preflight_interrupted",
+                    "resume_reason": "worker_preflight_interrupted",
+                }
+            )
+            _worker_log("worker_preflight_interrupted")
             _finish_state(
                 state_path,
-                previous.model_copy(update={"started_at": started}),
+                state,
+                status=JobStatus.RESUMABLE,
+                message="Worker preflight was interrupted. The study can be resumed safely.",
+                now=now,
+            )
+            return 130
+        if not preflight.ready:
+            _worker_log("preflight_blocked", blockers="|".join(preflight.blockers))
+            _finish_state(
+                state_path,
+                state,
                 status=JobStatus.BLOCKED,
                 message="Preflight is blocked: " + ", ".join(preflight.blockers),
                 now=now,
             )
             return 1
 
-        state = previous.model_copy(
+        _worker_log("preflight_passed")
+        state = state.model_copy(
             update={
                 "status": JobStatus.RUNNING,
                 "started_at": started,
@@ -745,10 +804,20 @@ def run_study_worker(
 
             errors_before = _stored_errors(rows, raw_root)
             responses_before = progress_before.responses_complete
+            turn_started_this_pass = False
+            _worker_log(
+                "catalogue_validation_start",
+                execution_order=progress_before.current_execution_order,
+                turn=progress_before.current_turn,
+                model_slot=progress_before.current_model_slot,
+            )
 
             def on_turn_start(header: RunHeader, turn_number: int) -> None:
-                nonlocal state
+                nonlocal state, turn_started_this_pass
                 row = order_by_run[header.run_id]
+                if not turn_started_this_pass:
+                    _worker_log("catalogue_validation_passed")
+                turn_started_this_pass = True
                 state = state.model_copy(
                     update={
                         "status": JobStatus.RUNNING,
@@ -760,6 +829,12 @@ def run_study_worker(
                     }
                 )
                 save_job_state(state_path, state)
+                _worker_log(
+                    "turn_start",
+                    execution_order=row.execution_order,
+                    turn=turn_number,
+                    model_slot=row.model_slot,
+                )
 
             try:
                 with use_runtime_target_message_builder():
@@ -779,6 +854,36 @@ def run_study_worker(
                         should_stop=lambda: stop_requested(job_directory),
                         stop_on_error=True,
                     )
+            except KeyboardInterrupt:
+                reason = (
+                    "catalogue_validation_interrupted"
+                    if not turn_started_this_pass
+                    else "generation_interrupted"
+                )
+                status = JobStatus.RESUMABLE if not turn_started_this_pass else JobStatus.BLOCKED
+                state = state.model_copy(
+                    update={
+                        "last_error_type": reason,
+                        "resume_reason": reason if status == JobStatus.RESUMABLE else None,
+                    }
+                )
+                _worker_log(reason)
+                _finish_state(
+                    state_path,
+                    state,
+                    status=status,
+                    message=(
+                        "Catalogue validation was interrupted before any generation request. "
+                        "The study can be resumed safely."
+                        if status == JobStatus.RESUMABLE
+                        else (
+                            "The worker was interrupted after a generation request began; "
+                            "review is required."
+                        )
+                    ),
+                    now=now,
+                )
+                return 130
             except (OSError, RuntimeError, ValueError) as error:
                 message = str(error)
                 error_type = (
@@ -793,6 +898,14 @@ def run_study_worker(
                     }
                 )
                 new_classification = classify_error_type(error_type)
+                _worker_log(
+                    (
+                        "catalogue_validation_failed"
+                        if error_type == "catalogue_preflight_error"
+                        else "collection_pass_error"
+                    ),
+                    error_type=error_type,
+                )
             else:
                 new_errors = _stored_errors(rows, raw_root)[len(errors_before) :]
                 new_classification = (
@@ -864,11 +977,17 @@ def run_study_worker(
             made_progress = progress_after.responses_complete > responses_before
             failures = 1 if made_progress else state.consecutive_failures + 1
             if failures > maximum_auto_resumes:
+                catalogue_failure = new_classification.reason_code == "catalogue_preflight_error"
                 _finish_state(
                     state_path,
                     state,
-                    status=JobStatus.BLOCKED,
-                    message="The automatic-resume limit was reached.",
+                    status=(JobStatus.RESUMABLE if catalogue_failure else JobStatus.BLOCKED),
+                    message=(
+                        "Catalogue validation remained unavailable after bounded retries. "
+                        "No generation request was made; resume later."
+                        if catalogue_failure
+                        else "The automatic-resume limit was reached."
+                    ),
                     now=now,
                 )
                 return 1
@@ -893,6 +1012,11 @@ def run_study_worker(
                 }
             )
             save_job_state(state_path, state)
+            _worker_log(
+                "retry_wait",
+                reason=new_classification.reason_code,
+                seconds=wait_seconds,
+            )
             sleep(wait_seconds)
             if stop_requested(job_directory):
                 _finish_state(
@@ -915,6 +1039,7 @@ def run_study_worker(
             )
             save_job_state(state_path, state)
     finally:
+        _worker_log("lock_release")
         release_worker(job_directory, lock_token)
 
 
@@ -1042,9 +1167,28 @@ def launch_study_worker(
     active_bundle_root: str | Path,
     governance_path: str | Path,
     environ: dict[str, str] | None = None,
+    operator_resume_confirmed: bool = False,
+    startup_timeout_seconds: float = WORKER_STARTUP_TIMEOUT_SECONDS,
+    startup_poll_seconds: float = WORKER_STARTUP_POLL_SECONDS,
+    popen: Callable[..., Any] = subprocess.Popen,
+    sleep: Callable[[float], None] = time.sleep,
+    monotonic: Callable[[], float] = time.monotonic,
+    process_running: Callable[[int], bool] = _process_running,
 ) -> int:
+    if startup_timeout_seconds <= 0 or startup_poll_seconds <= 0:
+        raise ValueError("Worker startup timing must be positive")
     root = Path(repository_root)
-    token = reserve_worker(job_root)
+    job_directory = Path(job_root)
+    progress = load_study_progress(
+        repository_root=root,
+        raw_root=raw_root,
+        state_path=job_directory / "state.json",
+    )
+    if progress.operator_resume_required and not operator_resume_confirmed:
+        raise MainStudyError(
+            "The upstream HTTP 402 recovery requires explicit operator confirmation"
+        )
+    token = reserve_worker(job_directory)
     values = dict(os.environ if environ is None else environ)
     values["RUN_LIVE_STUDY"] = "1"
     command = [
@@ -1066,7 +1210,7 @@ def launch_study_worker(
         "--governance",
         str(governance_path),
     ]
-    log_path = Path(job_root) / "worker.log"
+    log_path = job_directory / "worker.log"
     log_handle = log_path.open("a", encoding="utf-8")
     try:
         options: dict[str, Any] = {
@@ -1076,14 +1220,54 @@ def launch_study_worker(
             "stderr": subprocess.STDOUT,
         }
         if os.name == "nt":
-            options["creationflags"] = subprocess.CREATE_NO_WINDOW
-        process = subprocess.Popen(command, **options)
+            options["creationflags"] = (
+                subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP
+            )
+        popen(command, **options)
     except Exception:
-        release_worker(job_root, token)
+        release_worker(job_directory, token)
+        _record_worker_start_failure(job_directory)
         raise
     finally:
         log_handle.close()
-    return process.pid
+
+    deadline = monotonic() + startup_timeout_seconds
+    while monotonic() < deadline:
+        lock = read_worker_lock(job_directory)
+        if lock is not None and lock["token"] == token and lock["pid"] > 0:
+            worker_pid = lock["pid"]
+            if process_running(worker_pid):
+                return worker_pid
+            break
+        sleep(startup_poll_seconds)
+
+    release_worker(job_directory, token)
+    _record_worker_start_failure(job_directory)
+    raise MainStudyError("Main-study worker did not complete its startup handshake")
+
+
+def _record_worker_start_failure(job_directory: Path) -> None:
+    state_path = job_directory / "state.json"
+    previous = load_job_state(state_path)
+    failed_at = utc_now()
+    save_job_state(
+        state_path,
+        previous.model_copy(
+            update={
+                "status": JobStatus.RESUMABLE,
+                "updated_at": failed_at,
+                "finished_at": failed_at,
+                "worker_pid": None,
+                "next_retry_at": None,
+                "last_error_type": "worker_start_failed",
+                "recoverable": True,
+                "resume_reason": "worker_start_failed",
+                "upstream_error_code": None,
+                "upstream_error_message": None,
+                "message": "The worker did not complete its startup handshake. Resume later.",
+            }
+        ),
+    )
 
 
 def format_duration(seconds: float | None) -> str:

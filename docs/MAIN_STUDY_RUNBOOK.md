@@ -33,6 +33,11 @@ refreshing the browser does not stop or restart the worker. **Stop safely** writ
 request that is checked between response requests; an in-progress request is allowed to finish
 and save first.
 
+An embedded upstream HTTP 402 is not retried automatically. If it is the only collection block,
+the app reconstructs and verifies the first missing request, shows the incident explicitly and
+requires the operator to confirm a manual resume. A repeated 402 stops again for review. The
+stored error remains in the audit trail and no completed response is replaced.
+
 Offline commands:
 
 ```powershell
