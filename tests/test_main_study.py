@@ -12,6 +12,7 @@ import src.main_study as main_study
 from src.config_loader import configuration_bundle_hash, generation_for_model
 from src.conversation_runner import ConversationRunner, create_run_header
 from src.main_study import (
+    MAXIMUM_HTTP_ATTEMPTS,
     JobStatus,
     MainStudyError,
     StudyJobState,
@@ -19,11 +20,13 @@ from src.main_study import (
     StudyProgress,
     load_job_state,
     load_study_progress,
+    next_study_request,
     planned_study,
     release_worker,
     request_safe_stop,
     reserve_worker,
     retry_wait_seconds,
+    run_main_study_preflight,
     run_study_worker,
     save_job_state,
 )
@@ -78,6 +81,39 @@ class FailAfterTwo(TargetProvider):
                 http_status=429,
                 error_type="http_429",
             )
+        return ProviderResult(
+            status=ObservationStatus.RESPONSE,
+            text=f"saved-{self.calls}",
+            requested_model_id=model_id,
+            resolved_model_id=model_id,
+            provider_name="fixture",
+            finish_reason="stop",
+            latency_ms=1,
+            retry_count=0,
+            http_attempts=1,
+        )
+
+
+class EmbeddedUpstreamErrorAfterTwo(TargetProvider):
+    provider_name = "fixture"
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def generate(self, *, model_id, messages, generation):  # noqa: ANN001
+        del messages, generation
+        self.calls += 1
+        if self.calls == 3:
+            return _technical_error(
+                "provider_body_error",
+                message=repr(
+                    {
+                        "message": "Upstream error from Nvidia: Service temporarily overloaded",
+                        "code": 502,
+                    }
+                ),
+                http_status=200,
+            ).model_copy(update={"requested_model_id": model_id})
         return ProviderResult(
             status=ObservationStatus.RESPONSE,
             text=f"saved-{self.calls}",
@@ -158,6 +194,25 @@ def _ready_preflight() -> StudyPreflight:
         active_bundle="PASS",
         governance="PASS",
         main_study="READY",
+    )
+
+
+def _technical_error(
+    error_type: str,
+    *,
+    message: str | None = None,
+    http_status: int | None = None,
+) -> ProviderResult:
+    return ProviderResult(
+        status=ObservationStatus.PROVIDER_ERROR,
+        requested_model_id="nvidia/nemotron-3-super-120b-a12b:free",
+        provider_name="openrouter",
+        latency_ms=1,
+        retry_count=0,
+        http_attempts=1,
+        http_status=http_status,
+        error_type=error_type,
+        error_message=message,
     )
 
 
@@ -279,6 +334,58 @@ def test_resume_keeps_successes_and_reconstructs_failed_turn_history(tmp_path: P
     assert all(path.read_bytes() == content for path, content in saved.items())
 
 
+def test_embedded_upstream_error_makes_blocked_study_safely_resumable(tmp_path: Path) -> None:
+    scripts, histories, models, rows = planned_study(ROOT)
+    row = rows[0]
+    script = next(value for value in scripts if value.script_id == row.script_id)
+    prefix = next(value for value in histories if value.history_id == script.history_id)
+    store = RawRunStore(tmp_path / "raw")
+    header = _header(row, scripts, histories, models)
+    failed = ConversationRunner(EmbeddedUpstreamErrorAfterTwo(), store).run_or_resume(
+        header=header, script=script, prefix=prefix
+    )
+    assert len(failed.turns) == 2
+    assert len(failed.errors) == 1
+    saved = {path: path.read_bytes() for path in store.run_directory(row.run_id).iterdir()}
+    state_path = tmp_path / "job" / "state.json"
+    save_job_state(
+        state_path,
+        StudyJobState(
+            status=JobStatus.BLOCKED,
+            message="Collection stopped after non-retryable error: provider_body_error.",
+        ),
+    )
+
+    progress = load_study_progress(
+        repository_root=ROOT,
+        raw_root=store.root,
+        state_path=state_path,
+    )
+    request = next_study_request(repository_root=ROOT, raw_root=store.root)
+    assert progress.status == JobStatus.RESUMABLE
+    assert progress.recoverable is True
+    assert progress.resume_reason == "upstream_http_502"
+    assert progress.upstream_error_code == 502
+    assert progress.current_turn == 3
+    assert request is not None
+    assert request.request_payload_hash == failed.errors[0].request_payload_hash
+
+    resumed = ConversationRunner(DeterministicFixtureProvider(), store).run_or_resume(
+        header=header, script=script, prefix=prefix
+    )
+    assert len(resumed.turns) == 6
+    assert len(resumed.errors) == 1
+    assert resumed.turns[2].request_payload_hash == failed.errors[0].request_payload_hash
+    for path, content in saved.items():
+        assert path.read_bytes() == content
+    with pytest.raises(FileExistsError):
+        store.append_success(resumed.turns[0])
+
+
+def test_main_study_attempt_ceiling_remains_576() -> None:
+    assert MAXIMUM_HTTP_ATTEMPTS == 576
+
+
 @pytest.mark.parametrize("error_type", ["truncated", "content_filter", "resolved_model_mismatch"])
 def test_integrity_errors_stop_before_another_conversation(tmp_path: Path, error_type: str) -> None:
     scripts, histories, models, rows = planned_study(ROOT)
@@ -303,6 +410,35 @@ def test_integrity_errors_stop_before_another_conversation(tmp_path: Path, error
         assert record.errors[0].result.error_type == "resolved_model_mismatch"
     else:
         assert record.turns[0].result.finish_reason == error_type.replace("truncated", "length")
+
+
+def test_preflight_blocks_hard_stop_but_not_recoverable_provider_error(tmp_path: Path) -> None:
+    scripts, histories, models, rows = planned_study(ROOT)
+    row = rows[0]
+    store = RawRunStore(tmp_path / "raw")
+    execute_manifest_rows(
+        rows=[row],
+        scripts=scripts,
+        histories=histories,
+        models=models,
+        provider=HardStopProvider("truncated"),
+        store=store,
+        data_status="main_study",
+        maximum_http_attempts=2,
+        stop_on_error=True,
+        require_stop_finish_reason=True,
+    )
+    preflight = run_main_study_preflight(
+        repository_root=ROOT,
+        raw_root=store.root,
+        job_root=tmp_path / "job",
+        pilot_v6_root=ROOT / "data/private/technical-pilot-v6.0.0",
+        active_bundle_root=ROOT / "protocol/study-v2.1.0",
+        governance_path=ROOT / "config/main-study-governance.yaml",
+        environ={"OPENROUTER_API_KEY": "test-only"},
+    )
+    assert preflight.ready is False
+    assert "stored_study_hard_block" in preflight.blockers
 
 
 def test_malformed_evidence_fails_closed(tmp_path: Path) -> None:
@@ -382,7 +518,7 @@ def test_worker_recovers_from_multiple_transient_errors(
     def errors(*args, **kwargs):  # noqa: ANN002, ANN003, ANN202
         del args, kwargs
         return [
-            SimpleNamespace(timestamp=value, result=SimpleNamespace(error_type="http_429"))
+            SimpleNamespace(timestamp=value, result=_technical_error("http_429", http_status=429))
             for value in range(batches)
         ]
 
@@ -415,6 +551,61 @@ def test_worker_recovers_from_multiple_transient_errors(
     assert state.automatic_resumes == 2
 
 
+def test_worker_recovers_from_embedded_upstream_502(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    batches = 0
+    sleeps: list[float] = []
+    message = repr(
+        {
+            "message": "Upstream error from Nvidia: Service temporarily overloaded",
+            "code": 502,
+        }
+    )
+    monkeypatch.setattr(main_study, "run_main_study_preflight", lambda **_: _ready_preflight())
+
+    def progress(**kwargs):  # noqa: ANN003, ANN202
+        del kwargs
+        return _progress(JobStatus.COMPLETE, 432) if batches == 2 else _progress(JobStatus.RUNNING)
+
+    def errors(*args, **kwargs):  # noqa: ANN002, ANN003, ANN202
+        del args, kwargs
+        return [
+            SimpleNamespace(
+                timestamp=1,
+                result=_technical_error("provider_body_error", message=message, http_status=200),
+            )
+        ][:batches]
+
+    def execute(**kwargs):  # noqa: ANN003, ANN202
+        nonlocal batches
+        del kwargs
+        batches += 1
+        return {}
+
+    monkeypatch.setattr(main_study, "load_study_progress", progress)
+    monkeypatch.setattr(main_study, "_stored_errors", errors)
+    token = reserve_worker(tmp_path / "job")
+    result = run_study_worker(
+        repository_root=ROOT,
+        job_root=tmp_path / "job",
+        raw_root=tmp_path / "raw",
+        pilot_v6_root=tmp_path / "pilot",
+        active_bundle_root=tmp_path / "bundle",
+        governance_path=tmp_path / "governance.yaml",
+        lock_token=token,
+        environ={"RUN_LIVE_STUDY": "1", "OPENROUTER_API_KEY": "test"},
+        execute_batch=execute,
+        sleep=sleeps.append,
+    )
+    assert result == 0
+    assert batches == 2
+    assert sleeps == [30]
+    state = load_job_state(tmp_path / "job" / "state.json")
+    assert state.status == JobStatus.COMPLETE
+    assert state.automatic_resumes == 1
+
+
 def test_worker_blocks_when_recovery_limit_is_exhausted(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -429,7 +620,7 @@ def test_worker_blocks_when_recovery_limit_is_exhausted(
     def errors(*args, **kwargs):  # noqa: ANN002, ANN003, ANN202
         del args, kwargs
         return [
-            SimpleNamespace(timestamp=value, result=SimpleNamespace(error_type="ReadTimeout"))
+            SimpleNamespace(timestamp=value, result=_technical_error("ReadTimeout"))
             for value in range(batches)
         ]
 

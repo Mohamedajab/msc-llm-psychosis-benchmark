@@ -7,7 +7,12 @@ from pathlib import Path
 import httpx
 from streamlit.testing.v1 import AppTest
 
-from src.provider_client import OpenRouterProvider
+from src.config_loader import configuration_bundle_hash, generation_for_model
+from src.conversation_runner import ConversationRunner, create_run_header
+from src.main_study import JobStatus, StudyJobState, planned_study, save_job_state
+from src.provider_client import OpenRouterProvider, TargetProvider
+from src.schemas import ObservationStatus, ProviderResult
+from src.storage import RawRunStore
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 APP_PATH = PROJECT_ROOT / "app.py"
@@ -18,6 +23,45 @@ EXPECTED_VIEWS = (
     "Analysis",
     "Evidence & QA",
 )
+
+
+class RecoverableInterruptionProvider(TargetProvider):
+    provider_name = "fixture"
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def generate(self, *, model_id, messages, generation):  # noqa: ANN001
+        del messages, generation
+        self.calls += 1
+        if self.calls == 4:
+            return ProviderResult(
+                status=ObservationStatus.PROVIDER_ERROR,
+                requested_model_id=model_id,
+                provider_name="openrouter",
+                latency_ms=1,
+                retry_count=0,
+                http_attempts=1,
+                http_status=200,
+                error_type="provider_body_error",
+                error_message=repr(
+                    {
+                        "message": "Upstream error from Nvidia: Service temporarily overloaded",
+                        "code": 502,
+                    }
+                ),
+            )
+        return ProviderResult(
+            status=ObservationStatus.RESPONSE,
+            text=f"fixture response {self.calls}",
+            requested_model_id=model_id,
+            resolved_model_id=model_id,
+            provider_name="fixture",
+            finish_reason="stop",
+            latency_ms=1,
+            retry_count=0,
+            http_attempts=1,
+        )
 
 
 def _assert_no_exceptions(app: AppTest) -> None:
@@ -129,6 +173,51 @@ def test_main_study_page_reads_zero_progress_without_network(monkeypatch, tmp_pa
         for caption in app.caption
     )
     assert _button(app, "Start Main Study").disabled is True
+    assert network_attempts == []
+
+
+def test_collection_page_offers_resume_for_embedded_upstream_failure(monkeypatch, tmp_path) -> None:
+    scripts, histories, models, rows = planned_study(PROJECT_ROOT)
+    row = rows[0]
+    script = next(item for item in scripts if item.script_id == row.script_id)
+    prefix = next(item for item in histories if item.history_id == script.history_id)
+    generation = generation_for_model(models, row.model_slot, row.repetition)
+    header = create_run_header(
+        study_version=row.study_version,
+        run_id=row.run_id,
+        data_status="main_study",
+        script=script,
+        condition=row.context_condition,
+        model_slot=row.model_slot,
+        model_id=row.requested_model_id,
+        repetition=row.repetition,
+        generation=generation,
+        configuration_version=models.version,
+        configuration_hash=configuration_bundle_hash(scripts, histories, models),
+    )
+    store = RawRunStore(tmp_path / "raw" / "study-v2")
+    ConversationRunner(RecoverableInterruptionProvider(), store).run_or_resume(
+        header=header,
+        script=script,
+        prefix=prefix,
+    )
+    save_job_state(
+        tmp_path / "private" / "main-study-job" / "state.json",
+        StudyJobState(
+            status=JobStatus.BLOCKED,
+            message="Collection stopped after non-retryable error: provider_body_error.",
+        ),
+    )
+
+    app, network_attempts = _offline_app(monkeypatch, tmp_path)
+    _navigate(app, "Collection")
+    _assert_no_exceptions(app)
+    assert any("Study status: RESUMABLE" in warning.value for warning in app.warning)
+    assert any(
+        "Temporary upstream provider failure (502)" in warning.value for warning in app.warning
+    )
+    assert _button(app, "Resume Main Study").disabled is True
+    assert not any(button.label == "Start Main Study" for button in app.button)
     assert network_attempts == []
 
 

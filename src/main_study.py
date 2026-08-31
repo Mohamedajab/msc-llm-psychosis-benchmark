@@ -24,8 +24,9 @@ from src.config_loader import (
     load_histories,
     load_scripts,
 )
-from src.conversation_runner import create_run_header
+from src.conversation_runner import create_run_header, payload_hash
 from src.main_study_readiness import evaluate_main_study_readiness
+from src.payloads import build_target_messages
 from src.pilot_v6 import (
     FINAL_PAIR_SOURCE,
     MINIMAX_MODEL_ID,
@@ -34,7 +35,8 @@ from src.pilot_v6 import (
     assess_pilot_v6,
     build_original_pair_models_config,
 )
-from src.schemas import ManifestRow, ModelsConfig, RunHeader, StrictModel
+from src.provider_errors import classify_error_type, classify_provider_result
+from src.schemas import ErrorEvent, ManifestRow, ModelsConfig, RunHeader, StrictModel
 from src.storage import RawRunStore, atomic_write_json
 from src.study_audit import audit_study_evidence
 from src.study_execution import build_execution_summary, resume_or_new_header
@@ -46,24 +48,6 @@ DEFAULT_INITIAL_RETRY_WAIT_SECONDS = 30
 DEFAULT_MAXIMUM_RETRY_WAIT_SECONDS = 120
 DEFAULT_MAXIMUM_AUTO_RESUMES = 5
 REQUEST_INTERVAL_SECONDS = 5.0
-RETRYABLE_ERROR_TYPES = {
-    "http_408",
-    "http_429",
-    "http_500",
-    "http_502",
-    "http_503",
-    "http_504",
-    "ConnectError",
-    "ConnectTimeout",
-    "NetworkError",
-    "PoolTimeout",
-    "ReadError",
-    "ReadTimeout",
-    "RemoteProtocolError",
-    "WriteError",
-    "WriteTimeout",
-    "catalogue_preflight_error",
-}
 
 
 class JobStatus(StrEnum):
@@ -72,6 +56,7 @@ class JobStatus(StrEnum):
     RUNNING = "RUNNING"
     WAITING_TO_RETRY = "WAITING_TO_RETRY"
     RESUMING = "RESUMING"
+    RESUMABLE = "RESUMABLE"
     STOPPED = "STOPPED"
     BLOCKED = "BLOCKED"
     COMPLETE = "COMPLETE"
@@ -93,6 +78,10 @@ class StudyJobState(StrictModel):
     worker_error_count: int = Field(default=0, ge=0)
     next_retry_at: datetime | None = None
     last_error_type: str | None = None
+    recoverable: bool = False
+    resume_reason: str | None = None
+    upstream_error_code: int | None = None
+    upstream_error_message: str | None = None
     message: str = ""
     current_execution_order: int | None = None
     current_turn: int | None = None
@@ -118,6 +107,10 @@ class StudyProgress(StrictModel):
     estimated_remaining_seconds: float | None = None
     next_retry_at: datetime | None = None
     last_error_type: str | None = None
+    recoverable: bool = False
+    resume_reason: str | None = None
+    upstream_error_code: int | None = None
+    upstream_error_message: str | None = None
     response_counts_by_model: dict[str, int] = Field(default_factory=dict)
     message: str = ""
 
@@ -132,6 +125,16 @@ class StudyPreflight(StrictModel):
     governance: str
     main_study: str
     network_requests: int = 0
+
+
+class NextStudyRequest(StrictModel):
+    run_id: str
+    execution_order: int
+    turn_number: int
+    model_slot: str
+    requested_model_id: str
+    request_payload_hash: str
+    latest_error: ErrorEvent | None = None
 
 
 def utc_now() -> datetime:
@@ -224,6 +227,88 @@ def validate_saved_study(
     return report
 
 
+def reconstruct_request_hash(
+    *,
+    repository_root: str | Path,
+    raw_root: str | Path,
+    run_id: str,
+    turn_number: int,
+) -> str:
+    """Rebuild one target request from frozen inputs and preceding successes."""
+
+    scripts, histories, models, rows = planned_study(repository_root)
+    row = next((item for item in rows if item.run_id == run_id), None)
+    if row is None or not 1 <= turn_number <= 6:
+        raise MainStudyError("Requested resume cell is not in the frozen manifest")
+    script = next(item for item in scripts if item.script_id == row.script_id)
+    prefix = next(item for item in histories if item.history_id == script.history_id)
+    store = RawRunStore(raw_root)
+    successes = store.successful_turns(run_id)
+    preceding = [event for event in successes if event.turn_number < turn_number]
+    if [event.turn_number for event in preceding] != list(range(1, turn_number)):
+        raise MainStudyError("Cannot reconstruct a request from non-contiguous history")
+    messages = build_target_messages(
+        condition=row.context_condition,
+        prefix=prefix,
+        completed_exchanges=[(event.user_message, event.result.text or "") for event in preceding],
+        current_user_message=script.turns[turn_number - 1],
+        visible_response_instruction=generation_for_model(
+            models, row.model_slot, row.repetition
+        ).visible_response_instruction,
+    )
+    generation = generation_for_model(models, row.model_slot, row.repetition)
+    return payload_hash(
+        model_id=row.requested_model_id,
+        messages=messages,
+        parameters=generation.request_parameters(),
+    )
+
+
+def next_study_request(
+    *, repository_root: str | Path, raw_root: str | Path
+) -> NextStudyRequest | None:
+    """Return safe metadata for the first missing response in execution order."""
+
+    _, _, _, rows = planned_study(repository_root)
+    store = RawRunStore(raw_root)
+    summary = build_execution_summary(
+        planned_rows=rows,
+        store=store,
+        maximum_total_attempts=MAXIMUM_HTTP_ATTEMPTS,
+    )
+    execution_order = summary["next_execution_order"]
+    if execution_order is None:
+        return None
+    row = next(item for item in rows if item.execution_order == execution_order)
+    run_directory = store.run_directory(row.run_id)
+    turn_number = 1
+    latest_error = None
+    if (run_directory / "run.json").is_file():
+        turn_number = len(store.successful_turns(row.run_id)) + 1
+        relevant = [
+            event for event in store.error_events(row.run_id) if event.turn_number == turn_number
+        ]
+        if relevant:
+            latest_error = max(relevant, key=lambda event: event.timestamp)
+    digest = reconstruct_request_hash(
+        repository_root=repository_root,
+        raw_root=raw_root,
+        run_id=row.run_id,
+        turn_number=turn_number,
+    )
+    if latest_error is not None and latest_error.request_payload_hash != digest:
+        raise MainStudyError("Stored failed request does not match the reconstructed request")
+    return NextStudyRequest(
+        run_id=row.run_id,
+        execution_order=execution_order,
+        turn_number=turn_number,
+        model_slot=row.model_slot,
+        requested_model_id=row.requested_model_id,
+        request_payload_hash=digest,
+        latest_error=latest_error,
+    )
+
+
 def _model_response_counts(rows: list[ManifestRow], store: RawRunStore) -> dict[str, int]:
     counts: Counter[str] = Counter()
     row_by_id = {row.run_id: row for row in rows}
@@ -261,6 +346,12 @@ def load_study_progress(
         store=store,
         maximum_total_attempts=MAXIMUM_HTTP_ATTEMPTS,
     )
+    next_request = next_study_request(repository_root=repository_root, raw_root=raw_root)
+    classification = (
+        classify_provider_result(next_request.latest_error.result)
+        if next_request is not None and next_request.latest_error is not None
+        else None
+    )
     status = state.status
     incomplete_finish_reasons = sum(
         count
@@ -271,6 +362,13 @@ def load_study_progress(
         status = JobStatus.BLOCKED
     elif summary["successful_response_slots"] == PLANNED_RESPONSES:
         status = JobStatus.COMPLETE
+    elif (
+        status in {JobStatus.BLOCKED, JobStatus.STOPPED}
+        and classification is not None
+        and classification.retryable
+        and summary["http_attempts_used"] < MAXIMUM_HTTP_ATTEMPTS
+    ):
+        status = JobStatus.RESUMABLE
 
     current_order = state.current_execution_order
     current_turn = state.current_turn
@@ -280,14 +378,11 @@ def load_study_progress(
         current_turn = None
         current_slot = None
     elif current_order is None or status not in {JobStatus.RUNNING, JobStatus.RESUMING}:
-        current_order = summary["next_execution_order"]
+        current_order = next_request.execution_order if next_request is not None else None
         if current_order is not None:
             row = next(row for row in rows if row.execution_order == current_order)
             current_slot = row.model_slot
-            if (store.run_directory(row.run_id) / "run.json").is_file():
-                current_turn = len(store.successful_turns(row.run_id)) + 1
-            else:
-                current_turn = 1
+            current_turn = next_request.turn_number
         else:
             current_turn = None
             current_slot = None
@@ -317,7 +412,17 @@ def load_study_progress(
         elapsed_seconds=elapsed,
         estimated_remaining_seconds=_eta_seconds(store, rows, PLANNED_RESPONSES - complete),
         next_retry_at=state.next_retry_at,
-        last_error_type=state.last_error_type,
+        last_error_type=(
+            classification.reason_code if classification is not None else state.last_error_type
+        ),
+        recoverable=status == JobStatus.RESUMABLE,
+        resume_reason=(classification.reason_code if classification is not None else None),
+        upstream_error_code=(
+            classification.upstream_error_code if classification is not None else None
+        ),
+        upstream_error_message=(
+            classification.upstream_error_message if classification is not None else None
+        ),
         response_counts_by_model=_model_response_counts(rows, store),
         message=state.message,
     )
@@ -510,6 +615,8 @@ def run_study_worker(
                 "finished_at": None,
                 "worker_pid": os.getpid(),
                 "next_retry_at": None,
+                "recoverable": False,
+                "resume_reason": None,
                 "message": "Main-study collection is running.",
             }
         )
@@ -615,10 +722,12 @@ def run_study_worker(
                         "last_error_type": error_type,
                     }
                 )
-                new_error_type = error_type
+                new_classification = classify_error_type(error_type)
             else:
                 new_errors = _stored_errors(rows, raw_root)[len(errors_before) :]
-                new_error_type = new_errors[-1].result.error_type if new_errors else None
+                new_classification = (
+                    classify_provider_result(new_errors[-1].result) if new_errors else None
+                )
 
             progress_after = load_study_progress(
                 repository_root=root,
@@ -657,15 +766,18 @@ def run_study_worker(
                 )
                 return 1
 
-            if new_error_type is None:
+            if new_classification is None:
                 state = load_job_state(state_path)
                 continue
-            if new_error_type not in RETRYABLE_ERROR_TYPES:
+            if not new_classification.retryable:
                 _finish_state(
                     state_path,
                     state,
                     status=JobStatus.BLOCKED,
-                    message=f"Collection stopped after non-retryable error: {new_error_type}.",
+                    message=(
+                        "Collection stopped after non-retryable error: "
+                        f"{new_classification.reason_code}."
+                    ),
                     now=now,
                 )
                 return 1
@@ -693,7 +805,11 @@ def run_study_worker(
                     "updated_at": now(),
                     "consecutive_failures": failures,
                     "next_retry_at": retry_at,
-                    "last_error_type": new_error_type,
+                    "last_error_type": new_classification.reason_code,
+                    "recoverable": True,
+                    "resume_reason": new_classification.reason_code,
+                    "upstream_error_code": new_classification.upstream_error_code,
+                    "upstream_error_message": new_classification.upstream_error_message,
                     "message": f"Temporary API error. Resuming in about {wait_seconds} seconds.",
                 }
             )
@@ -714,6 +830,7 @@ def run_study_worker(
                     "updated_at": now(),
                     "automatic_resumes": state.automatic_resumes + 1,
                     "next_retry_at": None,
+                    "recoverable": False,
                     "message": "Resuming from the first missing response.",
                 }
             )
@@ -819,6 +936,8 @@ def run_main_study_preflight(
         )
         if progress.status == JobStatus.COMPLETE:
             blockers.append("main_study_already_complete")
+        elif progress.status == JobStatus.BLOCKED:
+            blockers.append("stored_study_hard_block")
     except (OSError, RuntimeError, ValueError):
         pass
 

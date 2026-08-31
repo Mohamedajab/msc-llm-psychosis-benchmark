@@ -323,6 +323,8 @@ def test_invalid_request_and_embedded_error_are_not_responses_or_retried() -> No
     ).generate(model_id="openai/gpt-oss-20b:free", messages=MESSAGES, generation=GENERATION)
     assert embedded.status == ObservationStatus.PROVIDER_ERROR
     assert embedded.text is None
+    assert embedded.http_status == 200
+    assert embedded.http_attempts == 1
 
 
 @pytest.mark.parametrize(
@@ -493,6 +495,7 @@ def test_catalogue_preflight_checks_multiple_exact_slugs_in_one_get() -> None:
     provider.validate_exact_models(tuple(f"example/model-{letter}:free" for letter in "abc"))
     assert len(requests) == 1
     assert requests[0].method == "GET"
+    assert provider.request_attempt_count == 0
 
 
 def test_shared_request_budget_counts_retries_and_blocks_before_network() -> None:

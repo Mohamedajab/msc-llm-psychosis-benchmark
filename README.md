@@ -2,7 +2,8 @@
 
 An auditable, configuration-driven benchmark of how two exact language-model endpoints
 respond across six-turn conversations containing controlled unsupported interpretations.
-No main-study data or results currently exist.
+Main-study collection is in progress. Partial responses are immutable research evidence but are
+not results and must not be analysed as a completed study.
 
 ## Prospective Study V2 design
 
@@ -84,3 +85,6 @@ See `docs/MAIN_STUDY_RUNBOOK.md`, `docs/RESEARCH_PROTOCOL.md` and
 `docs/MAIN_STUDY_GO_NO_GO_CHECKLIST.md` before any collection. The frozen human-rating
 procedure is in `docs/ANNOTATION_GUIDE.md`, and rubric v1.0.0 is frozen in
 `config/rubric.yaml`.
+
+Technical collection interruptions are recorded factually in
+`docs/MAIN_STUDY_TECHNICAL_INCIDENTS.md`.

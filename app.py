@@ -94,6 +94,7 @@ MAIN_STUDY_BLOCKER_MESSAGES = {
     "annotation_procedure_not_frozen": "Annotation procedure has not yet been frozen.",
     "data_management_not_confirmed": ("Data-management arrangements have not yet been confirmed."),
     "api_key_not_available": "OpenRouter API key is not available to the app process.",
+    "stored_study_hard_block": "Stored evidence contains a non-retryable hard-stop condition.",
     "main_study_worker_already_running": "Another main-study worker is already running.",
     "pilot_v6_not_pass": "Pilot V6 qualification does not currently recompute to PASS.",
 }
@@ -548,6 +549,7 @@ def _render_collection_status(status: str) -> None:
         "READY": st.success,
         "RUNNING": st.info,
         "RESUMING": st.info,
+        "RESUMABLE": st.warning,
         "WAITING TO RETRY": st.warning,
         "STOPPED": st.info,
         "BLOCKED": st.error,
@@ -633,6 +635,15 @@ def _render_main_study_progress(preflight_ready: bool = False) -> None:
                 else "The worker will resume automatically."
             )
         )
+    elif progress.status == JobStatus.RESUMABLE:
+        if progress.upstream_error_code is not None:
+            detail = progress.upstream_error_message or "Temporary upstream provider failure"
+            st.warning(
+                f"Temporary upstream provider failure ({progress.upstream_error_code}): {detail}"
+            )
+        else:
+            st.warning("The last technical failure is recoverable. Resume from the next request.")
+        st.write(f"{progress.responses_complete} / 432 responses are safely stored.")
     elif progress.status == JobStatus.BLOCKED:
         st.error(progress.message or "Collection is blocked and requires review.")
     elif progress.status == JobStatus.STOPPED:
@@ -668,6 +679,14 @@ def render_main_study() -> None:
         current = StudyPreflight.model_validate(saved)
 
     _render_main_study_progress(current.ready)
+    try:
+        progress = load_study_progress(
+            repository_root=BASE_DIR,
+            raw_root=MAIN_STUDY_RAW_DIR,
+            state_path=MAIN_STUDY_JOB_DIR / "state.json",
+        )
+    except (OSError, RuntimeError, ValueError):
+        progress = None
 
     with st.container(border=True):
         st.subheader("Study readiness")
@@ -727,13 +746,17 @@ def render_main_study() -> None:
         )
 
     st.subheader("Collection control")
+    is_resume = progress is not None and progress.responses_complete > 0
+    hard_blocked = progress is not None and progress.status == JobStatus.BLOCKED
+    can_launch = current.ready and not hard_blocked
+    action = "Resume" if is_resume else "Start"
     confirmed = st.checkbox(
-        "I understand this starts the frozen main-study data collection.",
-        disabled=not current.ready,
+        f"I understand this will {action.lower()} the frozen main-study data collection.",
+        disabled=not can_launch,
     )
-    if not current.ready:
-        st.caption("Start is disabled until all preflight requirements are complete.")
-    if st.button("Start Main Study", disabled=not (current.ready and confirmed)):
+    if not can_launch:
+        st.caption(f"{action} is disabled until all preflight requirements are complete.")
+    if st.button(f"{action} Main Study", disabled=not (can_launch and confirmed)):
         load_dotenv(BASE_DIR / ".env", override=False)
         fresh = _main_study_preflight(dict(os.environ))
         if not fresh.ready:

@@ -3,7 +3,8 @@
 ## Current state
 
 - Active protocol: Study V2, two models, 72 conversations, 432 response slots.
-- Main-study responses collected: zero.
+- Main-study collection is incomplete: 6 successful responses are currently preserved. These
+  partial observations are not study results.
 - Rubric: Psychosis-Related Response Behaviour Rubric v1.0.0, `FROZEN` with its annotation
   procedure before main-study annotation.
 - Pilot V4: completed 4/4 conversations and 24/24 response slots; permanently `FAIL` under
@@ -22,9 +23,9 @@
   semantic emergency envelope with catalogue-verified per-model request-field translation and a
   120-second common timeout. Replacement screen v2 and Pilot V6 use this profile.
 - Main-study collection: a persisted background-worker and Streamlit progress view are
-  available, but live collection remains blocked by the missing active bundle. The completed
-  June 2026 Ethics Awareness Form records that no further ethical review is required. Supervisor
-  review remains useful pending provenance but is not a hard collection gate.
+  available. An embedded Nvidia 502 was initially treated as non-retryable; the evidence was
+  preserved and the recovery classifier now treats only structured transient upstream codes as
+  resumable. See `docs/MAIN_STUDY_TECHNICAL_INCIDENTS.md`.
 - Generation calibration: completed six benign technical requests at zero catalogue price;
   reasoning contribution `SUPPORTED`. It is not a pilot or research dataset.
 - Current full offline test suite: 306 passing tests.
@@ -56,5 +57,5 @@ Pilot V6 now qualifies both intended endpoints under generation-v4. Replacement-
 remains `NOT_RUN` and is not required. The main study is still `BLOCKED`: the final active
 bundle has not been created. The ethics determination is `NO_FURTHER_REVIEW_REQUIRED`; the rubric
 and annotation procedure are frozen; and data-management arrangements are documented and
-confirmed. Supervisor review remains `PENDING` as informational provenance. No main-study result
-exists.
+confirmed. Supervisor review remains `PENDING` as informational provenance. Collection is now
+partial, and no main-study result exists.
