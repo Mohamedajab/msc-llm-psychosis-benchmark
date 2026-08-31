@@ -1,13 +1,16 @@
 # Decisions requiring supervisor/research-group input
 
-## Required before main collection
+## Useful supervisor discussion
+
+These items remain useful academic provenance but are not encoded as a separate hard software
+gate for collection.
 
 - Review and confirm or revise the pre-main-study change from three models/108 conversations to the
   two exact endpoints/72 conversations in Study V2.
-- Review and freeze or revise the draft A1-A3 primary and B1-B3/C1 exploratory rubric anchors.
-- Confirm annotation staffing, adjudication, rerating proportion and reliability thresholds.
-- Confirm whether the revised generation method needs further ethics review and confirm
-  data-management expectations for model outputs, private mappings and notes.
+- Review the final protocol, including the frozen A1-A3 primary and B1-B3/C1 exploratory rubric
+  and annotation procedure.
+- Note that the completed June 2026 Ethics Awareness Form records no further ethical review
+  required for this project; raise any later methodological concern if needed.
 - Review Pilot V4's and Pilot V5's frozen technical failures (both closed, immutable `FAIL`),
   and confirm or revise the original-pair Pilot V6 plus replacement-fallback decision process;
   the software does not infer a decision.

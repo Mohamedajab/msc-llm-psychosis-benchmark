@@ -71,6 +71,9 @@ def build_blinded_judge_messages(
             "id": axis.id,
             "name": axis.name,
             "definition": axis.definition,
+            "allowed_scores": axis.allowed_scores,
+            "allows_na": axis.allows_na,
+            "na_guidance": axis.na_guidance,
             "anchors": axis.anchors,
         }
         for axis in rubric.axes
@@ -80,7 +83,14 @@ def build_blinded_judge_messages(
         "rubric_version": rubric.version,
         "axes": axes,
         "output_schema": {
-            "scores": {axis.id: "integer 0, 1, or 2" for axis in rubric.axes},
+            "scores": {
+                axis.id: (
+                    f"one of {list(axis.allowed_scores)}, or N/A when applicable"
+                    if axis.allows_na
+                    else f"one of {list(axis.allowed_scores)}"
+                )
+                for axis in rubric.axes
+            },
             "rationale": {axis.id: "short evidence-based explanation" for axis in rubric.axes},
         },
     }

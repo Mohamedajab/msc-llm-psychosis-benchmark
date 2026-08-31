@@ -264,7 +264,7 @@ def test_annotation_store_resumes_partial_progress_and_preserves_revisions(
     complete = store.save(
         item,
         annotator_id="rater-01",
-        scores=AxisScores(A1=1, A2=0, A3=2, B1=0, B2=0, B3=0, C1=2),
+        scores=AxisScores(A1=1, A2=0, A3=1, B1=0, B2=0, B3=0, C1=2),
         uncertain_adjudication_needed=True,
         saved_at=NOW + timedelta(minutes=1),
     )
@@ -301,7 +301,7 @@ def test_tidy_export_remains_blinded_and_has_no_seven_axis_total(
     store.save(
         item,
         annotator_id="rater-01",
-        scores=AxisScores(A1=0, A2=0, A3=2, B1=0, B2=0, B3=0, C1=2),
+        scores=AxisScores(A1=0, A2=0, A3=1, B1=0, B2=0, B3=0, C1=2),
     )
     output = export_tidy_annotations(tmp_path / "tidy.csv", store)
     with output.open(newline="", encoding="utf-8") as handle:
@@ -354,7 +354,7 @@ def test_rerating_sample_is_seeded_deterministic_and_uses_new_ids() -> None:
     assert all(entry.rating_round == "rerating" for entry in sample_map)
 
 
-def test_default_rubric_exposes_exactly_seven_ordinal_axes_without_total() -> None:
+def test_default_rubric_exposes_candidate_axis_scales_without_total() -> None:
     rubric = load_default_rubric()
     rows = rubric_display_rows(rubric)
     assert [row["axis_id"] for row in rows] == [
@@ -366,5 +366,34 @@ def test_default_rubric_exposes_exactly_seven_ordinal_axes_without_total() -> No
         "B3",
         "C1",
     ]
-    assert all(set(row["anchors"]) == {0, 1, 2} for row in rows)
+    assert all(set(row["anchors"]) == {0, 1, 2} for row in rows if row["axis_id"] != "A3")
+    assert next(row for row in rows if row["axis_id"] == "A3")["allowed_scores"] == (0, 1)
+    assert {row["axis_id"] for row in rows if row["allows_na"]} == {"A2", "A3"}
     assert all("total" not in row for row in rows)
+
+
+def test_axis_scores_distinguish_na_from_not_rated() -> None:
+    complete = AxisScores(A1=0, A2="N/A", A3="N/A", B1=0, B2=0, B3=0, C1=0)
+    assert complete.complete()
+    assert not complete.model_copy(update={"A2": None}).complete()
+
+    with pytest.raises(ValueError):
+        AxisScores(A1="N/A")
+    with pytest.raises(ValueError):
+        AxisScores(A3=2)
+
+
+def test_annotation_guide_matches_frozen_rubric() -> None:
+    guide = (Path(__file__).parents[1] / "docs" / "ANNOTATION_GUIDE.md").read_text(encoding="utf-8")
+    rubric = load_default_rubric()
+
+    assert "Rubric: Psychosis-Related Response Behaviour Rubric v1.0.0" in guide
+    assert "Procedure version: 1.0.0" in guide
+    assert "Status: FROZEN" in guide
+    assert "20–25%" in guide
+    assert "weighted Cohen's kappa" in guide
+    assert "ordinary\nCohen's kappa" in guide
+    assert "Human annotation is primary" in guide
+    assert "combined total" in guide
+    for axis in rubric.axes:
+        assert f"{axis.id} — {axis.name}" in guide

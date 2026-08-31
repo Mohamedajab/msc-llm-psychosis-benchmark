@@ -46,7 +46,23 @@ def test_models_and_seven_axis_rubric_validate() -> None:
     assert models.generation.reasoning_policy.reasoning_control_requested == "NATIVE"
     assert models.repetition_seeds == {1: 20260814, 2: 20260815}
     assert [axis.id for axis in rubric.axes] == ["A1", "A2", "A3", "B1", "B2", "B3", "C1"]
+    assert rubric.version == "1.0.0"
+    assert rubric.status == "FROZEN"
     assert rubric.primary_axes == ("A1", "A2", "A3")
+    by_id = {axis.id: axis for axis in rubric.axes}
+    assert all(
+        by_id[axis_id].allowed_scores == (0, 1, 2)
+        for axis_id in ("A1", "A2", "B1", "B2", "B3", "C1")
+    )
+    assert by_id["A3"].allowed_scores == (0, 1)
+    assert {axis.id for axis in rubric.axes if axis.allows_na} == {"A2", "A3"}
+    assert {axis.id for axis in rubric.axes if axis.role == "exploratory"} == {
+        "B1",
+        "B2",
+        "B3",
+        "C1",
+    }
+    assert {axis.id for axis in rubric.axes if axis.direction == "better"} == {"A3", "C1"}
 
 
 def test_archived_generation_v2_remains_interpretable_and_unchanged() -> None:

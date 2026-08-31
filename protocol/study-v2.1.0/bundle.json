@@ -1,0 +1,233 @@
+{
+  "bundle_version": "active-study-bundle-v2.0.0",
+  "configuration_version": "2.3.0",
+  "created_at": "2026-08-31T02:29:05.518677Z",
+  "evidence_references": {
+    "pilot_v6_assessment": "evidence/pilot-v6-assessment.json"
+  },
+  "final_pair_source": "ORIGINAL_PAIR_V6",
+  "generation_profile_hash": "35344ce9ea431e7729dff3f7b860c4413d37600fed2575202dd81c789937a1d3",
+  "generation_version": "generation-v4",
+  "items": [
+    {
+      "bundle_path": "files/artifact/config/final/study-v2.1.0/models.yaml",
+      "hash_mode": "text_lf",
+      "sha256": "4e16d76ff0fa7cf6decb3a23f2e4be5aa1a287f1046418921e016f809181fc76",
+      "source_path": "config/final/study-v2.1.0/models.yaml",
+      "source_scope": "artifact"
+    },
+    {
+      "bundle_path": "files/artifact/outputs/study-v2.1.0/experiment_manifest.csv",
+      "hash_mode": "text_lf",
+      "sha256": "840694dec80f41818ea24ab8abfef09c5ff6008a76d781173efce5aa4aebe6b3",
+      "source_path": "outputs/study-v2.1.0/experiment_manifest.csv",
+      "source_scope": "artifact"
+    },
+    {
+      "bundle_path": "files/repository/config/main-study-governance.yaml",
+      "hash_mode": "text_lf",
+      "sha256": "ce0c660badbf251b7cebc3fb54a4c37a6b2d083e639d24f9fa3e1981c53f4640",
+      "source_path": "config/main-study-governance.yaml",
+      "source_scope": "repository"
+    },
+    {
+      "bundle_path": "files/repository/config/rubric.yaml",
+      "hash_mode": "text_lf",
+      "sha256": "3ad5dedae51f9c23a6ea4002d0e7ed7c7e5c33fa65655f8c6e1f317033901e6d",
+      "source_path": "config/rubric.yaml",
+      "source_scope": "repository"
+    },
+    {
+      "bundle_path": "files/repository/docs/EXECUTION_POLICY.md",
+      "hash_mode": "text_lf",
+      "sha256": "a751d42ebc47292f0db7eb75b266d515b3a618378c440e0689778653502cf2bb",
+      "source_path": "docs/EXECUTION_POLICY.md",
+      "source_scope": "repository"
+    },
+    {
+      "bundle_path": "files/repository/docs/EVALUATION_FRAMEWORK_PRECEDENT.md",
+      "hash_mode": "text_lf",
+      "sha256": "006390613fbf665ca3d610043e83353733ca73b049748f4bd49a9d116fb7e992",
+      "source_path": "docs/EVALUATION_FRAMEWORK_PRECEDENT.md",
+      "source_scope": "repository"
+    },
+    {
+      "bundle_path": "files/repository/docs/FINAL_STUDY_READINESS_WORKFLOW.md",
+      "hash_mode": "text_lf",
+      "sha256": "b0f9ab5e43971c26c307f184b58297bfe754e2cccfe1f89c265ac9ba6020e272",
+      "source_path": "docs/FINAL_STUDY_READINESS_WORKFLOW.md",
+      "source_scope": "repository"
+    },
+    {
+      "bundle_path": "files/repository/docs/GENERATION_V4_CALIBRATION.md",
+      "hash_mode": "text_lf",
+      "sha256": "3418b17a9968899644bece07672a53f36ccfadfb121db4280d9b0fd11f41653b",
+      "source_path": "docs/GENERATION_V4_CALIBRATION.md",
+      "source_scope": "repository"
+    },
+    {
+      "bundle_path": "files/repository/docs/PROTOCOL_DEVIATION_STUDY_V2.md",
+      "hash_mode": "text_lf",
+      "sha256": "ddc858852498de29e808bc30484f5a71e7bb5f35f1986d5e0119813647cd7378",
+      "source_path": "docs/PROTOCOL_DEVIATION_STUDY_V2.md",
+      "source_scope": "repository"
+    },
+    {
+      "bundle_path": "files/repository/docs/PROVIDER_POLICY.md",
+      "hash_mode": "text_lf",
+      "sha256": "9ec0d7720feaad34fedb0349b3916a7cbd233ed437707d8f672f804ac390a497",
+      "source_path": "docs/PROVIDER_POLICY.md",
+      "source_scope": "repository"
+    },
+    {
+      "bundle_path": "files/repository/docs/RESEARCH_PROTOCOL.md",
+      "hash_mode": "text_lf",
+      "sha256": "8ae7dec627f7ad67ab643b31fea5c881df5a8302be0ad48a56ea248a86540cc5",
+      "source_path": "docs/RESEARCH_PROTOCOL.md",
+      "source_scope": "repository"
+    },
+    {
+      "bundle_path": "files/repository/outputs/data_dictionary.csv",
+      "hash_mode": "text_lf",
+      "sha256": "c56be08874be03b4bd7bd2a0f9c47590755c9793b313423716e6e0ec9145a086",
+      "source_path": "outputs/data_dictionary.csv",
+      "source_scope": "repository"
+    },
+    {
+      "bundle_path": "files/repository/scripts/assess_pilot_v6.py",
+      "hash_mode": "text_lf",
+      "sha256": "18f2ad652ac157fb269d7719b94268b427c80ee5985d53a9d07b5d609e9f3a11",
+      "source_path": "scripts/assess_pilot_v6.py",
+      "source_scope": "repository"
+    },
+    {
+      "bundle_path": "files/repository/scripts/run_pilot_v6.py",
+      "hash_mode": "text_lf",
+      "sha256": "fbc9465c81c5bae6df9f3137df1b3240f4b6577922c8284c54d1061179fecceb",
+      "source_path": "scripts/run_pilot_v6.py",
+      "source_scope": "repository"
+    },
+    {
+      "bundle_path": "files/repository/scripts/run_study.py",
+      "hash_mode": "text_lf",
+      "sha256": "4f794ddcd50badf05f3ff53cb7286b5050d5bedf8b01356c511319b7379926ee",
+      "source_path": "scripts/run_study.py",
+      "source_scope": "repository"
+    },
+    {
+      "bundle_path": "files/repository/src/active_study.py",
+      "hash_mode": "text_lf",
+      "sha256": "2244f4c43bfe3c24e29f5635e34fddadb3e1bf21b8905202edfa1e444a8af077",
+      "source_path": "src/active_study.py",
+      "source_scope": "repository"
+    },
+    {
+      "bundle_path": "files/repository/src/config_loader.py",
+      "hash_mode": "text_lf",
+      "sha256": "81d2174569ae4bd8d088c349ca6788dd1bc777a1ea9d9d2e16d7f0a2d1fbb65d",
+      "source_path": "src/config_loader.py",
+      "source_scope": "repository"
+    },
+    {
+      "bundle_path": "files/repository/src/conversation_runner.py",
+      "hash_mode": "text_lf",
+      "sha256": "585195b945bcc3a3efe7ff2f208dcb47b636bd92e5eff812d10aef0f5b9f749f",
+      "source_path": "src/conversation_runner.py",
+      "source_scope": "repository"
+    },
+    {
+      "bundle_path": "files/repository/src/generation_profiles.py",
+      "hash_mode": "text_lf",
+      "sha256": "c190ff991cb6036877241ae8e1eaf4fcea8cdcb8741041bb995ee05e5bb57e2e",
+      "source_path": "src/generation_profiles.py",
+      "source_scope": "repository"
+    },
+    {
+      "bundle_path": "files/repository/src/main_study_readiness.py",
+      "hash_mode": "text_lf",
+      "sha256": "b130f96883efed31653b886a5177431102caead2ef35a662d51c32cf9a766628",
+      "source_path": "src/main_study_readiness.py",
+      "source_scope": "repository"
+    },
+    {
+      "bundle_path": "files/repository/src/manifest.py",
+      "hash_mode": "text_lf",
+      "sha256": "0579ed4ae21372cfd42db3a0672d6c1fa44c0d230641813c1b42454fa0db9e66",
+      "source_path": "src/manifest.py",
+      "source_scope": "repository"
+    },
+    {
+      "bundle_path": "files/repository/src/payloads.py",
+      "hash_mode": "text_lf",
+      "sha256": "ff1f1c4605534e6ed8ceb7fcb75da673c01b8379ed08f53aa8f1a2b76099383b",
+      "source_path": "src/payloads.py",
+      "source_scope": "repository"
+    },
+    {
+      "bundle_path": "files/repository/src/pilot_v6.py",
+      "hash_mode": "text_lf",
+      "sha256": "6c596a25243390723011d7455484bfa6a6e224f25dca457a2ed4b43bbe169053",
+      "source_path": "src/pilot_v6.py",
+      "source_scope": "repository"
+    },
+    {
+      "bundle_path": "files/repository/src/provider_client.py",
+      "hash_mode": "text_lf",
+      "sha256": "dd9690465f9f034f98318853ae23799b7adc4ff4b64ac1dfe38d845f702209ea",
+      "source_path": "src/provider_client.py",
+      "source_scope": "repository"
+    },
+    {
+      "bundle_path": "files/repository/src/replacement_screening.py",
+      "hash_mode": "text_lf",
+      "sha256": "2de53c0bb81d95576ea70ed732fee9346eba9945bcf92e6baa175dc4fe740da0",
+      "source_path": "src/replacement_screening.py",
+      "source_scope": "repository"
+    },
+    {
+      "bundle_path": "files/repository/src/replacement_selection.py",
+      "hash_mode": "text_lf",
+      "sha256": "6747488cfda5046572207eb0e98b9ba13476081503282a0bf4651950da378db6",
+      "source_path": "src/replacement_selection.py",
+      "source_scope": "repository"
+    },
+    {
+      "bundle_path": "files/repository/src/schemas.py",
+      "hash_mode": "text_lf",
+      "sha256": "05c3bde80a7a89728bfcde2f2a77f683ada948f45dbd276672509ec8fab664e2",
+      "source_path": "src/schemas.py",
+      "source_scope": "repository"
+    },
+    {
+      "bundle_path": "files/repository/src/storage.py",
+      "hash_mode": "text_lf",
+      "sha256": "a24d71caec40dbdf575160c911c9f4183b82b2f441a56e1cc0dd3e206290fdf8",
+      "source_path": "src/storage.py",
+      "source_scope": "repository"
+    },
+    {
+      "bundle_path": "files/repository/src/study_audit.py",
+      "hash_mode": "text_lf",
+      "sha256": "7a0d931316104538e0656c9e316f1f70470ff4f44325a0e17dfba80bc8b052bd",
+      "source_path": "src/study_audit.py",
+      "source_scope": "repository"
+    },
+    {
+      "bundle_path": "files/repository/src/study_execution.py",
+      "hash_mode": "text_lf",
+      "sha256": "4ad47d3a94cc3e591117567980eb846f8b5978038ff97fcf933cba1f0846d552",
+      "source_path": "src/study_execution.py",
+      "source_scope": "repository"
+    }
+  ],
+  "model_ids": {
+    "model_minimax": "minimax/minimax-m3:free",
+    "model_nemotron": "nvidia/nemotron-3-super-120b-a12b:free"
+  },
+  "pilot_v6_source_evidence_hash": "1c3d8f75e1de85ea6c05972de69304703c9c5b91d7a73ea0fe9c23ac12e08b4e",
+  "planned_conversations": 72,
+  "planned_response_slots": 432,
+  "rubric_status": "FROZEN",
+  "software_commit": "6f95d6e30b430c0a979ab54a2a579f4ab5760d03",
+  "study_version": "study-v2.1.0"
+}

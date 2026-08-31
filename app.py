@@ -89,7 +89,6 @@ GOVERNANCE_PATH = CONFIG_DIR / "main-study-governance.yaml"
 MAIN_STUDY_BLOCKER_MESSAGES = {
     "active_bundle_not_created": "Active study bundle has not been created.",
     "active_bundle_invalid": "Active study bundle does not match the frozen study files.",
-    "supervisor_review_not_confirmed": "Supervisor review has not yet been recorded.",
     "ethics_determination_pending": "Ethics determination is still pending.",
     "rubric_not_frozen": "Rubric has not yet been frozen.",
     "annotation_procedure_not_frozen": "Annotation procedure has not yet been frozen.",
@@ -100,14 +99,11 @@ MAIN_STUDY_BLOCKER_MESSAGES = {
 }
 
 VIEWS: tuple[str, ...] = (
-    "Study Overview",
-    "Experiment Runner",
-    "Main Study Collection",
-    "Transcript & Provenance",
-    "Blinded Annotation",
-    "NLP Explorer",
-    "Trajectory Analysis",
-    "Reproducibility & QA",
+    "Overview",
+    "Collection",
+    "Annotation",
+    "Analysis",
+    "Evidence & QA",
 )
 
 EXECUTION_MODES: tuple[str, ...] = (
@@ -284,32 +280,36 @@ def status_banner(records: Sequence[ConversationRecord] | None = None) -> None:
         )
 
 
-def render_global_header(view: str) -> None:
-    st.title("Controlled Multi-Turn LLM Safety Benchmark")
-    st.caption(f"{view} · MSc Advanced Computer Science research prototype · synthetic inputs only")
-    if view != "Main Study Collection":
-        status_banner()
-    st.caption(
-        "Not a diagnostic, therapeutic, clinical, or patient-facing system. No real patient data are used."
-    )
+def render_page_header(title: str, description: str | None = None) -> None:
+    st.title(title)
+    if description:
+        st.caption(description)
+
+
+def render_empty_state(message: str) -> None:
+    with st.container(border=True):
+        st.info(message)
 
 
 def render_overview(configuration: LocalConfiguration) -> None:
-    st.header("Study Overview")
-    st.write(
-        "This prototype evaluates two exact language-model endpoints across six controlled turns when synthetic users express increasingly certain unsupported interpretations. The contribution is the controlled, auditable research pipeline—not an automated clinical judgement."
+    render_page_header(
+        "LLM Response Behaviour Benchmark",
+        "Controlled multi-turn evaluation of how language models respond to unsupported interpretations.",
     )
 
     metric_columns = st.columns(4)
-    metric_columns[0].metric("Planned conversations", "72")
-    metric_columns[1].metric("Frozen scripts", len(configuration.scripts))
-    metric_columns[2].metric("Turns per conversation", "6")
-    metric_columns[3].metric("Planned responses", "432")
+    metric_columns[0].metric("Conversations", "72")
+    metric_columns[1].metric("Planned responses", "432")
+    metric_columns[2].metric("Models", "2")
+    metric_columns[3].metric("Turns per conversation", "6")
+
+    st.subheader("Research workflow")
+    st.write("Study setup → Collection → Blinded annotation → Analysis → Evidence and reporting")
 
     st.subheader("Research questions")
     questions = (
         "RQ1 — How does presentation level affect belief-confirming and harm-enabling responses across a six-turn exchange?",
-        "RQ2 — How do MiniMax M3 and provisional NVIDIA Nemotron 3 Super differ on the primary A1, A2, and A3 outcomes under the frozen configuration?",
+        "RQ2 — How do MiniMax M3 and NVIDIA Nemotron 3 Super differ on the primary A1, A2, and A3 outcomes under the qualified generation-v4 configuration?",
         "RQ3 — Does standardised preloaded context change response trajectories compared with no preloaded context?",
         "RQ4 — At what turn do high-risk confirmation or protective safety intervention first appear, persist, or recover?",
     )
@@ -327,31 +327,18 @@ def render_overview(configuration: LocalConfiguration) -> None:
         ],
         columns=["Factor", "Levels", "Protocol"],
     )
-    st.subheader("Frozen factorial design")
-    st.dataframe(design, hide_index=True, width="stretch")
+    st.subheader("Experimental design")
+    st.write("3 presentation levels × 3 themes × 2 models × 2 contexts × 2 repetitions")
+    with st.expander("View full study design"):
+        st.dataframe(design, hide_index=True, width="stretch")
+        st.caption(
+            f"Configuration {configuration.models.version}; generation {configuration.models.generation.version}; rubric {configuration.rubric.version} ({configuration.rubric.status})."
+        )
 
-    st.subheader("Evidence-status boundaries")
-    status_table = pd.DataFrame(
-        [
-            (
-                "Planned study",
-                "72 Study V2 manifest rows / 432 planned responses",
-                "Design coverage only; no claim that collection is complete",
-            ),
-            (
-                "Technical pilot",
-                "Pilot V1-V3 preserved; Pilot V4 and V5 failed immutably; original-pair Pilot V6 passed generation-v4 qualification",
-                "Engineering and feasibility evidence; descriptive only",
-            ),
-            (
-                "Demo fixture",
-                "Deterministic offline responses",
-                "Interface and workflow demonstration; never research data",
-            ),
-        ],
-        columns=["Status", "Scope", "Permitted interpretation"],
+    st.divider()
+    st.caption(
+        "This research prototype uses synthetic inputs. It is not a clinical or diagnostic system."
     )
-    st.dataframe(status_table, hide_index=True, width="stretch")
 
 
 def _selection_controls(
@@ -451,9 +438,9 @@ def _render_run_result(record: ConversationRecord) -> None:
 
 
 def render_runner(configuration: LocalConfiguration) -> None:
-    st.header("Experiment Runner")
+    st.subheader("Offline Sandbox")
     st.write(
-        "Every execution uses exactly six frozen user turns and retains the complete earlier dialogue. Dry-run and fixture modes are fully offline."
+        "Preview requests or run a deterministic fixture for development and QA. This is not main-study collection."
     )
     st.metric("Fixed conversation length", "6 turns")
 
@@ -555,8 +542,22 @@ def _main_study_preflight(environ: dict[str, str] | None = None):  # noqa: ANN20
     )
 
 
+def _render_collection_status(status: str) -> None:
+    renderer = {
+        "NOT READY": st.warning,
+        "READY": st.success,
+        "RUNNING": st.info,
+        "RESUMING": st.info,
+        "WAITING TO RETRY": st.warning,
+        "STOPPED": st.info,
+        "BLOCKED": st.error,
+        "COMPLETE": st.success,
+    }[status]
+    renderer(f"Study status: {status}")
+
+
 @st.fragment(run_every=5)
-def _render_main_study_progress() -> None:
+def _render_main_study_progress(preflight_ready: bool = False) -> None:
     # Streamlit reruns often, so progress is always reconstructed from disk.
     try:
         progress = load_study_progress(
@@ -567,6 +568,11 @@ def _render_main_study_progress() -> None:
     except (OSError, RuntimeError, ValueError) as error:
         st.error(f"Saved main-study progress is not readable: {error}")
         return
+
+    display_status = progress.status.value.replace("_", " ")
+    if progress.status == JobStatus.NOT_STARTED:
+        display_status = "READY" if preflight_ready else "NOT READY"
+    _render_collection_status(display_status)
 
     metrics = st.columns(4)
     metrics[0].metric(
@@ -631,9 +637,6 @@ def _render_main_study_progress() -> None:
         st.error(progress.message or "Collection is blocked and requires review.")
     elif progress.status == JobStatus.STOPPED:
         st.info(progress.message or "Collection stopped safely and can resume from disk.")
-    else:
-        st.info(f"Status: {progress.status.value}")
-
     try:
         active = worker_is_active(MAIN_STUDY_JOB_DIR)
     except (OSError, RuntimeError, ValueError):
@@ -649,37 +652,36 @@ def _render_main_study_progress() -> None:
 
 
 def render_main_study() -> None:
-    st.header("Main Study Collection")
-    st.write(
-        "Run the frozen 72-conversation study and follow progress saved by the background worker."
+    render_page_header(
+        "Main Study Collection",
+        "Run the frozen study and follow progress saved by the background worker.",
     )
     st.caption(
         "Refreshing or closing this page does not restart collection. Successful responses are saved to disk before the next turn begins."
     )
 
-    models = st.columns(2)
-    models[0].metric("Model A", "MiniMax M3")
-    models[0].caption("minimax/minimax-m3:free")
-    models[1].metric("Model B", "Nemotron 3 Super")
-    models[1].caption("nvidia/nemotron-3-super-120b-a12b:free")
-    size = st.columns(3)
-    size[0].metric("Conversations", "72")
-    size[1].metric("Planned responses", "432")
-    size[2].metric("Turns per conversation", "6")
-
     current = _main_study_preflight(dict(os.environ))
-    st.subheader("Preflight")
-    st.metric("Pilot V6 qualification", current.pilot_v6)
-    if st.button("Run preflight", type="primary"):
-        load_dotenv(BASE_DIR / ".env", override=False)
-        current = _main_study_preflight(dict(os.environ))
-        st.session_state["main_study_preflight"] = current.model_dump(mode="json")
-
     saved = st.session_state.get("main_study_preflight")
     if saved:
         from src.main_study import StudyPreflight
 
         current = StudyPreflight.model_validate(saved)
+
+    _render_main_study_progress(current.ready)
+
+    with st.container(border=True):
+        st.subheader("Study readiness")
+        if current.ready:
+            st.success("All machine-readable preflight requirements are complete.")
+        else:
+            st.markdown("**Needs attention**")
+            for blocker in current.blockers:
+                st.markdown(f"○ {MAIN_STUDY_BLOCKER_MESSAGES.get(blocker, blocker)}")
+
+        if st.button("Run preflight", type="primary"):
+            load_dotenv(BASE_DIR / ".env", override=False)
+            current = _main_study_preflight(dict(os.environ))
+            st.session_state["main_study_preflight"] = current.model_dump(mode="json")
 
     check_labels = {
         "expected_model_pair": "Exact model pair",
@@ -694,24 +696,37 @@ def render_main_study() -> None:
         "governance_complete": "Governance requirements complete",
         "main_study_ready": "Main-study readiness PASS",
     }
-    st.dataframe(
-        pd.DataFrame(
-            [
-                {"Check": check_labels.get(name, name), "Status": "PASS" if passed else "BLOCKED"}
-                for name, passed in current.checks.items()
-            ]
-        ),
-        hide_index=True,
-        width="stretch",
-    )
-    if current.ready:
-        st.success("Preflight passed. The frozen main study can be started.")
-    else:
-        st.warning("Main-study collection is still blocked.")
-        if current.blockers:
-            for blocker in current.blockers:
-                st.markdown(f"- {MAIN_STUDY_BLOCKER_MESSAGES.get(blocker, blocker)}")
+    with st.expander("Preflight details"):
+        st.dataframe(
+            pd.DataFrame(
+                [
+                    {
+                        "Check": check_labels.get(name, name),
+                        "Status": "PASS" if passed else "BLOCKED",
+                    }
+                    for name, passed in current.checks.items()
+                ]
+            ),
+            hide_index=True,
+            width="stretch",
+        )
+        st.dataframe(
+            pd.DataFrame(
+                [
+                    ("Pilot V6", current.pilot_v6),
+                    ("Final pair source", current.final_pair_source),
+                    ("Active bundle", current.active_bundle),
+                    ("Governance", current.governance),
+                    ("Main study", current.main_study),
+                    ("Network requests during preflight", current.network_requests),
+                ],
+                columns=["Item", "Status"],
+            ),
+            hide_index=True,
+            width="stretch",
+        )
 
+    st.subheader("Collection control")
     confirmed = st.checkbox(
         "I understand this starts the frozen main-study data collection.",
         disabled=not current.ready,
@@ -740,8 +755,36 @@ def render_main_study() -> None:
                 st.success(f"Main-study worker started (process {pid}).")
                 st.session_state.pop("main_study_preflight", None)
 
-    st.subheader("Collection progress")
-    _render_main_study_progress()
+    with st.expander("Study configuration"):
+        st.markdown("**Frozen model pair**")
+        st.dataframe(
+            pd.DataFrame(
+                [
+                    ("MiniMax M3", "minimax/minimax-m3:free"),
+                    ("Nemotron 3 Super", "nvidia/nemotron-3-super-120b-a12b:free"),
+                ],
+                columns=["Model", "Exact endpoint"],
+            ),
+            hide_index=True,
+            width="stretch",
+        )
+        st.caption("72 conversations · 432 planned responses · six turns per conversation")
+
+    with st.expander("Technical run details"):
+        try:
+            progress = load_study_progress(
+                repository_root=BASE_DIR,
+                raw_root=MAIN_STUDY_RAW_DIR,
+                state_path=MAIN_STUDY_JOB_DIR / "state.json",
+            )
+            st.write(f"HTTP attempts: {progress.http_attempts} / 576")
+            st.write(f"Background worker active: {worker_is_active(MAIN_STUDY_JOB_DIR)}")
+        except (OSError, RuntimeError, ValueError) as error:
+            st.warning(f"Technical run details are unavailable: {error}")
+        st.write(f"Pilot V6: {current.pilot_v6}")
+        st.write(f"Final pair source: {current.final_pair_source}")
+        st.write(f"Active bundle: {current.active_bundle}")
+        st.write(f"Raw output: {MAIN_STUDY_RAW_DIR}")
 
 
 def _metadata_frame(record: ConversationRecord) -> pd.DataFrame:
@@ -765,8 +808,9 @@ def _metadata_frame(record: ConversationRecord) -> pd.DataFrame:
     return pd.DataFrame(rows, columns=["Field", "Value"])
 
 
-def render_provenance() -> None:
-    st.header("Transcript & Provenance")
+def render_provenance(*, show_header: bool = True) -> None:
+    if show_header:
+        st.header("Runs & provenance")
     records, load_errors = load_available_records()
     if load_errors:
         st.error("Some raw records could not be loaded.")
@@ -807,7 +851,7 @@ def render_provenance() -> None:
     for turn in record.turns:
         with st.expander(
             f"Turn {turn.turn_number}: exact request, response, and provider metadata",
-            expanded=turn.turn_number == 1,
+            expanded=False,
         ):
             st.markdown("**Exact ordered request messages**")
             st.dataframe(
@@ -841,10 +885,11 @@ def render_provenance() -> None:
         st.success("No separate transport/provider error observations are stored for this run.")
     else:
         for error in record.errors:
-            st.error(
-                f"Turn {error.turn_number}: {error.result.status.value} · {error.result.error_type or 'unspecified error'}"
-            )
-            st.json(error.model_dump(mode="json"))
+            with st.expander(
+                f"Turn {error.turn_number}: {error.result.error_type or 'unspecified error'}"
+            ):
+                st.write(f"Observation status: {error.result.status.value}")
+                st.json(error.model_dump(mode="json"))
 
     st.download_button(
         "Download complete run JSON",
@@ -863,21 +908,22 @@ def _blinding_material(
     return build_blinded_items(records, blinding_key=key)
 
 
-def _score_index(value: int | None) -> int:
-    return 0 if value is None else value + 1
+def _score_index(value: int | str | None, options: list[int | str | None]) -> int:
+    return options.index(value) if value in options else 0
 
 
 def render_annotation(configuration: LocalConfiguration) -> None:
-    st.header("Blinded Annotation")
-    st.write(
-        "This workspace exposes only opaque item identifiers, the conversation available at the scored turn, the response, and the draft rubric. Model, provider, context condition, and repetition are not shown."
+    render_page_header(
+        "Blinded Annotation",
+        "Score saved main-study responses without model or condition information.",
     )
-    records, load_errors = load_available_records()
+    records, load_errors = load_available_records(RawRunStore(MAIN_STUDY_RAW_DIR))
+    records = [record for record in records if record.header.data_status == "main_study"]
     if load_errors:
         st.warning("Some unavailable raw records were excluded from item preparation.")
     if not records:
-        st.info(
-            "No responses are available for annotation. Create an offline fixture run first, then return here."
+        render_empty_state(
+            "Annotation becomes available after validated main-study responses have been prepared."
         )
         return
 
@@ -903,10 +949,11 @@ def render_annotation(configuration: LocalConfiguration) -> None:
         return
     latest_by_item = {event.blinded_item_id: event for event in latest_events}
     complete_count = sum(event.scores.complete() for event in latest_events)
-    progress_columns = st.columns(3)
-    progress_columns[0].metric("Blinded items", len(items))
+    progress_columns = st.columns(4)
+    progress_columns[0].metric("Items", len(items))
     progress_columns[1].metric("Complete", complete_count)
     progress_columns[2].metric("Remaining", max(0, len(items) - complete_count))
+    progress_columns[3].metric("Current round", items[0].rating_round.replace("_", " ").title())
 
     incomplete_ids = {
         item.blinded_item_id for item in store.incomplete_items(items, annotator_id=annotator_id)
@@ -922,53 +969,69 @@ def render_annotation(configuration: LocalConfiguration) -> None:
     item = item_lookup[item_id]
     latest = latest_by_item.get(item_id)
 
-    st.caption(
-        f"Blinded item ID: {item.blinded_item_id} · Rating round: {item.rating_round} · Turn number: {item.turn_number}"
-    )
-    st.subheader("Conversation available at this turn")
-    for message in item.conversation_context:
+    context_column, scoring_column = st.columns([1.15, 1], gap="large")
+    with context_column:
+        st.caption(
+            f"Item: {item.blinded_item_id} · Round: {item.rating_round} · Turn: {item.turn_number}"
+        )
+        st.subheader("Conversation context")
+        for message in item.conversation_context:
+            with st.container(border=True):
+                st.caption(message.role.upper())
+                st.write(message.content)
         with st.container(border=True):
-            st.caption(message.role.upper())
-            st.write(message.content)
-    with st.container(border=True):
-        st.caption("ASSISTANT RESPONSE TO SCORE")
-        st.write(item.response_to_score)
+            st.markdown("**Response to score**")
+            st.write(item.response_to_score)
 
     rubric_rows = rubric_display_rows(configuration.rubric)
     saved_scores = latest.scores.model_dump() if latest else {}
-    score_options: list[int | None] = [None, 0, 1, 2]
-    st.caption(
-        "Draft research rubric; not clinically validated. Every axis is nullable: choose Not rated to save partial progress. No combined seven-axis total is calculated."
-    )
-    with st.form(f"annotation::{annotator_id}::{item.blinded_item_id}"):
-        scores: dict[str, int | None] = {}
-        for axis in rubric_rows:
-            st.markdown(
-                f"**{axis['axis_id']} — {axis['name']}** · {axis['role']} · higher is {axis['direction']}"
-            )
-            st.caption(axis["definition"])
-            current = saved_scores.get(axis["axis_id"])
-            scores[axis["axis_id"]] = st.selectbox(
-                f"{axis['axis_id']} rating",
-                options=score_options,
-                index=_score_index(current),
-                format_func=lambda value: "Not rated" if value is None else str(value),
-                key=f"score::{annotator_id}::{item.blinded_item_id}::{axis['axis_id']}",
-            )
-            with st.expander(f"{axis['axis_id']} score anchors"):
-                for score, anchor in sorted(axis["anchors"].items()):
-                    st.markdown(f"**{score}:** {anchor}")
-        notes = st.text_area(
-            "Annotation notes",
-            value=latest.notes if latest else "",
-            key=f"notes::{annotator_id}::{item.blinded_item_id}",
+    with scoring_column:
+        st.subheader("Scoring form")
+        st.caption(
+            f"Rubric {configuration.rubric.version} ({configuration.rubric.status}). Not rated and N/A are distinct."
         )
-        uncertain = st.checkbox(
-            "Uncertain / adjudication needed",
-            value=latest.uncertain_adjudication_needed if latest else False,
-            key=f"uncertain::{annotator_id}::{item.blinded_item_id}",
-        )
-        save = st.form_submit_button("Save annotation progress", type="primary")
+        with st.form(f"annotation::{annotator_id}::{item.blinded_item_id}"):
+            scores: dict[str, int | str | None] = {}
+            for axis in rubric_rows:
+                if axis["axis_id"] == "A1":
+                    st.markdown("### Primary outcomes")
+                elif axis["axis_id"] == "B1":
+                    st.markdown("### Exploratory outcomes")
+                st.markdown(
+                    f"**{axis['axis_id']} — {axis['name']}** · higher is {axis['direction']}"
+                )
+                st.caption(axis["definition"])
+                current = saved_scores.get(axis["axis_id"])
+                score_options: list[int | str | None] = [None, *axis["allowed_scores"]]
+                if axis["allows_na"]:
+                    score_options.append("N/A")
+                scores[axis["axis_id"]] = st.selectbox(
+                    f"{axis['axis_id']} rating",
+                    options=score_options,
+                    index=_score_index(current, score_options),
+                    format_func=lambda value: "Not rated" if value is None else str(value),
+                    key=f"score::{annotator_id}::{item.blinded_item_id}::{axis['axis_id']}",
+                )
+                with st.expander(f"{axis['axis_id']} score anchors"):
+                    if axis["na_guidance"]:
+                        st.markdown(f"**N/A:** {axis['na_guidance']}")
+                    for score, anchor in sorted(axis["anchors"].items()):
+                        st.markdown(f"**{score}:** {anchor}")
+                    for note in axis["notes"]:
+                        st.caption(note)
+                    if axis["examples"]:
+                        st.caption("Examples: " + "; ".join(axis["examples"]))
+            notes = st.text_area(
+                "Annotation notes",
+                value=latest.notes if latest else "",
+                key=f"notes::{annotator_id}::{item.blinded_item_id}",
+            )
+            uncertain = st.checkbox(
+                "Uncertain / disagreement review needed",
+                value=latest.uncertain_adjudication_needed if latest else False,
+                key=f"uncertain::{annotator_id}::{item.blinded_item_id}",
+            )
+            save = st.form_submit_button("Save annotation progress", type="primary")
     if save:
         try:
             store.save(
@@ -999,12 +1062,21 @@ def render_annotation(configuration: LocalConfiguration) -> None:
             )
 
 
-def render_nlp() -> None:
-    st.header("NLP Explorer")
+def render_nlp(
+    records: Sequence[ConversationRecord] | None = None,
+    *,
+    show_header: bool = True,
+) -> None:
+    if show_header:
+        st.header("Exploratory NLP")
     st.write(
         "All features below are deterministic, transparent, and calculated offline from saved assistant text. They are exploratory lexical signals, not clinical labels and not substitutes for human annotation."
     )
-    records, load_errors = load_available_records()
+    if records is None:
+        records, load_errors = load_available_records()
+    else:
+        records = list(records)
+        load_errors = []
     if load_errors:
         st.warning("Some malformed or incomplete raw directories were excluded.")
     if not records:
@@ -1156,12 +1228,20 @@ def _latest_analysis_rows(
     return pd.DataFrame(rows)
 
 
-def render_trajectory(configuration: LocalConfiguration) -> None:
-    st.header("Trajectory Analysis")
-    st.info(
-        "TECHNICAL PILOT / DEMO DESCRIPTIVE VIEW — no turn-level independence assumptions and no significance claims."
-    )
-    records, load_errors = load_available_records()
+def render_trajectory(
+    configuration: LocalConfiguration,
+    records: Sequence[ConversationRecord] | None = None,
+    *,
+    show_header: bool = True,
+) -> None:
+    if show_header:
+        st.header("Trajectories")
+    st.caption("Conversation-level descriptive analysis; turns are not independent units.")
+    if records is None:
+        records, load_errors = load_available_records()
+    else:
+        records = list(records)
+        load_errors = []
     if load_errors:
         st.warning("Some raw records were unavailable and excluded.")
     if not records:
@@ -1209,7 +1289,7 @@ def render_trajectory(configuration: LocalConfiguration) -> None:
         figure.update_yaxes(tickmode="array", tickvals=[0, 1, 2], range=[-0.1, 2.1])
         st.plotly_chart(figure, width="stretch")
 
-    safety_threshold = int(configuration.rubric.safety_thresholds.get("A3", 2))
+    safety_threshold = int(configuration.rubric.safety_thresholds.get("A3", 1))
     summaries = summarize_conversations(
         rows,
         safety_threshold=safety_threshold,
@@ -1273,8 +1353,86 @@ def render_trajectory(configuration: LocalConfiguration) -> None:
     )
 
 
-def render_qa(configuration: LocalConfiguration) -> None:
-    st.header("Reproducibility & QA")
+def render_primary_outcomes(
+    configuration: LocalConfiguration,
+    records: Sequence[ConversationRecord],
+) -> None:
+    if not records:
+        render_empty_state("Results will appear after collection and blinded human annotation.")
+        return
+    try:
+        events = AnnotationStore(ANNOTATION_LOG).latest_events()
+    except AnnotationPersistenceError as error:
+        st.error(str(error))
+        return
+    if not events:
+        render_empty_state("No blinded human ratings are available yet.")
+        return
+    annotators = sorted({event.annotator_id for event in events})
+    annotator = st.selectbox("Annotation set", options=annotators, key="primary_annotation_set")
+    rows = _latest_analysis_rows(configuration, records, events, annotator)
+    if rows.empty:
+        render_empty_state("Saved ratings could not be matched to main-study responses.")
+        return
+    summaries = summarize_conversations(
+        rows,
+        safety_threshold=int(configuration.rubric.safety_thresholds.get("A3", 1)),
+        expected_turns=6,
+    )
+    metrics = st.columns(3)
+    metrics[0].metric("Rated conversations", len(summaries))
+    metrics[1].metric("Complete trajectories", int(summaries["is_complete"].sum()))
+    metrics[2].metric(
+        "Mean annotation completeness", f"{summaries['completeness_rate'].mean() * 100:.1f}%"
+    )
+    st.dataframe(
+        summaries[
+            [
+                "run_id",
+                "mean_A1",
+                "mean_A2",
+                "mean_A3",
+                "final_A1",
+                "final_A2",
+                "final_A3",
+                "completeness_rate",
+            ]
+        ],
+        hide_index=True,
+        width="stretch",
+    )
+    st.caption("A1, A2 and A3 remain separate primary outcomes. No combined score is used.")
+
+
+def render_analysis(configuration: LocalConfiguration) -> None:
+    render_page_header(
+        "Analysis",
+        "Human-rated outcomes are primary; lexical analysis remains exploratory.",
+    )
+    records, load_errors = load_available_records(RawRunStore(MAIN_STUDY_RAW_DIR))
+    records = [record for record in records if record.header.data_status == "main_study"]
+    if load_errors:
+        st.warning("Some main-study records could not be read and analysis is unavailable.")
+    primary_tab, trajectory_tab, nlp_tab = st.tabs(
+        ["Primary outcomes", "Trajectories", "Exploratory NLP"]
+    )
+    with primary_tab:
+        render_primary_outcomes(configuration, records)
+    with trajectory_tab:
+        if records:
+            render_trajectory(configuration, records, show_header=False)
+        else:
+            render_empty_state("Trajectories will appear after collection and annotation.")
+    with nlp_tab:
+        if records:
+            render_nlp(records, show_header=False)
+        else:
+            render_empty_state("Exploratory NLP will appear after main-study collection.")
+
+
+def render_qa(configuration: LocalConfiguration, *, show_header: bool = True) -> None:
+    if show_header:
+        st.header("Configuration")
     st.write(
         "This view reports locally inspectable configuration, manifest coverage, hashes, and validation commands. It does not contact a model provider."
     )
@@ -1322,7 +1480,8 @@ def render_qa(configuration: LocalConfiguration) -> None:
         validation_columns[2].metric("Scripts", manifest["script_id"].nunique())
         validation_columns[3].metric("Balanced cells", "Yes")
         st.success("The locally generated 3×3×2×2×2 manifest contains 72 unique balanced rows.")
-        st.dataframe(manifest, hide_index=True, width="stretch")
+        with st.expander("View 72-row manifest"):
+            st.dataframe(manifest, hide_index=True, width="stretch")
         st.download_button(
             "Download generated manifest CSV",
             data=manifest.to_csv(index=False),
@@ -1352,34 +1511,66 @@ def render_qa(configuration: LocalConfiguration) -> None:
         language="powershell",
     )
     st.caption(
-        "App startup, tests, manifest preview, NLP, and fixture execution remain offline. Live replacement screening, Pilot V6 and Study V2 use separate guarded command-line workflows."
+        "App startup, tests, manifest preview, analysis and fixture execution remain offline. Main-study collection retains its separate readiness and confirmation gates."
     )
 
 
-def render_view(view: str, configuration: LocalConfiguration) -> None:
-    if view == "Study Overview":
-        render_overview(configuration)
-    elif view == "Experiment Runner":
+def render_study_audit() -> None:
+    st.subheader("Study audit")
+    try:
+        progress = load_study_progress(
+            repository_root=BASE_DIR,
+            raw_root=MAIN_STUDY_RAW_DIR,
+            state_path=MAIN_STUDY_JOB_DIR / "state.json",
+        )
+    except (OSError, RuntimeError, ValueError) as error:
+        st.error(f"Main-study evidence could not be audited: {error}")
+        return
+    metrics = st.columns(4)
+    metrics[0].metric("Conversations complete", f"{progress.conversations_complete} / 72")
+    metrics[1].metric("Responses complete", f"{progress.responses_complete} / 432")
+    metrics[2].metric("Technical errors", progress.technical_errors)
+    metrics[3].metric("Truncations", progress.truncations)
+    st.write(f"Current evidence status: {progress.status.value}")
+    st.caption("Technical evidence and demo fixtures are not main-study results.")
+
+
+def render_evidence(configuration: LocalConfiguration) -> None:
+    render_page_header(
+        "Evidence & QA",
+        "Inspect saved runs, study checks, frozen configuration and offline tools.",
+    )
+    provenance_tab, audit_tab, configuration_tab, tools_tab = st.tabs(
+        ["Runs & provenance", "Study audit", "Configuration", "Offline tools"]
+    )
+    with provenance_tab:
+        render_provenance(show_header=False)
+    with audit_tab:
+        render_study_audit()
+    with configuration_tab:
+        render_qa(configuration, show_header=False)
+    with tools_tab:
         render_runner(configuration)
-    elif view == "Main Study Collection":
+
+
+def render_view(view: str, configuration: LocalConfiguration) -> None:
+    if view == "Overview":
+        render_overview(configuration)
+    elif view == "Collection":
         render_main_study()
-    elif view == "Transcript & Provenance":
-        render_provenance()
-    elif view == "Blinded Annotation":
+    elif view == "Annotation":
         render_annotation(configuration)
-    elif view == "NLP Explorer":
-        render_nlp()
-    elif view == "Trajectory Analysis":
-        render_trajectory(configuration)
-    elif view == "Reproducibility & QA":
-        render_qa(configuration)
+    elif view == "Analysis":
+        render_analysis(configuration)
+    elif view == "Evidence & QA":
+        render_evidence(configuration)
     else:  # pragma: no cover - defensive guard for programmatic misuse
         raise ValueError(f"Unknown view: {view}")
 
 
 def main() -> None:
     st.set_page_config(
-        page_title="Controlled Multi-Turn LLM Safety Benchmark",
+        page_title="LLM Response Behaviour Benchmark",
         page_icon=None,
         layout="wide",
         initial_sidebar_state="expanded",
@@ -1387,21 +1578,20 @@ def main() -> None:
     st.markdown(
         """
         <style>
-        .block-container {max-width: 1180px; padding-top: 2rem; padding-bottom: 3rem;}
-        [data-testid="stSidebar"] {border-right: 1px solid #d7dde5;}
-        [data-testid="stMetric"] {border: 1px solid #d7dde5; padding: 0.8rem; border-radius: 0.35rem;}
+        .block-container {max-width: 1120px; padding-top: 1.75rem; padding-bottom: 3rem;}
+        [data-testid="stSidebar"] {border-right: 1px solid rgba(128, 128, 128, 0.25);}
         h1, h2, h3 {letter-spacing: -0.015em;}
         </style>
         """,
         unsafe_allow_html=True,
     )
     initialise_state()
-    st.sidebar.title("Research workspace")
-    view = st.sidebar.radio("View", options=VIEWS, key="navigation")
+    st.sidebar.markdown("### LLM Response Behaviour Benchmark")
+    view = st.sidebar.radio("Research workspace", options=VIEWS, key="navigation")
     st.sidebar.divider()
-    st.sidebar.caption("Protocol: six fixed turns · local-first · append-only evidence")
-    st.sidebar.caption("Synthetic benchmark; not a clinical system")
-    render_global_header(view)
+    st.sidebar.caption("Study V2")
+    st.sidebar.caption("Synthetic research benchmark")
+    st.sidebar.caption("Not a clinical system")
     try:
         configuration = load_local_configuration()
     except ConfigurationError as error:

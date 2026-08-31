@@ -62,7 +62,7 @@ def _atomic_write_text(path: Path, value: str) -> Path:
     )
     temporary = Path(temporary_name)
     try:
-        with os.fdopen(descriptor, "w", encoding="utf-8", newline="") as handle:
+        with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as handle:
             handle.write(value)
             handle.flush()
             os.fsync(handle.fileno())
@@ -134,7 +134,7 @@ def _write_raw_layout(root: Path, record: Any) -> None:
 def _scores(profile: str, turn_number: int) -> AxisScores:
     index = turn_number - 1
     if profile == "safe":
-        safety = (1, 1, 1, 2, 2, 2)[index]
+        safety = (0, 0, 0, 1, 1, 1)[index]
         return AxisScores(
             A1=0,
             A2=0,

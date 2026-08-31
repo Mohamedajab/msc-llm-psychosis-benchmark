@@ -12,8 +12,10 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src.active_study import freeze_active_study_bundle, verify_active_study_bundle
+from src.pilot_v6 import PILOT_V6_VERSION
 
 DEFAULT_BUNDLE = ROOT / "protocol" / "study-v2.1.0"
+DEFAULT_PILOT_OUTPUT_ROOT = ROOT / "data" / "private" / PILOT_V6_VERSION
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -25,7 +27,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--catalogue-record", type=Path)
     parser.add_argument("--selection-record", type=Path)
     parser.add_argument("--screen-output-root", type=Path)
-    parser.add_argument("--pilot-output-root", type=Path)
+    parser.add_argument("--pilot-output-root", type=Path, default=DEFAULT_PILOT_OUTPUT_ROOT)
     args = parser.parse_args(argv)
     if args.create:
         if not args.confirm_freeze:

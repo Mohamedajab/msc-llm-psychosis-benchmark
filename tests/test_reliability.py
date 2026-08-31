@@ -12,6 +12,7 @@ from src.annotation import (
     compute_intra_rater_reliability,
     exact_agreement,
     linearly_weighted_cohen_kappa,
+    ordinary_cohen_kappa,
 )
 from src.schemas import AnnotationEvent, AxisScores, BlindingMapEntry
 
@@ -19,7 +20,7 @@ NOW = datetime(2026, 8, 13, 10, 0, tzinfo=UTC)
 
 
 def _scores(a1: int, *, a2: int = 1) -> AxisScores:
-    return AxisScores(A1=a1, A2=a2, A3=2, B1=0, B2=0, B3=0, C1=2)
+    return AxisScores(A1=a1, A2=a2, A3=1, B1=0, B2=0, B3=0, C1=2)
 
 
 def _event(
@@ -101,13 +102,17 @@ def test_intra_rater_report_is_per_axis_and_handles_undefined_kappa() -> None:
     a1 = next(axis for axis in report.axes if axis.axis_id == "A1")
     assert a1.n_pairs == 4
     assert a1.exact_agreement == pytest.approx(0.5)
-    assert a1.linearly_weighted_kappa == pytest.approx(3 / 7)
+    assert a1.cohen_kappa == pytest.approx(3 / 7)
+    assert a1.kappa_method == "linear_weighted"
 
     # A2 is identically 1 in both rounds: exact agreement exists but kappa does not.
     a2 = next(axis for axis in report.axes if axis.axis_id == "A2")
     assert a2.exact_agreement == 1.0
-    assert a2.linearly_weighted_kappa is None
+    assert a2.cohen_kappa is None
     assert "expected weighted disagreement is zero" in a2.kappa_unavailable_reason
+
+    a3 = next(axis for axis in report.axes if axis.axis_id == "A3")
+    assert a3.kappa_method == "unweighted"
 
 
 def test_unavailable_reliability_is_returned_without_crashing() -> None:
@@ -120,7 +125,7 @@ def test_unavailable_reliability_is_returned_without_crashing() -> None:
     assert report.unavailable_reason is not None
     assert all(axis.n_pairs == 0 for axis in report.axes)
     assert all(axis.exact_agreement is None for axis in report.axes)
-    assert all(axis.linearly_weighted_kappa is None for axis in report.axes)
+    assert all(axis.cohen_kappa is None for axis in report.axes)
 
 
 def test_inter_rater_label_requires_two_independent_annotators() -> None:
@@ -159,7 +164,9 @@ def test_inter_rater_label_requires_two_independent_annotators() -> None:
 
 def test_metric_helpers_ignore_incomplete_pairs_and_reject_invalid_values() -> None:
     assert exact_agreement([0, None, 2], [0, 1, None]) == 1.0
+    assert exact_agreement([0, "N/A", 1], [0, 1, "N/A"]) == 1.0
     assert linearly_weighted_cohen_kappa([1], [1]) is None
+    assert ordinary_cohen_kappa([0, 0, 1, 1], [0, 1, 1, 1]) == pytest.approx(0.5)
     assert exact_agreement([None], [None]) is None
     with pytest.raises(AnnotationError, match="0, 1, 2"):
         linearly_weighted_cohen_kappa([3, 1], [2, 1])

@@ -4,9 +4,9 @@
 |---|---|---|---|
 | Motivation and background | Protocol, limitations, decision log | Verified literature matrix | Critical synthesis and citations |
 | RQ1: presentation level | Nine frozen scripts; balanced manifest | Human A1/A2/A3 ratings | Interpret matched trajectories |
-| RQ2: two endpoints | Exact provisional MiniMax/Nemotron configuration; provider audit; immutable V4/V5 failures; calibration | Qualified Study V2 responses after final-pair freeze | Endpoint/configuration-specific interpretation |
+| RQ2: two endpoints | Exact qualified MiniMax/Nemotron configuration; provider audit; immutable V4/V5 failures; calibration and Pilot V6 PASS | Study V2 responses after active-bundle freeze | Endpoint/configuration-specific interpretation |
 | RQ3: context | Three frozen prefixes; two conditions | Matched ratings | Explain context effects cautiously |
-| Methods | Historical bundle, runners, schemas, V4/V5 audits, generation-v4 calibration and tests | Original-pair Pilot V6 PASS (or fallback screen/selection/Pilot V7), active bundle and genuine human governance decisions | Write methodological rationale |
+| Methods | Historical bundle, runners, schemas, V4/V5 audits, generation-v4 calibration, Pilot V6 PASS, frozen rubric/annotation procedure, data-management record and June 2026 ethics determination | Active bundle; supervisor review retained if available | Write methodological rationale |
 | Results | Results template and analysis code | Real annotations only | Report numbers without overclaiming |
 | Discussion | Limitations and deviation record | Actual findings | Critical interpretation and reflection |
 

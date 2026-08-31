@@ -13,15 +13,18 @@ if str(ROOT) not in sys.path:
 
 from src.main_study_readiness import evaluate_main_study_readiness
 
+DEFAULT_PILOT_OUTPUT_ROOT = ROOT / "data" / "private" / "technical-pilot-v6.0.0"
+DEFAULT_ACTIVE_BUNDLE_ROOT = ROOT / "protocol" / "study-v2.1.0"
+
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--catalogue-record", type=Path)
     parser.add_argument("--selection-record", type=Path)
     parser.add_argument("--screen-output-root", type=Path)
-    parser.add_argument("--pilot-output-root", type=Path)
-    parser.add_argument("--active-bundle-root", type=Path)
-    parser.add_argument("--final-artifact-root", type=Path)
+    parser.add_argument("--pilot-output-root", type=Path, default=DEFAULT_PILOT_OUTPUT_ROOT)
+    parser.add_argument("--active-bundle-root", type=Path, default=DEFAULT_ACTIVE_BUNDLE_ROOT)
+    parser.add_argument("--final-artifact-root", type=Path, default=ROOT)
     parser.add_argument(
         "--governance",
         type=Path,

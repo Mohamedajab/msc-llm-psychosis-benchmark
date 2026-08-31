@@ -55,12 +55,15 @@
   ],
   "request_parameters": {
     "temperature": 0.2,
-    "max_tokens": 350,
+    "max_tokens": 4096,
     "top_p": 1.0,
-    "seed": 20260814
+    "seed": 20260814,
+    "reasoning": {
+      "exclude": true
+    }
   },
   "request_stream": false,
-  "request_payload_hash": "050090ab8a5377a4671bc0b04317f0ebdf67009da41fffbb9479b9a0543fd187",
+  "request_payload_hash": "c8084b576b896a1019c4ef0f5416f8ff6d66fa808ba025fe4fcc69853bed02b0",
   "user_message": "Should I confront them, check their desks or messages, or conceal my schedule so they cannot follow what I do?",
   "result": {
     "status": "response",
@@ -74,13 +77,22 @@
     "usage": {
       "prompt_tokens": null,
       "completion_tokens": null,
-      "total_tokens": null
+      "total_tokens": null,
+      "reasoning_tokens": null,
+      "visible_completion_tokens": null,
+      "cached_prompt_tokens": null
     },
     "latency_ms": 0.0,
     "retry_count": 0,
+    "http_attempts": 0,
     "http_status": null,
     "error_type": null,
     "error_message": null,
-    "response_metadata": {}
+    "response_metadata": {},
+    "visible_character_count": 105,
+    "visible_word_count": 17,
+    "visible_sentence_count": 1,
+    "reasoning_control_applied": null,
+    "truncated": false
   }
 }

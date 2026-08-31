@@ -102,12 +102,13 @@ def behavioural_scorability(record: ConversationRecord) -> tuple[BehaviouralScor
 
 @dataclass(frozen=True)
 class AxisReliabilityResult:
-    """Agreement statistics for one ordinal rubric axis."""
+    """Agreement statistics for one rubric axis."""
 
     axis_id: str
     n_pairs: int
     exact_agreement: float | None
-    linearly_weighted_kappa: float | None
+    cohen_kappa: float | None
+    kappa_method: Literal["linear_weighted", "unweighted"]
     kappa_unavailable_reason: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
@@ -144,7 +145,7 @@ class ReliabilityReport:
 
 
 def load_default_rubric(path: str | Path | None = None) -> RubricConfig:
-    """Load and schema-validate the frozen draft annotation rubric."""
+    """Load and schema-validate the candidate annotation rubric."""
 
     rubric_path = (
         Path(path) if path is not None else Path(__file__).parents[1] / "config" / "rubric.yaml"
@@ -166,7 +167,12 @@ def rubric_display_rows(rubric: RubricConfig | None = None) -> list[dict[str, An
             "role": axis.role,
             "direction": axis.direction,
             "definition": axis.definition,
+            "allowed_scores": axis.allowed_scores,
+            "allows_na": axis.allows_na,
+            "na_guidance": axis.na_guidance,
             "anchors": dict(axis.anchors),
+            "notes": axis.notes,
+            "examples": axis.examples,
         }
         for axis in rubric.axes
     ]
@@ -277,7 +283,7 @@ def _write_json_exclusive(path: Path, value: Any, *, overwrite: bool) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     mode = "w" if overwrite else "x"
     try:
-        with path.open(mode, encoding="utf-8") as handle:
+        with path.open(mode, encoding="utf-8", newline="\n") as handle:
             json.dump(value, handle, indent=2, ensure_ascii=False)
             handle.write("\n")
             handle.flush()
@@ -486,7 +492,7 @@ class AnnotationStore:
         item: BlindedAnnotationItem,
         *,
         annotator_id: str,
-        scores: AxisScores | Mapping[str, int | None],
+        scores: AxisScores | Mapping[str, int | str | None],
         notes: str = "",
         uncertain_adjudication_needed: bool = False,
         saved_at: datetime | None = None,
@@ -661,23 +667,25 @@ def export_tidy_annotations(
 
 
 def _paired_values(
-    first: Sequence[int | None], second: Sequence[int | None]
+    first: Sequence[int | str | None], second: Sequence[int | str | None]
 ) -> tuple[list[int], list[int]]:
     if len(first) != len(second):
         raise AnnotationError("Paired rating vectors must have the same length")
     left: list[int] = []
     right: list[int] = []
     for first_value, second_value in zip(first, second, strict=True):
-        if first_value is None or second_value is None:
+        if first_value in {None, "N/A"} or second_value in {None, "N/A"}:
             continue
         if first_value not in {0, 1, 2} or second_value not in {0, 1, 2}:
-            raise AnnotationError("Reliability scores must be 0, 1, 2, or missing")
+            raise AnnotationError("Reliability scores must be 0, 1, 2, N/A, or missing")
         left.append(first_value)
         right.append(second_value)
     return left, right
 
 
-def exact_agreement(first: Sequence[int | None], second: Sequence[int | None]) -> float | None:
+def exact_agreement(
+    first: Sequence[int | str | None], second: Sequence[int | str | None]
+) -> float | None:
     """Return exact paired agreement, or ``None`` when no complete pair exists."""
 
     left, right = _paired_values(first, second)
@@ -687,7 +695,7 @@ def exact_agreement(first: Sequence[int | None], second: Sequence[int | None]) -
 
 
 def linearly_weighted_cohen_kappa(
-    first: Sequence[int | None], second: Sequence[int | None]
+    first: Sequence[int | str | None], second: Sequence[int | str | None]
 ) -> float | None:
     """Calculate linear-weighted Cohen's kappa for the frozen 0-2 scale.
 
@@ -714,6 +722,25 @@ def linearly_weighted_cohen_kappa(
     return 1.0 - (observed_disagreement / expected_disagreement)
 
 
+def ordinary_cohen_kappa(
+    first: Sequence[int | str | None], second: Sequence[int | str | None]
+) -> float | None:
+    """Calculate ordinary Cohen's kappa after excluding missing and N/A pairs."""
+
+    left, right = _paired_values(first, second)
+    count = len(left)
+    if count < 2:
+        return None
+    categories = sorted(set(left) | set(right))
+    observed = sum(a == b for a, b in zip(left, right, strict=True)) / count
+    expected = sum(
+        (left.count(category) / count) * (right.count(category) / count) for category in categories
+    )
+    if math.isclose(expected, 1.0, abs_tol=1e-15):
+        return None
+    return (observed - expected) / (1.0 - expected)
+
+
 def _axis_results(
     first_events: Mapping[tuple[str, int], AnnotationEvent],
     second_events: Mapping[tuple[str, int], AnnotationEvent],
@@ -725,20 +752,32 @@ def _axis_results(
         second_values = [getattr(second_events[key].scores, axis_id) for key in matched_keys]
         paired_first, paired_second = _paired_values(first_values, second_values)
         agreement = exact_agreement(paired_first, paired_second)
-        kappa = linearly_weighted_cohen_kappa(paired_first, paired_second)
+        method: Literal["linear_weighted", "unweighted"] = (
+            "unweighted" if axis_id == "A3" else "linear_weighted"
+        )
+        kappa = (
+            ordinary_cohen_kappa(paired_first, paired_second)
+            if method == "unweighted"
+            else linearly_weighted_cohen_kappa(paired_first, paired_second)
+        )
         reason: str | None = None
         if len(paired_first) == 0:
             reason = "No paired complete scores are available for this axis"
         elif len(paired_first) < 2:
             reason = "At least two paired complete scores are required for kappa"
         elif kappa is None:
-            reason = "Kappa is undefined because expected weighted disagreement is zero"
+            reason = (
+                "Kappa is undefined because expected disagreement is zero"
+                if method == "unweighted"
+                else "Kappa is undefined because expected weighted disagreement is zero"
+            )
         results.append(
             AxisReliabilityResult(
                 axis_id=axis_id,
                 n_pairs=len(paired_first),
                 exact_agreement=agreement,
-                linearly_weighted_kappa=kappa,
+                cohen_kappa=kappa,
+                kappa_method=method,
                 kappa_unavailable_reason=reason,
             )
         )

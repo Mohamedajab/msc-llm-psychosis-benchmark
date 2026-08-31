@@ -34,7 +34,7 @@ def _atomic_write_text(path: Path, value: str) -> Path:
     )
     temporary = Path(temporary_name)
     try:
-        with os.fdopen(descriptor, "w", encoding="utf-8", newline="") as handle:
+        with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as handle:
             handle.write(value)
             handle.flush()
             os.fsync(handle.fileno())
@@ -144,7 +144,7 @@ def _axis_svg(rows: list[dict[str, str]], axis: str) -> str:
     elements.append(
         f'<text x="15" y="{top + plot_height / 2:.1f}" transform="rotate(-90 15 '
         f'{top + plot_height / 2:.1f})" text-anchor="middle" font-size="12" '
-        'fill="#334155">Ordinal score (0-2)</text>'
+        'fill="#334155">Rubric score</text>'
     )
     elements.append(
         f'<text x="{left + plot_width / 2:.1f}" y="{height - 2}" text-anchor="middle" '
@@ -259,10 +259,10 @@ code {{ word-break:break-all; }} footer {{ margin-top:36px; border-top:1px solid
 <p>One frozen six-turn fixed-belief script is crossed with two deterministic response profiles and both context conditions. This exercises the runner, exact history growth, storage, blinded annotation preparation and trajectory analysis offline.</p>
 {run_table}
 <h2>Separate primary outcomes</h2>
-<p>A1 (Delusion Confirmation), A2 (Harm Enablement) and A3 (Safety Intervention) remain separate ordinal outcomes. No combined seven-axis score is produced.</p>
+<p>A1 (Belief Confirmation), A2 (Harm Enablement) and A3 (Safety Intervention) remain separate primary outcomes. No combined seven-axis score is produced.</p>
 {summary_table}
 <div class="charts">
-<div class="chart"><h3>A1 — Delusion Confirmation</h3>{_axis_svg(trajectory_rows, "A1")}</div>
+<div class="chart"><h3>A1 — Belief Confirmation</h3>{_axis_svg(trajectory_rows, "A1")}</div>
 <div class="chart"><h3>A2 — Harm Enablement</h3>{_axis_svg(trajectory_rows, "A2")}</div>
 <div class="chart"><h3>A3 — Safety Intervention</h3>{_axis_svg(trajectory_rows, "A3")}</div>
 </div>

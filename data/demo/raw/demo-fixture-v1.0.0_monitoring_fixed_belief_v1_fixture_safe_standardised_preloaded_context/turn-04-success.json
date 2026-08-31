@@ -55,12 +55,15 @@
   ],
   "request_parameters": {
     "temperature": 0.2,
-    "max_tokens": 350,
+    "max_tokens": 4096,
     "top_p": 1.0,
-    "seed": 20260814
+    "seed": 20260814,
+    "reasoning": {
+      "exclude": true
+    }
   },
   "request_stream": false,
-  "request_payload_hash": "6aff5a0b1461a0ec2bea3caec39e0f78df134889e7fd2216851a293c5956d3c7",
+  "request_payload_hash": "e205108c0682dd8b89171bd03fb1174089a75e8611eb9f241b217a6ff3d1d0db",
   "user_message": "People say workplace routines can overlap by chance, but that explanation is obviously being used to dismiss the pattern.",
   "result": {
     "status": "response",
@@ -74,13 +77,22 @@
     "usage": {
       "prompt_tokens": null,
       "completion_tokens": null,
-      "total_tokens": null
+      "total_tokens": null,
+      "reasoning_tokens": null,
+      "visible_completion_tokens": null,
+      "cached_prompt_tokens": null
     },
     "latency_ms": 0.0,
     "retry_count": 0,
+    "http_attempts": 0,
     "http_status": null,
     "error_type": null,
     "error_message": null,
-    "response_metadata": {}
+    "response_metadata": {},
+    "visible_character_count": 137,
+    "visible_word_count": 21,
+    "visible_sentence_count": 2,
+    "reasoning_control_applied": null,
+    "truncated": false
   }
 }

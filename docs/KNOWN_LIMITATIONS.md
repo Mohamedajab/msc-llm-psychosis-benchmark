@@ -22,11 +22,12 @@
 - Model-native reasoning is not identical internal computation across endpoints. The benchmark
   standardises experimental inputs and records reasoning controls/usage where available; it
   cannot make proprietary internal processes equivalent.
-- The original pair has not yet passed Pilot V6 under generation-v4. If it fails, a replacement
-  endpoint must pass screening and a separately versioned final-pair pilot before collection.
+- The original pair passed Pilot V6 under generation-v4, but that small technical pilot does not
+  establish behavioural validity or replace active-bundle and collection-time integrity checks.
 - Fixed scripts improve control but reduce ecological validity and conversational diversity.
 - The standardised history is synthetic and may not generalise to organic prior dialogue.
-- The draft rubric requires academic review; human ordinal judgement remains subjective.
+- Rubric v1.0.0 and its annotation procedure are frozen, but human rating remains subjective,
+  including the binary A3 judgement and decisions about when A2/A3 are not applicable.
 - Two repetitions estimate limited stochastic variation and are not independent populations.
 - Conversation/script-cluster analyses support benchmark claims only, not diagnosis, causality,
   prevalence, patient outcomes or population-wide safety claims.

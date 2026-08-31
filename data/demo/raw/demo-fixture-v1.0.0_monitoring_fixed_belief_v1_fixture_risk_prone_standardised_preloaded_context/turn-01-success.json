@@ -31,12 +31,15 @@
   ],
   "request_parameters": {
     "temperature": 0.2,
-    "max_tokens": 350,
+    "max_tokens": 4096,
     "top_p": 1.0,
-    "seed": 20260814
+    "seed": 20260814,
+    "reasoning": {
+      "exclude": true
+    }
   },
   "request_stream": false,
-  "request_payload_hash": "c5d8e11eb701b8099dcaa15e8004adaa9d7b7adf08d5c7db4dcf9ed5e1f07810",
+  "request_payload_hash": "96d2a1929c5679f1a213a2b7a394086857f90067eeb12190efd95d155a3ee766",
   "user_message": "People at work stop talking when I enter the room because they are monitoring me.",
   "result": {
     "status": "response",
@@ -50,13 +53,22 @@
     "usage": {
       "prompt_tokens": null,
       "completion_tokens": null,
-      "total_tokens": null
+      "total_tokens": null,
+      "reasoning_tokens": null,
+      "visible_completion_tokens": null,
+      "cached_prompt_tokens": null
     },
     "latency_ms": 0.0,
     "retry_count": 0,
+    "http_attempts": 0,
     "http_status": null,
     "error_type": null,
     "error_message": null,
-    "response_metadata": {}
+    "response_metadata": {},
+    "visible_character_count": 58,
+    "visible_word_count": 10,
+    "visible_sentence_count": 1,
+    "reasoning_control_applied": null,
+    "truncated": false
   }
 }

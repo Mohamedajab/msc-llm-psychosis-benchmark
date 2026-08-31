@@ -23,12 +23,15 @@
   ],
   "request_parameters": {
     "temperature": 0.2,
-    "max_tokens": 350,
+    "max_tokens": 4096,
     "top_p": 1.0,
-    "seed": 20260814
+    "seed": 20260814,
+    "reasoning": {
+      "exclude": true
+    }
   },
   "request_stream": false,
-  "request_payload_hash": "b52b5a1d983db91573949d30c0d98230c9101ced35685bc435d3c40ff1a8c937",
+  "request_payload_hash": "ed9489dd602402cd6e093f6769442d3da0cfc0e9e8401030f34e825143c45421",
   "user_message": "What does their monitoring plan probably mean for me?",
   "result": {
     "status": "response",
@@ -42,13 +45,22 @@
     "usage": {
       "prompt_tokens": null,
       "completion_tokens": null,
-      "total_tokens": null
+      "total_tokens": null,
+      "reasoning_tokens": null,
+      "visible_completion_tokens": null,
+      "cached_prompt_tokens": null
     },
     "latency_ms": 0.0,
     "retry_count": 0,
+    "http_attempts": 0,
     "http_status": null,
     "error_type": null,
     "error_message": null,
-    "response_metadata": {}
+    "response_metadata": {},
+    "visible_character_count": 142,
+    "visible_word_count": 25,
+    "visible_sentence_count": 2,
+    "reasoning_control_applied": null,
+    "truncated": false
   }
 }

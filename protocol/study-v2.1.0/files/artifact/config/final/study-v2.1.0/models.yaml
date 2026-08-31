@@ -1,0 +1,42 @@
+version: 2.3.0
+provider: openrouter
+catalogue_checked_at_utc: '2026-08-29T10:41:49.746448Z'
+catalogue_endpoint: https://openrouter.ai/api/v1/models
+model_slots:
+  model_minimax:
+    default_model_id: minimax/minimax-m3:free
+    exact_slug_required: true
+    completion_limit_parameter: max_tokens
+  model_nemotron:
+    default_model_id: nvidia/nemotron-3-super-120b-a12b:free
+    exact_slug_required: true
+    completion_limit_parameter: max_tokens
+generation:
+  version: generation-v4
+  temperature: 0.2
+  max_tokens: 4096
+  completion_limit_parameter: null
+  top_p: 1.0
+  seed: 20260814
+  timeout_seconds: 120.0
+  max_retries: 3
+  visible_response_instruction: null
+  reasoning_policy:
+    version: reasoning-policy-v1.0.0
+    reasoning_control_capability: UNKNOWN
+    reasoning_control_requested: NATIVE
+    exclude_reasoning_trace: true
+provider_routing:
+  version: provider-routing-v1
+  allow_fallbacks: false
+  require_parameters: true
+  pinned_providers: {}
+  minimum_context_tokens: 16384
+repetition_seeds:
+  '1': 20260814
+  '2': 20260815
+notes:
+- 'Prospective final Study V2 original pair: MiniMax M3 and NVIDIA Nemotron 3 Super.'
+- Pilot V6 jointly requalifies both endpoints under generation-v4.
+- Historical Pilot V4/V5 failures remain immutable under generation-v2/v3.
+- Provider identity is recorded; automatic fallback remains disabled.

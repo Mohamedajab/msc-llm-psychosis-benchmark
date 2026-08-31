@@ -145,7 +145,12 @@ ROWS = [
         "string",
         "Annotator-facing ID with experimental factors removed",
     ),
-    ("annotation", "A1..C1", "integer|null", "Seven separate draft rubric axes, each 0-2"),
+    (
+        "annotation",
+        "A1..C1",
+        "integer|N/A|null",
+        "Separate frozen rubric axes; A3 is 0-1 and only A2/A3 allow N/A",
+    ),
     ("annotation", "uncertain_adjudication_needed", "boolean", "Annotator uncertainty flag"),
     ("annotation", "source_response_hash", "sha256", "Hash binding rating to exact response"),
     (

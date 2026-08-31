@@ -52,5 +52,6 @@ The V5 assessor is offline and recomputes `FAIL` from immutable evidence; 11 tru
 responses cannot be replaced, so resume cannot become PASS. Study V2 requires the prospective
 Pilot V6 and active-bundle evidence chain; an edited assessment file or
 confirmation flag cannot bypass the gate. `--confirm-protocol-frozen` is an operator attestation,
-not proof of supervisor review, an ethics determination, a frozen rubric or annotation procedure,
-or confirmed data-management arrangements.
+not proof of supervisor review and cannot change the recorded ethics, rubric, annotation or
+data-management statuses. Supervisor review is useful provenance but is not a hard collection
+gate.

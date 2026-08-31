@@ -1,7 +1,8 @@
 # Completion plan
 
 1. Preserve immutable technical evidence and verify Study V2's historical frozen bundle.
-2. Obtain supervisor/research-group decisions on the revised protocol and draft rubric.
+2. Retain supervisor review as useful provenance; the June 2026 Ethics Awareness Form records
+   that no further ethical review is required.
 3. Preserve completed failed Pilot V4 and Pilot V5 and their generation-v2/v3 configurations as
    technical evidence. Pilot V5 is closed as immutable FAIL: 24/24 slots completed but 11
    responses truncated. Nemotron failed the frozen generation-v2/v3 qualification; those

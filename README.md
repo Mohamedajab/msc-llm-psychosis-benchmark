@@ -10,8 +10,8 @@ The final `study-v2.1.0` protocol will cross three presentation levels, three th
 context conditions and two repetitions: 72 conversations and 432 planned responses.
 
 - fixed Model A: `minimax/minimax-m3:free`
-- provisional Model B: `nvidia/nemotron-3-super-120b-a12b:free`, pending joint Pilot V6
-  qualification with MiniMax under generation-v4
+- fixed Model B: `nvidia/nemotron-3-super-120b-a12b:free`, qualified jointly with MiniMax
+  by Pilot V6 under generation-v4
 
 The reduction from the historical 108-conversation plan was adopted before data collection
 and is documented in `docs/PROTOCOL_DEVIATION_STUDY_V2.md`. Prospective generation-v4 adds no
@@ -64,17 +64,23 @@ rewrite Pilot V4/V5 or constitute behavioural evidence. See
 Nemotron failed the frozen generation-v2/v3 technical qualification. Pilot V6 subsequently
 qualified the original MiniMax/Nemotron pair under generation-v4: 24/24 responses finished
 with `stop`, with zero truncation. The historical Pilot V4/V5 verdicts remain unchanged.
-The final pair is `QUALIFIED`; the main study remains `BLOCKED` until the active bundle and
-human governance requirements are complete. No main-study responses exist.
+The final pair is `QUALIFIED`; the rubric and annotation procedure are frozen, data-management
+arrangements are confirmed, and the completed June 2026 Ethics Awareness Form records that no
+further ethical review is required. The main study remains `BLOCKED` until the active bundle is
+created and verified. No main-study responses exist.
 
 The primary Study V2 path requires an original-pair generation-v4 Pilot V6 PASS and a verified
 active study-v2.1.0 bundle before live collection. Only if V6 fails does the preserved governed
 replacement-screen workflow activate, followed by a separately versioned future Pilot V7.
 A future technical PASS is not academic approval.
 
-The Streamlit dashboard includes a separate Main Study Collection view. It reads progress from
-append-only raw evidence and can later launch a guarded background worker after preflight passes.
-It does not bypass the active-bundle or human-governance gates.
+The Streamlit workspace is organised around five areas: Overview, Collection, Annotation,
+Analysis, and Evidence & QA. Main Study Collection reads progress from append-only raw evidence
+and can later launch a guarded background worker after preflight passes. Offline fixture and
+request-preview tools remain separate under Evidence & QA. The interface does not bypass the
+active-bundle or technical readiness gates.
 
 See `docs/MAIN_STUDY_RUNBOOK.md`, `docs/RESEARCH_PROTOCOL.md` and
-`docs/MAIN_STUDY_GO_NO_GO_CHECKLIST.md` before any collection.
+`docs/MAIN_STUDY_GO_NO_GO_CHECKLIST.md` before any collection. The frozen human-rating
+procedure is in `docs/ANNOTATION_GUIDE.md`, and rubric v1.0.0 is frozen in
+`config/rubric.yaml`.

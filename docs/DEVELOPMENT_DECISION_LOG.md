@@ -163,3 +163,16 @@ uses the existing manifest runner and append-only raw store. It resumes from the
 turn after a bounded wait for transient errors, while truncation, model mismatch and evidence
 integrity errors stop the workflow. Progress is reconstructed from disk so the browser is not
 authoritative.
+
+## 31 August 2026 — final pre-collection governance correction
+
+The completed Loughborough University Ethics Awareness Form for this project records
+`No further ethical review required`, with student declaration dated 25 June 2026 and supervisor
+declaration dated 19 June 2026. The governance state therefore records
+`NO_FURTHER_REVIEW_REQUIRED`; it does not claim favourable review or LEON approval.
+
+The internally introduced final-protocol supervisor-review field remains `PENDING` as honest,
+useful provenance. No repository or university evidence establishes it as a separate formal
+precondition for this synthetic, no-human-participant study, so it is no longer a hard software
+gate. Pilot V6, exact configuration, frozen method records, data management, ethics and active-
+bundle verification remain fail-closed requirements.

@@ -358,7 +358,7 @@ def test_local_pilot_v5_assessment_records_are_immutable() -> None:
     assert _fingerprint(paths) == "945ade153e419339a7f22d793a5ffc843470a917fd1c315e2a95dd0864d4e1f2"
 
 
-def test_scenarios_histories_and_rubric_are_immutable() -> None:
+def test_scenarios_histories_and_frozen_rubric_are_unchanged() -> None:
     scenarios = sorted((ROOT / "config" / "scenarios").glob("*.json"))
     histories = sorted((ROOT / "config" / "histories").glob("*.json"))
     rubric = [ROOT / "config" / "rubric.yaml"]
@@ -371,7 +371,7 @@ def test_scenarios_histories_and_rubric_are_immutable() -> None:
         "895748698d6faaffcedda72e740ff5b50f8de8ba4a3701550bd3d3d06ade4ee9"
     )
     assert _fingerprint(rubric) == (
-        "c371afadebf59f6ae0f51f62564bedbda534e510deff3ef8c333dc3bc3f91a41"
+        "b998e112dcc93abdd97aefbf669b53fd9aad840723df9b18e80e9264e9cb5b6a"
     )
 
 

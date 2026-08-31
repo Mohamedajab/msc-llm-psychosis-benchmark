@@ -12,14 +12,11 @@ from src.provider_client import OpenRouterProvider
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 APP_PATH = PROJECT_ROOT / "app.py"
 EXPECTED_VIEWS = (
-    "Study Overview",
-    "Experiment Runner",
-    "Main Study Collection",
-    "Transcript & Provenance",
-    "Blinded Annotation",
-    "NLP Explorer",
-    "Trajectory Analysis",
-    "Reproducibility & QA",
+    "Overview",
+    "Collection",
+    "Annotation",
+    "Analysis",
+    "Evidence & QA",
 )
 
 
@@ -77,7 +74,7 @@ def test_startup_is_offline_and_every_sidebar_view_renders(monkeypatch, tmp_path
 
 def test_dry_run_previews_exactly_six_offline_payloads(monkeypatch, tmp_path) -> None:
     app, network_attempts = _offline_app(monkeypatch, tmp_path)
-    _navigate(app, "Experiment Runner")
+    _navigate(app, "Evidence & QA")
 
     _button(app, "Preview exact six payloads").click()
     app.run(timeout=60)
@@ -94,7 +91,7 @@ def test_dry_run_previews_exactly_six_offline_payloads(monkeypatch, tmp_path) ->
 
 def test_dashboard_exposes_no_live_execution_control(monkeypatch, tmp_path) -> None:
     app, network_attempts = _offline_app(monkeypatch, tmp_path)
-    _navigate(app, "Experiment Runner")
+    _navigate(app, "Evidence & QA")
     modes = tuple(_selectbox(app, "Execution mode").options)
     assert modes == (
         "Dry run (offline payload preview)",
@@ -106,12 +103,10 @@ def test_dashboard_exposes_no_live_execution_control(monkeypatch, tmp_path) -> N
 
 def test_main_study_page_reads_zero_progress_without_network(monkeypatch, tmp_path) -> None:
     app, network_attempts = _offline_app(monkeypatch, tmp_path)
-    _navigate(app, "Main Study Collection")
+    _navigate(app, "Collection")
     _assert_no_exceptions(app)
     assert any(metric.label == "Responses" and metric.value == "0 / 432" for metric in app.metric)
-    assert any(
-        metric.label == "Pilot V6 qualification" and metric.value == "PASS" for metric in app.metric
-    )
+    assert any("Study status: NOT READY" in warning.value for warning in app.warning)
     assert any(
         metric.label == "Current conversation" and metric.value == "—" for metric in app.metric
     )
@@ -119,19 +114,15 @@ def test_main_study_page_reads_zero_progress_without_network(monkeypatch, tmp_pa
     assert any(metric.label == "Current model" and metric.value == "—" for metric in app.metric)
     assert not any("DEMO FIXTURE" in warning.value for warning in app.warning)
     assert not any("TECHNICAL PILOT" in info.value for info in app.info)
-    assert any(
+    assert not any(
         "Active study bundle has not been created." in markdown.value for markdown in app.markdown
     )
-    expected_blockers = (
-        "Supervisor review has not yet been recorded.",
-        "Ethics determination is still pending.",
-        "Rubric has not yet been frozen.",
-        "Annotation procedure has not yet been frozen.",
-        "Data-management arrangements have not yet been confirmed.",
+    assert any(
+        "OpenRouter API key is not available to the app process." in markdown.value
+        for markdown in app.markdown
     )
-    assert all(
-        any(message in markdown.value for markdown in app.markdown) for message in expected_blockers
-    )
+    assert not any("Supervisor review" in markdown.value for markdown in app.markdown)
+    assert not any("Ethics determination" in markdown.value for markdown in app.markdown)
     assert not any("_not_" in markdown.value for markdown in app.markdown)
     assert any(
         "Start is disabled until all preflight requirements are complete." in caption.value
@@ -141,9 +132,9 @@ def test_main_study_page_reads_zero_progress_without_network(monkeypatch, tmp_pa
     assert network_attempts == []
 
 
-def test_fixture_annotation_nlp_and_trajectory_flow(monkeypatch, tmp_path) -> None:
+def test_offline_fixture_and_provenance_flow(monkeypatch, tmp_path) -> None:
     app, network_attempts = _offline_app(monkeypatch, tmp_path)
-    _navigate(app, "Experiment Runner")
+    _navigate(app, "Evidence & QA")
     _selectbox(app, "Execution mode").set_value("Deterministic fixture (offline execution)")
     app.run(timeout=60)
     _button(app, "Run or resume six-turn fixture").click()
@@ -154,28 +145,14 @@ def test_fixture_annotation_nlp_and_trajectory_flow(monkeypatch, tmp_path) -> No
     successes = list(tmp_path.rglob("turn-*-success.json"))
     assert len(successes) == 6
 
-    _navigate(app, "Transcript & Provenance")
-    _assert_no_exceptions(app)
+    app.run(timeout=60)
     assert any(dataframe.value.shape[0] == 6 for dataframe in app.dataframe)
 
-    _navigate(app, "Blinded Annotation")
+    _navigate(app, "Annotation")
     _assert_no_exceptions(app)
-    rating_widgets = [widget for widget in app.selectbox if widget.label.endswith(" rating")]
-    assert len(rating_widgets) == 7
-    assert all(list(widget.options) == ["Not rated", "0", "1", "2"] for widget in rating_widgets)
-    for widget in rating_widgets:
-        widget.set_value(0)
-    _button(app, "Save annotation progress").click()
-    app.run(timeout=60)
-    _assert_no_exceptions(app)
+    assert any("Annotation becomes available" in info.value for info in app.info)
 
-    _navigate(app, "NLP Explorer")
+    _navigate(app, "Analysis")
     _assert_no_exceptions(app)
-    assert "endorsement_density_per_100_words" in {
-        str(column) for dataframe in app.dataframe for column in dataframe.value.columns
-    }
-
-    _navigate(app, "Trajectory Analysis")
-    _assert_no_exceptions(app)
-    assert app.dataframe
+    assert any("Results will appear" in info.value for info in app.info)
     assert network_attempts == []

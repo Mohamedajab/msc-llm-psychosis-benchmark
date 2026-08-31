@@ -11,7 +11,7 @@ import pytest
 import yaml
 
 from scripts import assess_pilot_v6 as assess_script
-from scripts import run_pilot_v6, run_study
+from scripts import check_main_study_readiness, freeze_active_study, run_pilot_v6, run_study
 from src.active_study import (
     FINAL_MANIFEST_RELATIVE_PATH,
     FINAL_MODELS_RELATIVE_PATH,
@@ -53,6 +53,21 @@ from src.study_execution import execute_manifest_rows
 
 ROOT = Path(__file__).parents[1]
 REPLACEMENT = "example/final-replacement:free"
+
+
+def test_active_bundle_command_defaults_to_the_frozen_pilot_v6_namespace() -> None:
+    assert freeze_active_study.DEFAULT_PILOT_OUTPUT_ROOT == (
+        ROOT / "data" / "private" / "technical-pilot-v6.0.0"
+    )
+
+
+def test_readiness_command_defaults_to_current_final_evidence() -> None:
+    args = check_main_study_readiness.build_parser().parse_args([])
+    assert args.pilot_output_root == ROOT / "data" / "private" / "technical-pilot-v6.0.0"
+    assert args.active_bundle_root == ROOT / "protocol" / "study-v2.1.0"
+    assert args.final_artifact_root == ROOT
+
+
 NOW = datetime(2026, 8, 30, tzinfo=UTC)
 
 
@@ -205,7 +220,10 @@ def _mutate(path: Path, transform) -> None:  # noqa: ANN001, ANN202
 
 
 def _complete_governance(
-    tmp_path: Path, *, ethics_status: str = "NO_FURTHER_REVIEW_REQUIRED"
+    tmp_path: Path,
+    *,
+    ethics_status: str = "NO_FURTHER_REVIEW_REQUIRED",
+    supervisor_review: str = "CONFIRMED",
 ) -> Path:
     path = tmp_path / "governance.yaml"
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -213,7 +231,7 @@ def _complete_governance(
         yaml.safe_dump(
             {
                 "version": "main-study-governance-v2.0.0",
-                "supervisor_review": "CONFIRMED",
+                "supervisor_review": supervisor_review,
                 "ethics_status": ethics_status,
                 "rubric_status": "FROZEN",
                 "annotation_procedure_status": "FROZEN",
@@ -226,20 +244,24 @@ def _complete_governance(
     return path
 
 
-def test_current_governance_uses_explicit_pending_and_draft_states() -> None:
+def test_current_governance_records_completed_internal_method_steps() -> None:
     governance = load_governance(ROOT / "config" / "main-study-governance.yaml")
     assert governance.supervisor_review == "PENDING"
-    assert governance.ethics_status == "PENDING"
-    assert governance.rubric_status == "DRAFT"
-    assert governance.annotation_procedure_status == "DRAFT"
-    assert governance.data_management_status == "DRAFT"
-    assert governance_blockers(governance) == (
-        "supervisor_review_not_confirmed",
-        "ethics_determination_pending",
-        "rubric_not_frozen",
-        "annotation_procedure_not_frozen",
-        "data_management_not_confirmed",
-    )
+    assert governance.ethics_status == "NO_FURTHER_REVIEW_REQUIRED"
+    assert governance.rubric_status == "FROZEN"
+    assert governance.annotation_procedure_status == "FROZEN"
+    assert governance.data_management_status == "CONFIRMED"
+    assert governance_blockers(governance) == ()
+
+
+def test_confirmed_data_management_record_documents_private_evidence_boundaries() -> None:
+    record = (ROOT / "docs" / "DATA_MANAGEMENT.md").read_text(encoding="utf-8")
+    prose = " ".join(record.split())
+    assert "Status: Confirmed for Study V2 collection." in record
+    assert "Successful responses are append-only evidence" in prose
+    assert "API keys and other credentials" in prose
+    assert "private blinding maps" in prose
+    assert "does not use patient" in prose
 
 
 @pytest.mark.parametrize("ethics_status", ["NO_FURTHER_REVIEW_REQUIRED", "FAVOURABLE_REVIEW"])
@@ -254,15 +276,48 @@ def test_both_completed_ethics_determinations_satisfy_governance(ethics_status: 
     assert governance_blockers(governance) == ()
 
 
+@pytest.mark.parametrize("supervisor_review", ["PENDING", "CONFIRMED"])
+def test_supervisor_review_is_valid_non_blocking_metadata(supervisor_review: str) -> None:
+    governance = MainStudyGovernance(
+        supervisor_review=supervisor_review,
+        ethics_status="NO_FURTHER_REVIEW_REQUIRED",
+        rubric_status="FROZEN",
+        annotation_procedure_status="FROZEN",
+        data_management_status="CONFIRMED",
+    )
+    assert governance_blockers(governance) == ()
+
+
 def test_pending_ethics_determination_remains_blocking() -> None:
     governance = MainStudyGovernance(
-        supervisor_review="CONFIRMED",
+        supervisor_review="PENDING",
         ethics_status="PENDING",
         rubric_status="FROZEN",
         annotation_procedure_status="FROZEN",
         data_management_status="CONFIRMED",
     )
     assert governance_blockers(governance) == ("ethics_determination_pending",)
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "expected_blocker"),
+    [
+        ("rubric_status", "DRAFT", "rubric_not_frozen"),
+        ("annotation_procedure_status", "DRAFT", "annotation_procedure_not_frozen"),
+        ("data_management_status", "DRAFT", "data_management_not_confirmed"),
+    ],
+)
+def test_incomplete_method_governance_still_blocks(
+    field: str, value: str, expected_blocker: str
+) -> None:
+    governance = MainStudyGovernance(
+        supervisor_review="PENDING",
+        ethics_status="NO_FURTHER_REVIEW_REQUIRED",
+        rubric_status="FROZEN",
+        annotation_procedure_status="FROZEN",
+        data_management_status="CONFIRMED",
+    )
+    assert governance_blockers(governance.model_copy(update={field: value})) == (expected_blocker,)
 
 
 def test_current_pilot_v6_is_configured_for_original_pair_and_default_is_zero_network(
@@ -777,16 +832,9 @@ def test_readiness_is_blocked_today_and_ready_only_on_complete_synthetic_chain(
     assert current.final_pair_source == "ORIGINAL_PAIR_V6"
     assert current.replacement_required is False
     assert current.active_bundle == "NOT_CREATED"
-    assert current.governance == "BLOCKED"
+    assert current.governance == "PASS"
     assert current.main_study == "BLOCKED"
-    assert current.blockers == (
-        "active_bundle_not_created",
-        "supervisor_review_not_confirmed",
-        "ethics_determination_pending",
-        "rubric_not_frozen",
-        "annotation_procedure_not_frozen",
-        "data_management_not_confirmed",
-    )
+    assert current.blockers == ("active_bundle_not_created",)
     assert current.network_requests == 0
 
     _, _, _, pilot, artifacts, bundle, _ = _freeze_valid_bundle(tmp_path / "ready")

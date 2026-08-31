@@ -7,7 +7,7 @@
    replacement screen, Pilot V6 and main-study preflights; point out the explicit zero-network
    statements.
 4. Show one deterministic fixture conversation to explain complete six-turn history growth.
-5. Show provenance fields, append-only storage, blinding separation and the draft rubric.
+5. Show provenance fields, append-only storage, blinding separation and the frozen rubric.
 6. Show conversation-level A1/A2/A3 trajectory utilities and explain why turns are not
    resampled independently.
 7. End with the go/no-go checklist and the distinction between Pilot V1-V5, endpoint screen,

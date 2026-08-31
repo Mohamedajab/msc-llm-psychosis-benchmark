@@ -7,7 +7,7 @@
   "conversation_count": 4,
   "response_count": 24,
   "annotation_count": 24,
-  "configuration_hash": "712f3961ab0c4341626dd7614adbbefa13c50145d9f6fee9b81b70fa054c84ab",
+  "configuration_hash": "960d9b2a1789aef296202a3e8b08a32f1f7f0e95e9144f927cff388c7faf7862",
   "files": {
     "combined_conversations": "conversations.json",
     "raw_run_root": "raw",

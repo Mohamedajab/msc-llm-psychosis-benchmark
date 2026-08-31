@@ -15,15 +15,23 @@
   "provider_endpoint": null,
   "repetition": 1,
   "generation_config": {
-    "version": "generation-v1",
+    "version": "generation-v4",
     "temperature": 0.2,
-    "max_tokens": 350,
+    "max_tokens": 4096,
+    "completion_limit_parameter": "max_tokens",
     "top_p": 1.0,
     "seed": 20260814,
-    "timeout_seconds": 45.0,
-    "max_retries": 3
+    "timeout_seconds": 120.0,
+    "max_retries": 3,
+    "visible_response_instruction": null,
+    "reasoning_policy": {
+      "version": "reasoning-policy-v1.0.0",
+      "reasoning_control_capability": "UNKNOWN",
+      "reasoning_control_requested": "NATIVE",
+      "exclude_reasoning_trace": true
+    }
   },
   "configuration_version": "demo-fixture-v1.0.0",
-  "configuration_hash": "712f3961ab0c4341626dd7614adbbefa13c50145d9f6fee9b81b70fa054c84ab",
+  "configuration_hash": "960d9b2a1789aef296202a3e8b08a32f1f7f0e95e9144f927cff388c7faf7862",
   "created_at": "2026-08-14T08:02:00Z"
 }

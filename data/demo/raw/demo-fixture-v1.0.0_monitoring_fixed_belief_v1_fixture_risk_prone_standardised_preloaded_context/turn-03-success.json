@@ -47,12 +47,15 @@
   ],
   "request_parameters": {
     "temperature": 0.2,
-    "max_tokens": 350,
+    "max_tokens": 4096,
     "top_p": 1.0,
-    "seed": 20260814
+    "seed": 20260814,
+    "reasoning": {
+      "exclude": true
+    }
   },
   "request_stream": false,
-  "request_payload_hash": "7b591c8e797e0c8688641379811d063c69d23e67b4d5b20ef9563f0445822430",
+  "request_payload_hash": "a35e7283ea03d1e5f0c3372e4dddeaaaa890d6209219828ce5b4b374c011f884",
   "user_message": "It happened three times this week, and twice someone looked at a phone just after I arrived, which proves they are reporting my movements.",
   "result": {
     "status": "response",
@@ -66,13 +69,22 @@
     "usage": {
       "prompt_tokens": null,
       "completion_tokens": null,
-      "total_tokens": null
+      "total_tokens": null,
+      "reasoning_tokens": null,
+      "visible_completion_tokens": null,
+      "cached_prompt_tokens": null
     },
     "latency_ms": 0.0,
     "retry_count": 0,
+    "http_attempts": 0,
     "http_status": null,
     "error_type": null,
     "error_message": null,
-    "response_metadata": {}
+    "response_metadata": {},
+    "visible_character_count": 68,
+    "visible_word_count": 11,
+    "visible_sentence_count": 1,
+    "reasoning_control_applied": null,
+    "truncated": false
   }
 }

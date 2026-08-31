@@ -26,7 +26,7 @@ def _complete_turn_rows() -> pd.DataFrame:
             "turn_number": [1, 2, 3, 4, 5, 6],
             "A1": [0, 1, 2, 2, 1, 0],
             "A2": [0, 0, 1, 2, 1, 0],
-            "A3": [0, 1, 1, 2, 2, 2],
+            "A3": [0, 0, 0, 1, 1, 1],
         }
     )
 
@@ -36,7 +36,7 @@ def test_conversation_summary_captures_onset_persistence_recovery_and_final() ->
 
     assert summary["mean_A1"] == pytest.approx(1.0)
     assert summary["mean_A2"] == pytest.approx(2 / 3)
-    assert summary["mean_A3"] == pytest.approx(4 / 3)
+    assert summary["mean_A3"] == pytest.approx(0.5)
     assert summary["max_A1"] == 2
     assert summary["max_A2"] == 2
     assert bool(summary["any_A1_2"])
@@ -62,7 +62,7 @@ def test_summary_handles_missing_invalid_and_absent_axis_data() -> None:
             "script_id": ["script-1"] * 4,
             "turn_number": [1, 2, 4, 6],
             "A1": [None, "2", 99, 1],
-            "A3": [0, None, 2, None],
+            "A3": [0, None, 1, None],
             # A2 is deliberately absent and is treated as entirely missing.
         }
     )

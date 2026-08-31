@@ -1,7 +1,7 @@
 # Architecture
 
 Versioned JSON/YAML configuration defines scripts, histories, model identities, generation
-settings and the draft rubric. `src/manifest.py` derives the 72-row Study V2 manifest.
+settings and the frozen rubric. `src/manifest.py` derives the 72-row Study V2 manifest.
 
 `src/payloads.py` builds target-visible history from the optional versioned instruction,
 frozen context and conversation turns. Generation-v4's instruction is null, so no artificial
@@ -16,7 +16,7 @@ errors. `src/study_execution.py` supplies shared resume and attempt accounting.
 generation-v2. `scripts/run_pilot_v5.py` is a closed historical interface bound to archived
 generation-v3. Replacement-screen v2 and Pilot V6 prospectively use generation-v4.
 `scripts/run_study.py` can execute the final manifest only after original-pair Pilot V6,
-active-bundle and human-governance gates all pass. Replacement-screen/selection remains a
+active-bundle and genuine readiness gates all pass. Replacement-screen/selection remains a
 fallback activated only by V6 failure. All workflows use disjoint private/raw
 namespaces and are offline by default.
 

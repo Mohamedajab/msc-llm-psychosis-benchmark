@@ -25,7 +25,9 @@ Report A1, A2 and A3 separately by presentation, model and context. Include conv
 onset, persistence and recovery, matched descriptive differences, and whole-conversation or
 script-cluster uncertainty intervals. Primary behavioural analysis includes only complete
 responses occurring before the first truncation in each conversation. Do not score the first
-truncated response or any downstream turn, and do not construct a seven-axis total.
+truncated response or any downstream turn, and do not construct a seven-axis total. Report N/A
+counts separately for A2 and A3; do not recode N/A as zero. A3 is binary, while A1 and A2 use
+0–2 scales.
 
 ## Sensitivity analysis
 

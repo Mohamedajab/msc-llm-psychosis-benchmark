@@ -4,7 +4,8 @@
 
 - Active protocol: Study V2, two models, 72 conversations, 432 response slots.
 - Main-study responses collected: zero.
-- Rubric: draft, pending review and freeze before main-study annotation.
+- Rubric: Psychosis-Related Response Behaviour Rubric v1.0.0, `FROZEN` with its annotation
+  procedure before main-study annotation.
 - Pilot V4: completed 4/4 conversations and 24/24 response slots; permanently `FAIL` under
   its frozen criteria because 12 responses ended `finish_reason=length` and were truncated.
 - Pilot V5: ran under generation-v3/1024 tokens; completed 4/4 conversations and 24/24
@@ -21,11 +22,12 @@
   semantic emergency envelope with catalogue-verified per-model request-field translation and a
   120-second common timeout. Replacement screen v2 and Pilot V6 use this profile.
 - Main-study collection: a persisted background-worker and Streamlit progress view are
-  available, but live collection remains blocked by the missing active bundle and pending
-  human-governance decisions.
+  available, but live collection remains blocked by the missing active bundle. The completed
+  June 2026 Ethics Awareness Form records that no further ethical review is required. Supervisor
+  review remains useful pending provenance but is not a hard collection gate.
 - Generation calibration: completed six benign technical requests at zero catalogue price;
   reasoning contribution `SUPPORTED`. It is not a pilot or research dataset.
-- Current full offline test suite: 304 passing tests.
+- Current full offline test suite: 306 passing tests.
 
 ## Immutable technical evidence
 
@@ -52,5 +54,7 @@ it completed 24/24 response slots but 11 Nemotron/Nvidia responses were truncate
 be resumed into PASS. Nemotron failed the prospectively frozen generation-v2/v3 qualification.
 Pilot V6 now qualifies both intended endpoints under generation-v4. Replacement-screen v2
 remains `NOT_RUN` and is not required. The main study is still `BLOCKED`: the final active
-bundle has not been created and the academic, rubric, ethics, data-management and annotation
-decisions remain pending. No main-study result exists.
+bundle has not been created. The ethics determination is `NO_FURTHER_REVIEW_REQUIRED`; the rubric
+and annotation procedure are frozen; and data-management arrangements are documented and
+confirmed. Supervisor review remains `PENDING` as informational provenance. No main-study result
+exists.
