@@ -25,3 +25,22 @@ conversation and reached a second Nemotron conversation. The latest stored inter
 same embedded upstream 502 classification. Its next request was also reconstructed from disk and
 matched the stored failed-request hash. No live request was made while implementing or testing
 this technical runtime/recovery correction.
+
+## 31 August 2026 — MiniMax finish metadata unreported
+
+Collection had reached 65 of 432 saved responses. In execution order 11, turn 5,
+GMICloud returned a substantive MiniMax response for which the requested and resolved target
+model matched. The saved result records 322 completion tokens and `truncated=false`, but both
+`finish_reason` and `native_finish_reason` are null.
+
+An authenticated OpenRouter generation-metadata lookup for the saved generation ID also
+reported both finish-reason fields as null and `cancelled=false`. This does not establish a
+normal `stop` finish reason. A later `/generation/content` request returned HTTP 404 and was
+not used as evidence about whether generation completed.
+
+The raw response was neither altered nor regenerated. Runtime amendment
+`finish-metadata-unreported-20260831-001` permits continuation from the first missing turn only
+when every recorded identity, usage and integrity field matches the immutable event. The
+observation remains classified as finish metadata unreported/unknown for later audit and
+sensitivity analysis. Scientific prompts, model identities and generation-v4 settings are
+unchanged.

@@ -603,7 +603,7 @@ def _render_main_study_progress(preflight_ready: bool = False) -> None:
         "Current model",
         (progress.current_model_slot or "—").replace("model_", "").title(),
     )
-    timing = st.columns(3)
+    timing = st.columns(4)
     timing[0].metric("Elapsed", format_duration(progress.elapsed_seconds))
     timing[1].metric(
         "Estimated remaining",
@@ -614,6 +614,13 @@ def _render_main_study_progress(preflight_ready: bool = False) -> None:
         ),
     )
     timing[2].metric("Truncations", progress.truncations)
+    timing[3].metric("Approved metadata anomalies", progress.approved_finish_metadata_anomalies)
+
+    if progress.approved_finish_metadata_anomalies:
+        st.warning(
+            f"{progress.approved_finish_metadata_anomalies} approved finish-metadata anomaly "
+            "is preserved as unreported/unknown. It is not counted as a normal stop completion."
+        )
 
     if progress.status == JobStatus.COMPLETE:
         st.success("MAIN STUDY COLLECTION COMPLETE")
@@ -636,7 +643,12 @@ def _render_main_study_progress(preflight_ready: bool = False) -> None:
             )
         )
     elif progress.status == JobStatus.RESUMABLE:
-        if progress.upstream_error_code is not None:
+        if progress.resume_reason == "approved_finish_metadata_amendment":
+            st.warning(
+                "The saved finish-metadata anomaly has a validated runtime amendment. "
+                "Resume continues at the first missing turn; the saved response is not regenerated."
+            )
+        elif progress.upstream_error_code is not None:
             detail = progress.upstream_error_message or "Temporary upstream provider failure"
             st.warning(
                 f"Temporary upstream provider failure ({progress.upstream_error_code}): {detail}"

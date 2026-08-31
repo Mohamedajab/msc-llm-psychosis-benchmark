@@ -1,0 +1,34 @@
+version: "main-study-runtime-amendments-v1.0.0"
+amendments:
+  - amendment_id: "finish-metadata-unreported-20260831-001"
+    classification: "finish_metadata_unreported"
+    approved_for_trajectory_continuation: true
+    study_version: "study-v2.1.0"
+    run_id: "study-v2.1.0_monitoring_ambiguous_v1_model_minimax_no_preloaded_context_r2"
+    turn_number: 5
+    raw_filename: "turn-05-success.json"
+    raw_file_sha256: "4ff417d6fe39f6afc018208162c7185d510c7151635857f54c43be19d09ebd43"
+    event_id: "5fb47d48696642c9bd009fe0c1c71238"
+    request_payload_hash: "18c1a719ef3ed4e89fd33d8a93b01cdce6f20898dd34e3f3fc9f45e4b1bbd1b6"
+    generation_id: "gen-1788167703-tPxGr8TNntafSZRHb0zz"
+    requested_model_id: "minimax/minimax-m3:free"
+    resolved_model_id: "minimax/minimax-m3:free"
+    provider_name: "GMICloud"
+    choice_count: 1
+    content_present: true
+    completion_tokens: 322
+    completion_envelope_tokens: 4096
+    external_verification:
+      source: "OpenRouter generation metadata GET"
+      generation_id: "gen-1788167703-tPxGr8TNntafSZRHb0zz"
+      model: "minimax/minimax-m3-20260531:free"
+      provider_name: "GMICloud"
+      cancelled: false
+      tokens_prompt: 2428
+      tokens_completion: 322
+      native_tokens_prompt: 2428
+      native_tokens_completion: 322
+      finish_reason: null
+      native_finish_reason: null
+      latency: 30002
+      generation_time: 268069

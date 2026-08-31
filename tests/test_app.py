@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
 import httpx
+import pytest
 from streamlit.testing.v1 import AppTest
 
 from src.config_loader import configuration_bundle_hash, generation_for_model
@@ -218,6 +220,25 @@ def test_collection_page_offers_resume_for_embedded_upstream_failure(monkeypatch
     )
     assert _button(app, "Resume Main Study").disabled is True
     assert not any(button.label == "Start Main Study" for button in app.button)
+    assert network_attempts == []
+
+
+def test_collection_page_reports_approved_finish_metadata_anomaly(monkeypatch, tmp_path) -> None:
+    run_id = "study-v2.1.0_monitoring_ambiguous_v1_model_minimax_no_preloaded_context_r2"
+    source = PROJECT_ROOT / "data" / "raw" / "study-v2" / run_id
+    if not source.is_dir():
+        pytest.skip("Private Study V2 evidence is not present in this checkout")
+    destination = tmp_path / "raw" / "study-v2" / run_id
+    shutil.copytree(source, destination)
+
+    app, network_attempts = _offline_app(monkeypatch, tmp_path)
+    _navigate(app, "Collection")
+    _assert_no_exceptions(app)
+    assert any(
+        metric.label == "Approved metadata anomalies" and metric.value == "1"
+        for metric in app.metric
+    )
+    assert any("preserved as unreported/unknown" in warning.value for warning in app.warning)
     assert network_attempts == []
 
 

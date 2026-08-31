@@ -36,6 +36,7 @@ from src.pilot_v6 import (
     build_original_pair_models_config,
 )
 from src.provider_errors import classify_error_type, classify_provider_result
+from src.runtime_amendments import audit_finish_metadata, load_runtime_amendments
 from src.schemas import ErrorEvent, ManifestRow, ModelsConfig, RunHeader, StrictModel
 from src.storage import RawRunStore, atomic_write_json
 from src.study_audit import audit_study_evidence
@@ -102,6 +103,9 @@ class StudyProgress(StrictModel):
     technical_errors: int = 0
     automatic_resumes: int = 0
     truncations: int = 0
+    approved_finish_metadata_anomalies: int = 0
+    finish_metadata_status_counts: dict[str, int] = Field(default_factory=dict)
+    technical_amendment_ids: tuple[str, ...] = ()
     http_attempts: int = 0
     elapsed_seconds: float = 0
     estimated_remaining_seconds: float | None = None
@@ -135,6 +139,7 @@ class NextStudyRequest(StrictModel):
     requested_model_id: str
     request_payload_hash: str
     latest_error: ErrorEvent | None = None
+    technical_amendment_ids_in_history: tuple[str, ...] = ()
 
 
 def utc_now() -> datetime:
@@ -149,6 +154,7 @@ def default_paths(repository_root: str | Path) -> dict[str, Path]:
         "pilot_v6_root": root / "data" / "private" / "technical-pilot-v6.0.0",
         "active_bundle_root": root / "protocol" / "study-v2.1.0",
         "governance_path": root / "config" / "main-study-governance.yaml",
+        "runtime_amendments_path": root / "config" / "main-study-runtime-amendments.yaml",
     }
 
 
@@ -265,12 +271,21 @@ def reconstruct_request_hash(
 
 
 def next_study_request(
-    *, repository_root: str | Path, raw_root: str | Path
+    *,
+    repository_root: str | Path,
+    raw_root: str | Path,
+    runtime_amendments_path: str | Path | None = None,
 ) -> NextStudyRequest | None:
     """Return safe metadata for the first missing response in execution order."""
 
     _, _, _, rows = planned_study(repository_root)
     store = RawRunStore(raw_root)
+    amendments_path = (
+        runtime_amendments_path or default_paths(repository_root)["runtime_amendments_path"]
+    )
+    finish_audit = audit_finish_metadata(store=store, amendments_path=amendments_path)
+    if finish_audit.validation_errors:
+        raise MainStudyError("Stored evidence does not match its runtime technical amendment")
     summary = build_execution_summary(
         planned_rows=rows,
         store=store,
@@ -298,6 +313,14 @@ def next_study_request(
     )
     if latest_error is not None and latest_error.request_payload_hash != digest:
         raise MainStudyError("Stored failed request does not match the reconstructed request")
+    configured = load_runtime_amendments(amendments_path)
+    amendment_ids_in_history = tuple(
+        item.amendment_id
+        for item in configured.amendments
+        if item.run_id == row.run_id
+        and item.turn_number < turn_number
+        and item.amendment_id in finish_audit.amendment_ids
+    )
     return NextStudyRequest(
         run_id=row.run_id,
         execution_order=execution_order,
@@ -306,6 +329,7 @@ def next_study_request(
         requested_model_id=row.requested_model_id,
         request_payload_hash=digest,
         latest_error=latest_error,
+        technical_amendment_ids_in_history=amendment_ids_in_history,
     )
 
 
@@ -335,30 +359,34 @@ def load_study_progress(
     repository_root: str | Path,
     raw_root: str | Path,
     state_path: str | Path,
+    runtime_amendments_path: str | Path | None = None,
     now: datetime | None = None,
 ) -> StudyProgress:
     _, _, _, rows = planned_study(repository_root)
     validate_saved_study(repository_root=repository_root, raw_root=raw_root)
     store = RawRunStore(raw_root)
+    amendments_path = (
+        runtime_amendments_path or default_paths(repository_root)["runtime_amendments_path"]
+    )
+    finish_audit = audit_finish_metadata(store=store, amendments_path=amendments_path)
     state = load_job_state(state_path)
     summary = build_execution_summary(
         planned_rows=rows,
         store=store,
         maximum_total_attempts=MAXIMUM_HTTP_ATTEMPTS,
     )
-    next_request = next_study_request(repository_root=repository_root, raw_root=raw_root)
+    next_request = next_study_request(
+        repository_root=repository_root,
+        raw_root=raw_root,
+        runtime_amendments_path=amendments_path,
+    )
     classification = (
         classify_provider_result(next_request.latest_error.result)
         if next_request is not None and next_request.latest_error is not None
         else None
     )
     status = state.status
-    incomplete_finish_reasons = sum(
-        count
-        for reason, count in summary["finish_reasons"].items()
-        if reason.strip().casefold() != "stop"
-    )
-    if summary["truncation_count"] or summary["provider_mismatches"] or incomplete_finish_reasons:
+    if summary["truncation_count"] or summary["provider_mismatches"] or finish_audit.hard_blocked:
         status = JobStatus.BLOCKED
     elif summary["successful_response_slots"] == PLANNED_RESPONSES:
         status = JobStatus.COMPLETE
@@ -366,6 +394,13 @@ def load_study_progress(
         status in {JobStatus.BLOCKED, JobStatus.STOPPED}
         and classification is not None
         and classification.retryable
+        and summary["http_attempts_used"] < MAXIMUM_HTTP_ATTEMPTS
+    ):
+        status = JobStatus.RESUMABLE
+    elif (
+        status in {JobStatus.BLOCKED, JobStatus.STOPPED}
+        and finish_audit.approved_anomaly_count
+        and next_request is not None
         and summary["http_attempts_used"] < MAXIMUM_HTTP_ATTEMPTS
     ):
         status = JobStatus.RESUMABLE
@@ -408,6 +443,9 @@ def load_study_progress(
         technical_errors=summary["technical_errors"] + state.worker_error_count,
         automatic_resumes=state.automatic_resumes,
         truncations=summary["truncation_count"],
+        approved_finish_metadata_anomalies=finish_audit.approved_anomaly_count,
+        finish_metadata_status_counts=finish_audit.status_counts,
+        technical_amendment_ids=finish_audit.amendment_ids,
         http_attempts=summary["http_attempts_used"],
         elapsed_seconds=elapsed,
         estimated_remaining_seconds=_eta_seconds(store, rows, PLANNED_RESPONSES - complete),
@@ -416,7 +454,15 @@ def load_study_progress(
             classification.reason_code if classification is not None else state.last_error_type
         ),
         recoverable=status == JobStatus.RESUMABLE,
-        resume_reason=(classification.reason_code if classification is not None else None),
+        resume_reason=(
+            classification.reason_code
+            if classification is not None
+            else (
+                "approved_finish_metadata_amendment"
+                if status == JobStatus.RESUMABLE and finish_audit.approved_anomaly_count
+                else None
+            )
+        ),
         upstream_error_code=(
             classification.upstream_error_code if classification is not None else None
         ),
@@ -424,7 +470,11 @@ def load_study_progress(
             classification.upstream_error_message if classification is not None else None
         ),
         response_counts_by_model=_model_response_counts(rows, store),
-        message=state.message,
+        message=(
+            "Stored evidence does not match its runtime technical amendment."
+            if finish_audit.validation_errors
+            else state.message
+        ),
     )
 
 
@@ -767,6 +817,15 @@ def run_study_worker(
                 return 1
 
             if new_classification is None:
+                if progress_after.responses_complete <= responses_before:
+                    _finish_state(
+                        state_path,
+                        state,
+                        status=JobStatus.BLOCKED,
+                        message="A collection pass ended without saving a response.",
+                        now=now,
+                    )
+                    return 1
                 state = load_job_state(state_path)
                 continue
             if not new_classification.retryable:

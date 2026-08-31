@@ -297,10 +297,16 @@ def test_complete_progress_reports_432_responses(tmp_path: Path) -> None:
         data_status="main_study",
         maximum_http_attempts=500,
     )
+    amendments_path = tmp_path / "runtime-amendments.yaml"
+    amendments_path.write_text(
+        "version: main-study-runtime-amendments-v1.0.0\namendments: []\n",
+        encoding="utf-8",
+    )
     progress = load_study_progress(
         repository_root=ROOT,
         raw_root=store.root,
         state_path=tmp_path / "state.json",
+        runtime_amendments_path=amendments_path,
     )
     assert progress.status == JobStatus.COMPLETE
     assert progress.conversations_complete == 72
@@ -604,6 +610,73 @@ def test_worker_recovers_from_embedded_upstream_502(
     state = load_job_state(tmp_path / "job" / "state.json")
     assert state.status == JobStatus.COMPLETE
     assert state.automatic_resumes == 1
+
+
+def test_worker_continues_after_a_safe_amendment_pass_returns(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    batches = 0
+    monkeypatch.setattr(main_study, "run_main_study_preflight", lambda **_: _ready_preflight())
+
+    def progress(**kwargs):  # noqa: ANN003, ANN202
+        del kwargs
+        if batches == 0:
+            return _progress(JobStatus.RESUMABLE, 65)
+        if batches == 1:
+            return _progress(JobStatus.RUNNING, 66)
+        return _progress(JobStatus.COMPLETE, 432)
+
+    def execute(**kwargs):  # noqa: ANN003, ANN202
+        nonlocal batches
+        del kwargs
+        batches += 1
+        return {}
+
+    monkeypatch.setattr(main_study, "load_study_progress", progress)
+    monkeypatch.setattr(main_study, "_stored_errors", lambda *_, **__: [])
+    token = reserve_worker(tmp_path / "job")
+    result = run_study_worker(
+        repository_root=ROOT,
+        job_root=tmp_path / "job",
+        raw_root=tmp_path / "raw",
+        pilot_v6_root=tmp_path / "pilot",
+        active_bundle_root=tmp_path / "bundle",
+        governance_path=tmp_path / "governance.yaml",
+        lock_token=token,
+        environ={"RUN_LIVE_STUDY": "1", "OPENROUTER_API_KEY": "test"},
+        execute_batch=execute,
+    )
+    assert result == 0
+    assert batches == 2
+    assert load_job_state(tmp_path / "job" / "state.json").status == JobStatus.COMPLETE
+
+
+def test_worker_blocks_an_unproductive_internal_cycle(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(main_study, "run_main_study_preflight", lambda **_: _ready_preflight())
+    monkeypatch.setattr(
+        main_study,
+        "load_study_progress",
+        lambda **_: _progress(JobStatus.RUNNING, 65),
+    )
+    monkeypatch.setattr(main_study, "_stored_errors", lambda *_, **__: [])
+    token = reserve_worker(tmp_path / "job")
+    result = run_study_worker(
+        repository_root=ROOT,
+        job_root=tmp_path / "job",
+        raw_root=tmp_path / "raw",
+        pilot_v6_root=tmp_path / "pilot",
+        active_bundle_root=tmp_path / "bundle",
+        governance_path=tmp_path / "governance.yaml",
+        lock_token=token,
+        environ={"RUN_LIVE_STUDY": "1", "OPENROUTER_API_KEY": "test"},
+        execute_batch=lambda **_: {},
+    )
+    assert result == 1
+    state = load_job_state(tmp_path / "job" / "state.json")
+    assert state.status == JobStatus.BLOCKED
+    assert "without saving a response" in state.message
 
 
 def test_worker_blocks_when_recovery_limit_is_exhausted(
