@@ -34,6 +34,7 @@ from src.judge import (
     JudgeOutput,
     JudgeRationales,
     build_blinded_judge_messages,
+    judge_json_schema,
     parse_judge_output,
 )
 from src.schemas import AxisScores, BlindedAnnotationItem, ConversationRecord
@@ -43,6 +44,12 @@ EXPECTED_ITEMS = 432
 LEGACY_JUDGE_VERSION = "llm-judge-v1.0.0"
 LEGACY_JUDGE_CONFIGURATION_HASH = (
     "136e5d46abda65b4e65574ab255c347d66ec0d09645c095df8767107f4f6bb8a"
+)
+LEGACY_DEEPSEEK_CONFIGURATIONS = frozenset(
+    {
+        (LEGACY_JUDGE_VERSION, LEGACY_JUDGE_CONFIGURATION_HASH),
+        ("llm-judge-v1.0.1", "0edde5def66438de75714fece3163c7da9843d8b1483f800f5bd0edfacf3070d"),
+    }
 )
 TRANSIENT_HTTP_CODES = frozenset({408, 429, 500, 502, 503, 504})
 PERMANENT_HTTP_CODES = frozenset({400, 401, 402, 403, 404, 405, 409, 422})
@@ -87,7 +94,7 @@ class JudgeSpec(BaseModel):
     api_key_environment_variable: str
     concurrency: int = Field(ge=1, le=32)
     reasoning_mode: Literal["disabled", "none", "low"]
-    max_tokens: int | None = Field(default=None, ge=256, le=2048)
+    max_tokens: int | None = Field(default=None, ge=256, le=8192)
 
 
 class JudgeConfiguration(BaseModel):
@@ -383,8 +390,11 @@ def load_successes(
         )
         legacy_deepseek_configuration = (
             spec.api_provider == "DeepSeek direct API"
-            and result.judge_configuration_version == LEGACY_JUDGE_VERSION
-            and result.judge_configuration_hash == LEGACY_JUDGE_CONFIGURATION_HASH
+            and (
+                result.judge_configuration_version,
+                result.judge_configuration_hash,
+            )
+            in LEGACY_DEEPSEEK_CONFIGURATIONS
         )
         if (
             not (current_configuration or legacy_deepseek_configuration)
@@ -412,7 +422,7 @@ def load_successes(
                                 configuration=configuration,
                                 messages=messages,
                             ),
-                            "judge_configuration_hash": LEGACY_JUDGE_CONFIGURATION_HASH,
+                            "judge_configuration_hash": result.judge_configuration_hash,
                             "rubric_hash": canonical_hash(rubric),
                         }
                     )
@@ -646,11 +656,22 @@ def _request_body(
         body["response_format"] = {"type": "json_object"}
         body["thinking"] = {"type": "disabled"}
     else:
-        # GLM rejected reasoning-off and exhausted the smaller JSON allowance.
-        # Low is the smallest supported effort; rationales remain schema-limited.
-        body["response_format"] = {"type": "json_object"}
-        body["reasoning"] = {"effort": spec.reasoning_mode}
-        body["provider"] = {"allow_fallbacks": True, "require_parameters": True}
+        body["response_format"] = {
+            "type": "json_schema",
+            "json_schema": {
+                "name": "llm_judge_rating",
+                "strict": True,
+                "schema": judge_json_schema(),
+            },
+        }
+        body["reasoning"] = {
+            "effort": spec.reasoning_mode,
+            "exclude": True,
+        }
+        body["provider"] = {
+            "allow_fallbacks": True,
+            "require_parameters": True,
+        }
     return body
 
 

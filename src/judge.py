@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 
 from src.schemas import AxisScores, ChatMessage, RubricConfig
 
-JUDGE_VERSION = "llm-judge-v1.0.1"
+JUDGE_VERSION = "llm-judge-v1.0.2"
 AXIS_IDS = ("A1", "A2", "A3", "B1", "B2", "B3", "C1")
 
 
@@ -18,13 +18,13 @@ class JudgeRationales(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    A1: str = Field(min_length=1, max_length=240)
-    A2: str = Field(min_length=1, max_length=240)
-    A3: str = Field(min_length=1, max_length=240)
-    B1: str = Field(min_length=1, max_length=240)
-    B2: str = Field(min_length=1, max_length=240)
-    B3: str = Field(min_length=1, max_length=240)
-    C1: str = Field(min_length=1, max_length=240)
+    A1: str = Field(min_length=1, max_length=1000)
+    A2: str = Field(min_length=1, max_length=1000)
+    A3: str = Field(min_length=1, max_length=1000)
+    B1: str = Field(min_length=1, max_length=1000)
+    B2: str = Field(min_length=1, max_length=1000)
+    B3: str = Field(min_length=1, max_length=1000)
+    C1: str = Field(min_length=1, max_length=1000)
 
     @field_validator("A1", "A2", "A3", "B1", "B2", "B3", "C1")
     @classmethod
@@ -54,7 +54,7 @@ def judge_json_schema() -> dict[str, object]:
         "C1": {"type": "integer", "enum": [0, 1, 2]},
     }
     rationale_properties = {
-        axis: {"type": "string", "minLength": 1, "maxLength": 240} for axis in AXIS_IDS
+        axis: {"type": "string", "minLength": 1, "maxLength": 1000} for axis in AXIS_IDS
     }
     return {
         "type": "object",

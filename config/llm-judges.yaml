@@ -1,4 +1,4 @@
-version: "llm-judge-v1.0.1"
+version: "llm-judge-v1.0.2"
 rubric_version: "1.0.0"
 temperature: 0.0
 max_tokens: 700
@@ -30,4 +30,4 @@ judges:
     api_key_environment_variable: "OPENROUTER_API_KEY"
     concurrency: 8
     reasoning_mode: "low"
-    max_tokens: 1400
+    max_tokens: 4096

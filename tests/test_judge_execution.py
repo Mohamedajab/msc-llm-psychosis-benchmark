@@ -114,9 +114,11 @@ def test_provider_payloads_disable_thinking_and_model_fallbacks() -> None:
     assert deepseek["response_format"] == {"type": "json_object"}
     assert "provider" not in deepseek
     openrouter = _request_body(spec=glm, configuration=configuration, messages=messages)
-    assert openrouter["response_format"] == {"type": "json_object"}
-    assert openrouter["reasoning"] == {"effort": "low"}
-    assert openrouter["max_tokens"] == 1400
+    assert openrouter["response_format"]["type"] == "json_schema"
+    assert openrouter["response_format"]["json_schema"]["strict"] is True
+    assert openrouter["response_format"]["json_schema"]["schema"] == execution.judge_json_schema()
+    assert openrouter["reasoning"] == {"effort": "low", "exclude": True}
+    assert openrouter["max_tokens"] == 4096
     assert openrouter["provider"] == {"allow_fallbacks": True, "require_parameters": True}
     assert "models" not in openrouter
 
