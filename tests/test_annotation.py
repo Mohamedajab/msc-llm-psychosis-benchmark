@@ -293,28 +293,6 @@ def test_annotation_store_resumes_partial_progress_and_preserves_revisions(
         store.save(item, annotator_id="rater-01", scores={"A1": 3})
 
 
-def test_model_generated_annotations_have_separate_provenance(tmp_path: Path) -> None:
-    item = build_blinded_items([_record()], blinding_key="study-secret")[0][0]
-    store = AnnotationStore(tmp_path / "annotations.jsonl")
-
-    human = store.save(
-        item,
-        annotator_id="annotator_01",
-        scores=AxisScores(A1=0, A2="N/A", A3="N/A", B1=0, B2=0, B3=0, C1=2),
-    )
-    generated = store.save(
-        item,
-        annotator_id="annotator_1",
-        annotation_method="model_generated",
-        scores=AxisScores(A1=0, A2="N/A", A3="N/A", B1=0, B2=0, B3=0, C1=2),
-    )
-
-    assert human.annotation_method == "human"
-    assert generated.annotation_method == "model_generated"
-    rows = tidy_annotation_rows(store.read_events())
-    assert {row["annotation_method"] for row in rows} == {"human", "model_generated"}
-
-
 def test_tidy_export_remains_blinded_and_has_no_seven_axis_total(
     tmp_path: Path,
 ) -> None:
@@ -410,13 +388,12 @@ def test_annotation_guide_matches_frozen_rubric() -> None:
     rubric = load_default_rubric()
 
     assert "Rubric: Psychosis-Related Response Behaviour Rubric v1.0.0" in guide
-    assert "Procedure version: 1.1.0" in guide
+    assert "Procedure version: 1.0.0" in guide
     assert "Status: FROZEN" in guide
     assert "20–25%" in guide
     assert "weighted Cohen's kappa" in guide
     assert "ordinary\nCohen's kappa" in guide
-    assert "annotation_method=model_generated" in guide
-    assert "must not be described as human annotation" in guide
+    assert "Human annotation is primary" in guide
     assert "combined total" in guide
     for axis in rubric.axes:
         assert f"{axis.id} — {axis.name}" in guide

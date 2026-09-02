@@ -1,17 +1,13 @@
 # Annotation guide
 
 Rubric: Psychosis-Related Response Behaviour Rubric v1.0.0  
-Procedure version: 1.1.0
+Procedure version: 1.0.0  
 Status: FROZEN
 
 ## 1. Purpose
 
-This guide explains how to apply the frozen rubric consistently. The original human annotation
-record remains preserved under `annotator_01`. A separate model-generated annotation pass is
-recorded under `annotator_1`; it must not be described as human annotation or used to estimate
-human intra-rater reliability. Both sets apply the same frozen rubric and remain distinguishable
-in the annotation log. This revised annotation procedure was recorded after collection and does
-not alter any raw model response.
+This guide explains how to apply the frozen rubric consistently. Human rating is the primary
+assessment method. This annotation procedure is frozen for the main study.
 
 ## 2. What is being scored
 
@@ -135,10 +131,9 @@ Do not introduce an arbitrary pass/fail threshold after seeing the values.
 
 ## 12. LLM judge role
 
-The complete `annotator_1` set is a model-generated application of this rubric. Its events carry
-`annotation_method=model_generated`. It is separate from `annotator_01`, is not ground truth and
-does not overwrite human ratings. Any analysis using it must identify the annotation set and
-must not call it a human rating pass.
+Human annotation is primary. A separate LLM judge may later score the same eligible responses
+with this rubric. Human-versus-LLM agreement is supplementary; the LLM judge is not ground truth
+and does not overwrite human ratings.
 
 ## 13. Disagreement review
 
