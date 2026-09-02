@@ -117,6 +117,26 @@ def _single_score_or_missing(series: pd.Series) -> float:
     return float("nan")
 
 
+def _single_rating_or_missing(series: pd.Series) -> Any:
+    """Keep one valid rating, including N/A, unless duplicates conflict."""
+    values = series.dropna().drop_duplicates()
+    if len(values) == 1:
+        return values.iloc[0]
+    return np.nan
+
+
+def _normalise_rating(value: Any, *, allowed_scores: tuple[int, ...], allows_na: bool) -> Any:
+    if pd.isna(value):
+        return np.nan
+    if allows_na and isinstance(value, str) and value.strip().upper() == "N/A":
+        return "N/A"
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return np.nan
+    return numeric if numeric in allowed_scores else np.nan
+
+
 def _first_true_turn(mask: pd.Series) -> int | None:
     matching = mask[mask.fillna(False)]
     if matching.empty:
@@ -137,8 +157,9 @@ def summarize_conversations(
 ) -> pd.DataFrame:
     """Summarise tidy A1/A2/A3 annotation rows into one row per conversation.
 
-    Scores that are non-numeric or outside an axis's candidate scale are treated
-    as missing. Means and maxima use available observations, while the
+    Scores outside an axis's candidate scale are treated as missing. A valid N/A
+    rating on A2 or A3 counts as completed annotation but is excluded from numeric
+    summaries. Means and maxima use available numeric observations, while the
     final score always refers to the planned final turn (``expected_turns``), not
     merely the last non-missing response.  Set ``expected_turns=None`` to use each
     run's largest observed turn number instead.
@@ -186,6 +207,13 @@ def summarize_conversations(
     for axis in AXES:
         if axis not in frame.columns:
             frame[axis] = np.nan
+        frame[f"_rating_{axis}"] = frame[axis].map(
+            lambda value, axis=axis: _normalise_rating(
+                value,
+                allowed_scores=allowed_scores[axis],
+                allows_na=axis in {"A2", "A3"},
+            )
+        )
         numeric = pd.to_numeric(frame[axis], errors="coerce")
         frame[axis] = numeric.where(numeric.isin(allowed_scores[axis]), np.nan)
 
@@ -209,6 +237,7 @@ def summarize_conversations(
 
         if valid_rows.empty:
             turn_scores = pd.DataFrame(index=expected_index, columns=AXES, dtype=float)
+            turn_ratings = pd.DataFrame(index=expected_index, columns=AXES, dtype=object)
             raw_turns_present: set[int] = set()
             duplicate_turn_rows = 0
         else:
@@ -219,6 +248,13 @@ def summarize_conversations(
             )
             turn_scores.index.name = "turn_number"
             turn_scores = turn_scores.reindex(expected_index)
+            rating_columns = [f"_rating_{axis}" for axis in AXES]
+            turn_ratings = valid_rows.groupby("_analysis_turn", sort=True)[rating_columns].agg(
+                _single_rating_or_missing
+            )
+            turn_ratings.columns = list(AXES)
+            turn_ratings.index.name = "turn_number"
+            turn_ratings = turn_ratings.reindex(expected_index)
             raw_turns_present = set(valid_rows["_analysis_turn"].tolist())
 
         record: dict[str, Any] = {"run_id": run_id}
@@ -226,10 +262,10 @@ def summarize_conversations(
             record[column] = _constant_or_missing(run_rows[column])
 
         present_in_range = raw_turns_present.intersection(expected_index.tolist())
-        complete_by_turn = turn_scores.notna().all(axis=1)
-        any_by_turn = turn_scores.notna().any(axis=1)
+        complete_by_turn = turn_ratings.notna().all(axis=1)
+        any_by_turn = turn_ratings.notna().any(axis=1)
         total_cells = planned_turns * len(AXES)
-        observed_cells = int(turn_scores.notna().sum().sum())
+        observed_cells = int(turn_ratings.notna().sum().sum())
         complete_turn_count = int(complete_by_turn.sum())
 
         record.update(
@@ -260,7 +296,7 @@ def summarize_conversations(
                 if final_turn in scores.index and pd.notna(scores.loc[final_turn])
                 else float("nan")
             )
-            observed_count = int(scores.notna().sum())
+            observed_count = int(turn_ratings[axis].notna().sum())
             record.update(
                 {
                     f"observed_{axis}": observed_count,

@@ -41,6 +41,24 @@ from src.config_loader import (
     validate_catalogue,
 )
 from src.conversation_runner import ConversationRunner, create_run_header
+from src.judge_execution import (
+    JudgeExecutionError,
+    human_annotation_complete,
+    judge_progress,
+    launch_judge_worker,
+    load_blinded_judge_items,
+    load_judge_configuration,
+    run_judge_preflight,
+)
+from src.judge_execution import (
+    load_job_state as load_judge_job_state,
+)
+from src.judge_execution import (
+    request_safe_stop as request_judge_safe_stop,
+)
+from src.judge_execution import (
+    worker_is_active as judge_worker_is_active,
+)
 from src.main_study import (
     JobStatus,
     format_duration,
@@ -76,6 +94,7 @@ from src.trajectory_analysis import (
 )
 
 BASE_DIR = Path(__file__).resolve().parent
+load_dotenv(BASE_DIR / ".env", override=False)
 CONFIG_DIR = BASE_DIR / "config"
 DATA_DIR = Path(os.getenv("BENCHMARK_DATA_DIR", str(BASE_DIR / "data")))
 RAW_RUN_DIR = DATA_DIR / "raw" / "runs"
@@ -85,6 +104,8 @@ MAIN_STUDY_JOB_DIR = DATA_DIR / "private" / "main-study-job"
 PILOT_V6_DIR = BASE_DIR / "data" / "private" / "technical-pilot-v6.0.0"
 ACTIVE_BUNDLE_DIR = BASE_DIR / "protocol" / "study-v2.1.0"
 GOVERNANCE_PATH = CONFIG_DIR / "main-study-governance.yaml"
+JUDGE_CONFIGURATION_PATH = CONFIG_DIR / "llm-judges.yaml"
+JUDGE_ROOT = DATA_DIR / "private" / "judges"
 
 MAIN_STUDY_BLOCKER_MESSAGES = {
     "active_bundle_not_created": "Active study bundle has not been created.",
@@ -103,6 +124,7 @@ VIEWS: tuple[str, ...] = (
     "Overview",
     "Collection",
     "Annotation",
+    "LLM Judges",
     "Analysis",
     "Evidence & QA",
 )
@@ -331,7 +353,7 @@ def render_overview(configuration: LocalConfiguration) -> None:
     st.subheader("Experimental design")
     st.write("3 presentation levels × 3 themes × 2 models × 2 contexts × 2 repetitions")
     with st.expander("View full study design"):
-        st.dataframe(design, hide_index=True, width="stretch")
+        st.dataframe(design, hide_index=True, use_container_width=True)
         st.caption(
             f"Configuration {configuration.models.version}; generation {configuration.models.generation.version}; rubric {configuration.rubric.version} ({configuration.rubric.status})."
         )
@@ -401,7 +423,7 @@ def _render_dry_payloads(payloads: Sequence[dict[str, Any]]) -> None:
             f"Request {payload['turn_number']} · {len(messages)} ordered messages",
             expanded=payload["turn_number"] == 1,
         ):
-            st.dataframe(pd.DataFrame(messages), hide_index=True, width="stretch")
+            st.dataframe(pd.DataFrame(messages), hide_index=True, use_container_width=True)
             st.json(payload)
     st.download_button(
         "Download dry-run payload JSON",
@@ -434,7 +456,7 @@ def _render_run_result(record: ConversationRecord) -> None:
             }
         ),
         hide_index=True,
-        width="stretch",
+        use_container_width=True,
     )
 
 
@@ -643,7 +665,15 @@ def _render_main_study_progress(preflight_ready: bool = False) -> None:
             )
         )
     elif progress.status == JobStatus.RESUMABLE:
-        if progress.resume_reason == "approved_finish_metadata_amendment":
+        if progress.operator_resume_required and progress.resume_reason == "upstream_http_402":
+            st.warning(
+                "The previous request stopped because the upstream provider returned HTTP 402. "
+                "Existing study evidence is intact. Resume will retry only the first missing "
+                "request using the unchanged frozen protocol."
+            )
+        elif progress.message.startswith("Collection paused after repeated provider errors"):
+            st.warning(progress.message)
+        elif progress.resume_reason == "approved_finish_metadata_amendment":
             st.warning(
                 "The saved finish-metadata anomaly has a validated runtime amendment. "
                 "Resume continues at the first missing turn; the saved response is not regenerated."
@@ -714,7 +744,6 @@ def render_main_study() -> None:
                 st.markdown(f"○ {MAIN_STUDY_BLOCKER_MESSAGES.get(blocker, blocker)}")
 
         if st.button("Run preflight", type="primary"):
-            load_dotenv(BASE_DIR / ".env", override=False)
             current = _main_study_preflight(dict(os.environ))
             st.session_state["main_study_preflight"] = current.model_dump(mode="json")
 
@@ -743,7 +772,7 @@ def render_main_study() -> None:
                 ]
             ),
             hide_index=True,
-            width="stretch",
+            use_container_width=True,
         )
         st.dataframe(
             pd.DataFrame(
@@ -758,7 +787,7 @@ def render_main_study() -> None:
                 columns=["Item", "Status"],
             ),
             hide_index=True,
-            width="stretch",
+            use_container_width=True,
         )
 
     st.subheader("Collection control")
@@ -766,14 +795,20 @@ def render_main_study() -> None:
     hard_blocked = progress is not None and progress.status == JobStatus.BLOCKED
     can_launch = current.ready and not hard_blocked
     action = "Resume" if is_resume else "Start"
+    operator_recovery = bool(progress is not None and progress.operator_resume_required)
+    confirmation_text = (
+        "I understand this will resume the frozen main-study data collection from the first "
+        "missing response."
+        if operator_recovery
+        else f"I understand this will {action.lower()} the frozen main-study data collection."
+    )
     confirmed = st.checkbox(
-        f"I understand this will {action.lower()} the frozen main-study data collection.",
+        confirmation_text,
         disabled=not can_launch,
     )
     if not can_launch:
         st.caption(f"{action} is disabled until all preflight requirements are complete.")
     if st.button(f"{action} Main Study", disabled=not (can_launch and confirmed)):
-        load_dotenv(BASE_DIR / ".env", override=False)
         fresh = _main_study_preflight(dict(os.environ))
         if not fresh.ready:
             st.error("Preflight changed. The study was not started.")
@@ -787,6 +822,7 @@ def render_main_study() -> None:
                     active_bundle_root=ACTIVE_BUNDLE_DIR,
                     governance_path=GOVERNANCE_PATH,
                     environ=dict(os.environ),
+                    operator_resume_confirmed=(operator_recovery and confirmed),
                 )
             except (OSError, RuntimeError, ValueError) as error:
                 st.error(f"The study worker could not start: {error}")
@@ -805,7 +841,7 @@ def render_main_study() -> None:
                 columns=["Model", "Exact endpoint"],
             ),
             hide_index=True,
-            width="stretch",
+            use_container_width=True,
         )
         st.caption("72 conversations · 432 planned responses · six turns per conversation")
 
@@ -868,7 +904,7 @@ def render_provenance(*, show_header: bool = True) -> None:
     initial = run_ids.index(preferred) if preferred in run_ids else 0
     selected_id = st.selectbox("Saved run", options=run_ids, index=initial)
     record = lookup[selected_id]
-    st.dataframe(_metadata_frame(record), hide_index=True, width="stretch")
+    st.dataframe(_metadata_frame(record), hide_index=True, use_container_width=True)
 
     st.subheader("Exact request-message growth")
     growth = pd.DataFrame(
@@ -885,7 +921,7 @@ def render_provenance(*, show_header: bool = True) -> None:
     if growth.empty:
         st.info("This run has no successful response turns yet.")
     else:
-        st.dataframe(growth, hide_index=True, width="stretch")
+        st.dataframe(growth, hide_index=True, use_container_width=True)
 
     for turn in record.turns:
         with st.expander(
@@ -896,7 +932,7 @@ def render_provenance(*, show_header: bool = True) -> None:
             st.dataframe(
                 pd.DataFrame([message.model_dump() for message in turn.request_messages]),
                 hide_index=True,
-                width="stretch",
+                use_container_width=True,
             )
             st.markdown("**Assistant response**")
             st.write(turn.result.text)
@@ -1167,7 +1203,7 @@ def render_nlp(
     ]
     available = [column for column in interpretable if column in features]
     st.subheader("Response feature table")
-    st.dataframe(features[available], hide_index=True, width="stretch")
+    st.dataframe(features[available], hide_index=True, use_container_width=True)
 
     density_columns = [column for column in available if column.endswith("density_per_100_words")]
     if density_columns:
@@ -1204,7 +1240,7 @@ def render_nlp(
     if terms.empty:
         st.info("At least two usable responses per selected group are required for term summaries.")
     else:
-        st.dataframe(terms, hide_index=True, width="stretch")
+        st.dataframe(terms, hide_index=True, use_container_width=True)
 
     st.subheader("Offline TF-IDF response map")
     projection = project_responses_2d(response_frame)
@@ -1267,6 +1303,28 @@ def _latest_analysis_rows(
     return pd.DataFrame(rows)
 
 
+def _show_annotation_method(events: Sequence[AnnotationEvent], annotator_id: str) -> None:
+    methods = {event.annotation_method for event in events if event.annotator_id == annotator_id}
+    if methods == {"model_generated"}:
+        st.caption("Annotation method: model-generated application of the frozen rubric.")
+    elif methods == {"human"}:
+        st.caption("Annotation method: human rating.")
+    else:
+        st.warning("This annotation set contains mixed or unknown provenance.")
+
+
+def _annotation_set_options(events: Sequence[AnnotationEvent]) -> tuple[list[str], int]:
+    annotators = sorted({event.annotator_id for event in events})
+    counts = {
+        annotator: sum(
+            event.annotator_id == annotator and event.scores.complete() for event in events
+        )
+        for annotator in annotators
+    }
+    default = max(annotators, key=lambda annotator: (counts[annotator], annotator))
+    return annotators, annotators.index(default)
+
+
 def render_trajectory(
     configuration: LocalConfiguration,
     records: Sequence[ConversationRecord] | None = None,
@@ -1297,8 +1355,9 @@ def render_trajectory(
             "No annotation ratings are available. Save at least one blinded A1/A2/A3 rating to calculate trajectories."
         )
         return
-    annotators = sorted({event.annotator_id for event in events})
-    annotator = st.selectbox("Annotation set", options=annotators)
+    annotators, default_index = _annotation_set_options(events)
+    annotator = st.selectbox("Annotation set", options=annotators, index=default_index)
+    _show_annotation_method(events, annotator)
     rows = _latest_analysis_rows(configuration, records, events, annotator)
     if rows.empty:
         st.info("No saved ratings could be matched to the currently available raw records.")
@@ -1366,7 +1425,7 @@ def render_trajectory(
     st.dataframe(
         summaries[[column for column in summary_columns if column in summaries]],
         hide_index=True,
-        width="stretch",
+        use_container_width=True,
     )
 
     st.subheader("Matched descriptive comparisons")
@@ -1379,7 +1438,7 @@ def render_trajectory(
         st.dataframe(
             comparisons[comparisons["n_pairs"] > 0],
             hide_index=True,
-            width="stretch",
+            use_container_width=True,
         )
         st.caption(
             "Differences are level B minus level A and are descriptive. Conversations—not turns—are the analysis units."
@@ -1397,7 +1456,7 @@ def render_primary_outcomes(
     records: Sequence[ConversationRecord],
 ) -> None:
     if not records:
-        render_empty_state("Results will appear after collection and blinded human annotation.")
+        render_empty_state("Results will appear after collection and blinded annotation.")
         return
     try:
         events = AnnotationStore(ANNOTATION_LOG).latest_events()
@@ -1405,10 +1464,16 @@ def render_primary_outcomes(
         st.error(str(error))
         return
     if not events:
-        render_empty_state("No blinded human ratings are available yet.")
+        render_empty_state("No blinded ratings are available yet.")
         return
-    annotators = sorted({event.annotator_id for event in events})
-    annotator = st.selectbox("Annotation set", options=annotators, key="primary_annotation_set")
+    annotators, default_index = _annotation_set_options(events)
+    annotator = st.selectbox(
+        "Annotation set",
+        options=annotators,
+        index=default_index,
+        key="primary_annotation_set",
+    )
+    _show_annotation_method(events, annotator)
     rows = _latest_analysis_rows(configuration, records, events, annotator)
     if rows.empty:
         render_empty_state("Saved ratings could not be matched to main-study responses.")
@@ -1438,7 +1503,7 @@ def render_primary_outcomes(
             ]
         ],
         hide_index=True,
-        width="stretch",
+        use_container_width=True,
     )
     st.caption("A1, A2 and A3 remain separate primary outcomes. No combined score is used.")
 
@@ -1446,7 +1511,7 @@ def render_primary_outcomes(
 def render_analysis(configuration: LocalConfiguration) -> None:
     render_page_header(
         "Analysis",
-        "Human-rated outcomes are primary; lexical analysis remains exploratory.",
+        "Rubric ratings are shown by annotation set; lexical analysis remains exploratory.",
     )
     records, load_errors = load_available_records(RawRunStore(MAIN_STUDY_RAW_DIR))
     records = [record for record in records if record.header.data_status == "main_study"]
@@ -1495,7 +1560,7 @@ def render_qa(configuration: LocalConfiguration, *, show_header: bool = True) ->
     st.dataframe(
         pd.DataFrame(configuration_rows, columns=["Component", "Version", "SHA-256"]),
         hide_index=True,
-        width="stretch",
+        use_container_width=True,
     )
     st.caption(
         f"Model catalogue last checked in configuration: {configuration.models.catalogue_checked_at_utc.isoformat()}"
@@ -1520,7 +1585,7 @@ def render_qa(configuration: LocalConfiguration, *, show_header: bool = True) ->
         validation_columns[3].metric("Balanced cells", "Yes")
         st.success("The locally generated 3×3×2×2×2 manifest contains 72 unique balanced rows.")
         with st.expander("View 72-row manifest"):
-            st.dataframe(manifest, hide_index=True, width="stretch")
+            st.dataframe(manifest, hide_index=True, use_container_width=True)
         st.download_button(
             "Download generated manifest CSV",
             data=manifest.to_csv(index=False),
@@ -1574,6 +1639,152 @@ def render_study_audit() -> None:
     st.caption("Technical evidence and demo fixtures are not main-study results.")
 
 
+def _judge_preflight(judge_ids: Sequence[str] | None = None):  # noqa: ANN202
+    return run_judge_preflight(
+        repository_root=BASE_DIR,
+        raw_root=MAIN_STUDY_RAW_DIR,
+        judge_root=JUDGE_ROOT,
+        configuration_path=JUDGE_CONFIGURATION_PATH,
+        judge_ids=judge_ids,
+        environ=dict(os.environ),
+        require_smoke_validation=True,
+    )
+
+
+def render_llm_judges() -> None:
+    render_page_header(
+        "LLM Judges",
+        "Run three independent, blinded applications of the frozen annotation rubric.",
+    )
+    try:
+        configuration = load_judge_configuration(JUDGE_CONFIGURATION_PATH)
+        progress_rows = judge_progress(judge_root=JUDGE_ROOT, configuration=configuration)
+        state = load_judge_job_state(JUDGE_ROOT)
+    except (OSError, ValueError, JudgeExecutionError) as error:
+        st.error(f"Judge state could not be read: {error}")
+        return
+
+    st.subheader("Judge status")
+    cards = st.columns(3)
+    for card, row in zip(cards, progress_rows, strict=True):
+        card.metric(row.display_name, f"{row.completed} / {row.planned}")
+    total_complete = sum(row.completed for row in progress_rows)
+    st.metric("Total", f"{total_complete} / {432 * len(progress_rows)}")
+    st.progress(total_complete / (432 * len(progress_rows)))
+
+    active = judge_worker_is_active(JUDGE_ROOT)
+    status_columns = st.columns(4)
+    status_columns[0].metric("Status", state.status)
+    status_columns[1].metric("In flight", sum(state.in_flight.values()))
+    status_columns[2].metric("Retries", sum(row.retries for row in progress_rows))
+    status_columns[3].metric("Permanent errors", sum(row.permanent_errors for row in progress_rows))
+
+    error_columns = st.columns(4)
+    error_columns[0].metric("Retryable errors", sum(row.retryable_errors for row in progress_rows))
+    error_columns[1].metric("Input tokens", f"{sum(row.input_tokens for row in progress_rows):,}")
+    error_columns[2].metric("Output tokens", f"{sum(row.output_tokens for row in progress_rows):,}")
+    reported_cost = sum(row.reported_cost_usd for row in progress_rows)
+    error_columns[3].metric(
+        "API-reported cost", f"${reported_cost:.4f}" if reported_cost else "Unavailable"
+    )
+
+    elapsed_seconds = None
+    estimated_seconds = None
+    if state.started_at is not None:
+        end = state.finished_at or datetime.now(UTC)
+        elapsed_seconds = max(0.0, (end - state.started_at).total_seconds())
+        if total_complete:
+            remaining = 432 * len(progress_rows) - total_complete
+            estimated_seconds = elapsed_seconds / total_complete * remaining
+    timing = st.columns(2)
+    timing[0].metric("Elapsed", format_duration(elapsed_seconds))
+    timing[1].metric(
+        "Estimated remaining",
+        f"~{format_duration(estimated_seconds)}"
+        if estimated_seconds is not None
+        else "calculating...",
+    )
+    st.caption(state.message)
+    st.caption("Progress is read from private persisted files and survives a browser refresh.")
+
+    if st.button("Run preflight", disabled=active):
+        preflight = _judge_preflight()
+        st.session_state["judge_preflight"] = preflight.model_dump(mode="json")
+    saved_preflight = st.session_state.get("judge_preflight")
+    if saved_preflight:
+        if saved_preflight["ready"]:
+            st.success("Preflight passed. The three judge queues are ready to run.")
+        else:
+            st.warning("Preflight is blocked: " + ", ".join(saved_preflight["blockers"]))
+
+    confirmed = st.checkbox(
+        "I understand this sends blinded study responses to the configured judge APIs.",
+        value=False,
+        disabled=active,
+    )
+    control_columns = st.columns([1, 1, 1])
+    if control_columns[0].button(
+        "Run / Resume All Judges",
+        type="primary",
+        disabled=active or not confirmed or total_complete == 1296,
+    ):
+        preflight = _judge_preflight()
+        if not preflight.ready:
+            st.error("Judge collection cannot start: " + ", ".join(preflight.blockers))
+        else:
+            launch_judge_worker(
+                repository_root=BASE_DIR,
+                judge_root=JUDGE_ROOT,
+                raw_root=MAIN_STUDY_RAW_DIR,
+                configuration_path=JUDGE_CONFIGURATION_PATH,
+            )
+            st.rerun()
+    if control_columns[1].button("Safe Stop", disabled=not active):
+        request_judge_safe_stop(JUDGE_ROOT)
+        st.rerun()
+    if control_columns[2].button("Refresh status"):
+        st.rerun()
+
+    st.caption("Resume one judge independently")
+    individual_columns = st.columns(3)
+    for column, row in zip(individual_columns, progress_rows, strict=True):
+        if column.button(
+            f"Resume {row.display_name}",
+            disabled=active or not confirmed or row.completed == row.planned,
+            key=f"resume_{row.judge_id}",
+        ):
+            preflight = _judge_preflight([row.judge_id])
+            if not preflight.ready:
+                st.error(f"{row.display_name} cannot start: " + ", ".join(preflight.blockers))
+            else:
+                launch_judge_worker(
+                    repository_root=BASE_DIR,
+                    judge_root=JUDGE_ROOT,
+                    raw_root=MAIN_STUDY_RAW_DIR,
+                    configuration_path=JUDGE_CONFIGURATION_PATH,
+                    judge_ids=[row.judge_id],
+                )
+                st.rerun()
+
+    try:
+        items, _ = load_blinded_judge_items(
+            repository_root=BASE_DIR,
+            raw_root=MAIN_STUDY_RAW_DIR,
+        )
+        human_complete = human_annotation_complete(
+            annotation_path=ANNOTATION_LOG,
+            item_ids={item.blinded_item_id for item in items},
+        )
+    except (OSError, ValueError, JudgeExecutionError):
+        human_complete = False
+    if not human_complete:
+        st.info(
+            "Detailed judge scores remain hidden until a complete human annotation set is frozen."
+        )
+    else:
+        st.info("Detailed judge comparison will be added during the later analysis stage.")
+
+
 def render_evidence(configuration: LocalConfiguration) -> None:
     render_page_header(
         "Evidence & QA",
@@ -1599,6 +1810,8 @@ def render_view(view: str, configuration: LocalConfiguration) -> None:
         render_main_study()
     elif view == "Annotation":
         render_annotation(configuration)
+    elif view == "LLM Judges":
+        render_llm_judges()
     elif view == "Analysis":
         render_analysis(configuration)
     elif view == "Evidence & QA":

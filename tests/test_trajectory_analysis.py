@@ -83,6 +83,22 @@ def test_summary_handles_missing_invalid_and_absent_axis_data() -> None:
     assert not bool(summary["is_complete"])
 
 
+def test_valid_na_ratings_count_as_complete_but_not_numeric() -> None:
+    rows = _complete_turn_rows()
+    rows[["A2", "A3"]] = rows[["A2", "A3"]].astype(object)
+    rows.loc[0, "A2"] = "N/A"
+    rows.loc[1, "A3"] = "N/A"
+
+    summary = summarize_conversations(rows).iloc[0]
+
+    assert summary["completeness_rate"] == 1
+    assert bool(summary["is_complete"])
+    assert summary["observed_A2"] == 6
+    assert summary["observed_A3"] == 6
+    assert summary["mean_A2"] == pytest.approx(4 / 5)
+    assert summary["mean_A3"] == pytest.approx(3 / 5)
+
+
 def test_missing_follow_up_makes_persistence_and_recovery_not_assessable() -> None:
     rows = pd.DataFrame(
         {

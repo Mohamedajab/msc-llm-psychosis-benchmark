@@ -5,6 +5,7 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
+import dotenv
 import httpx
 import pytest
 from streamlit.testing.v1 import AppTest
@@ -22,6 +23,7 @@ EXPECTED_VIEWS = (
     "Overview",
     "Collection",
     "Annotation",
+    "LLM Judges",
     "Analysis",
     "Evidence & QA",
 )
@@ -66,6 +68,40 @@ class RecoverableInterruptionProvider(TargetProvider):
         )
 
 
+class Manual402Provider(TargetProvider):
+    provider_name = "fixture"
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def generate(self, *, model_id, messages, generation):  # noqa: ANN001
+        del messages, generation
+        self.calls += 1
+        if self.calls == 1:
+            return ProviderResult(
+                status=ObservationStatus.RESPONSE,
+                text="saved first response",
+                requested_model_id=model_id,
+                resolved_model_id=model_id,
+                provider_name="fixture",
+                finish_reason="stop",
+                latency_ms=1,
+                retry_count=0,
+                http_attempts=1,
+            )
+        return ProviderResult(
+            status=ObservationStatus.PROVIDER_ERROR,
+            requested_model_id=model_id,
+            provider_name="openrouter",
+            latency_ms=1,
+            retry_count=0,
+            http_attempts=1,
+            http_status=200,
+            error_type="provider_body_error",
+            error_message=repr({"message": "Payment required", "code": 402}),
+        )
+
+
 def _assert_no_exceptions(app: AppTest) -> None:
     assert not app.exception, [exception.message for exception in app.exception]
 
@@ -84,7 +120,8 @@ def _offline_app(monkeypatch, tmp_path: Path) -> tuple[AppTest, list[str]]:
         raise AssertionError("OpenRouter was constructed without explicit execution")
 
     monkeypatch.setenv("BENCHMARK_DATA_DIR", str(tmp_path))
-    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    # An empty value keeps tests isolated from the developer's local .env file.
+    monkeypatch.setenv("OPENROUTER_API_KEY", "")
     monkeypatch.setattr(httpx.Client, "request", reject_request)
     monkeypatch.setattr(OpenRouterProvider, "__init__", reject_openrouter)
     app = AppTest.from_file(str(APP_PATH), default_timeout=60).run()
@@ -104,6 +141,21 @@ def _selectbox(app: AppTest, label: str):  # noqa: ANN202
     return next(selectbox for selectbox in app.selectbox if selectbox.label == label)
 
 
+def test_startup_loads_project_env_once_without_override(monkeypatch, tmp_path) -> None:
+    calls: list[tuple[Path, bool]] = []
+
+    def record_load(path: Path, *, override: bool) -> bool:
+        calls.append((Path(path), override))
+        return True
+
+    monkeypatch.setattr(dotenv, "load_dotenv", record_load)
+    app, network_attempts = _offline_app(monkeypatch, tmp_path)
+
+    _assert_no_exceptions(app)
+    assert calls == [(PROJECT_ROOT / ".env", False)]
+    assert network_attempts == []
+
+
 def test_startup_is_offline_and_every_sidebar_view_renders(monkeypatch, tmp_path) -> None:
     app, network_attempts = _offline_app(monkeypatch, tmp_path)
 
@@ -115,6 +167,23 @@ def test_startup_is_offline_and_every_sidebar_view_renders(monkeypatch, tmp_path
         _navigate(app, view)
         _assert_no_exceptions(app)
 
+    assert network_attempts == []
+
+
+def test_llm_judges_page_starts_empty_and_does_not_construct_provider(
+    monkeypatch, tmp_path
+) -> None:
+    app, network_attempts = _offline_app(monkeypatch, tmp_path)
+    _navigate(app, "LLM Judges")
+    _assert_no_exceptions(app)
+
+    values = {metric.label: metric.value for metric in app.metric}
+    assert values["DeepSeek V4 Pro"] == "0 / 432"
+    assert values["DeepSeek V4 Flash"] == "0 / 432"
+    assert values["GLM-5.3-Flash"] == "0 / 432"
+    assert values["Total"] == "0 / 1296"
+    assert next(button for button in app.button if button.label == "Safe Stop").disabled
+    assert any("Detailed judge scores remain hidden" in info.value for info in app.info)
     assert network_attempts == []
 
 
@@ -220,6 +289,52 @@ def test_collection_page_offers_resume_for_embedded_upstream_failure(monkeypatch
     )
     assert _button(app, "Resume Main Study").disabled is True
     assert not any(button.label == "Start Main Study" for button in app.button)
+    assert network_attempts == []
+
+
+def test_collection_page_requires_confirmation_for_upstream_402(monkeypatch, tmp_path) -> None:
+    scripts, histories, models, rows = planned_study(PROJECT_ROOT)
+    row = rows[0]
+    script = next(item for item in scripts if item.script_id == row.script_id)
+    prefix = next(item for item in histories if item.history_id == script.history_id)
+    store = RawRunStore(tmp_path / "raw" / "study-v2")
+    ConversationRunner(Manual402Provider(), store).run_or_resume(
+        header=create_run_header(
+            study_version=row.study_version,
+            run_id=row.run_id,
+            data_status="main_study",
+            script=script,
+            condition=row.context_condition,
+            model_slot=row.model_slot,
+            model_id=row.requested_model_id,
+            repetition=row.repetition,
+            generation=generation_for_model(models, row.model_slot, row.repetition),
+            configuration_version=models.version,
+            configuration_hash=configuration_bundle_hash(scripts, histories, models),
+        ),
+        script=script,
+        prefix=prefix,
+    )
+    save_job_state(
+        tmp_path / "private" / "main-study-job" / "state.json",
+        StudyJobState(
+            status=JobStatus.BLOCKED,
+            message="Collection stopped after non-retryable error: upstream_http_402.",
+        ),
+    )
+
+    app, network_attempts = _offline_app(monkeypatch, tmp_path)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-only")
+    _navigate(app, "Collection")
+    _assert_no_exceptions(app)
+    assert any("upstream provider returned HTTP 402" in warning.value for warning in app.warning)
+    confirmation = next(
+        checkbox for checkbox in app.checkbox if "first missing response" in checkbox.label
+    )
+    assert _button(app, "Resume Main Study").disabled is True
+    confirmation.set_value(True)
+    app.run(timeout=60)
+    assert _button(app, "Resume Main Study").disabled is False
     assert network_attempts == []
 
 

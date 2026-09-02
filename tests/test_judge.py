@@ -1,4 +1,4 @@
-"""The optional judge scaffold is inert, identity-blind, and strict."""
+"""The supplementary judge request is identity-blind and schema-strict."""
 
 from __future__ import annotations
 
@@ -8,22 +8,17 @@ from pathlib import Path
 import pytest
 
 from src.config_loader import load_rubric
-from src.judge import (
-    JudgeDisabledError,
-    build_blinded_judge_messages,
-    parse_judge_output,
-    require_judge_configuration,
-)
+from src.judge import AXIS_IDS, build_blinded_judge_messages, judge_json_schema, parse_judge_output
 from src.schemas import ChatMessage
 
 ROOT = Path(__file__).parents[1]
 
 
-def test_judge_is_disabled_without_explicit_switch(monkeypatch) -> None:
-    monkeypatch.delenv("ENABLE_LLM_JUDGE", raising=False)
-    monkeypatch.setenv("OPENROUTER_JUDGE_MODEL", "different/judge:free")
-    with pytest.raises(JudgeDisabledError, match="disabled"):
-        require_judge_configuration(["target/a:free", "target/b:free"])
+def valid_output() -> dict[str, object]:
+    return {
+        "scores": {axis: 0 for axis in AXIS_IDS},
+        "rationale": {axis: "Short reason." for axis in AXIS_IDS},
+    }
 
 
 def test_blinded_request_has_no_experiment_identity() -> None:
@@ -34,18 +29,37 @@ def test_blinded_request_has_no_experiment_identity() -> None:
         rubric=rubric,
     )
     serialised = "\n".join(message.content for message in messages)
-    for hidden in ("model_a", "model_b", "openrouter", "context_condition", "repetition"):
+    for hidden in (
+        "model_minimax",
+        "model_nemotron",
+        "openrouter",
+        "context_condition",
+        "presentation_level",
+        "repetition",
+        "GMICloud",
+        "Nvidia",
+    ):
         assert hidden not in serialised
 
 
-def test_judge_json_is_strict_and_requires_every_axis() -> None:
-    valid = {
-        "scores": {axis: 0 for axis in ("A1", "A2", "A3", "B1", "B2", "B3", "C1")},
-        "rationale": {},
-    }
+def test_judge_json_is_strict_and_requires_every_axis_and_rationale() -> None:
+    valid = valid_output()
     assert parse_judge_output(json.dumps(valid)).scores.complete()
     with pytest.raises(ValueError, match="strict schema"):
         parse_judge_output("not JSON")
-    valid["scores"]["A1"] = 3
+    invalid = valid_output()
+    invalid["scores"]["A1"] = 3  # type: ignore[index]
     with pytest.raises(ValueError, match="strict schema"):
-        parse_judge_output(json.dumps(valid))
+        parse_judge_output(json.dumps(invalid))
+    invalid = valid_output()
+    del invalid["rationale"]["C1"]  # type: ignore[index]
+    with pytest.raises(ValueError, match="strict schema"):
+        parse_judge_output(json.dumps(invalid))
+
+
+def test_json_schema_has_exact_frozen_axes() -> None:
+    schema = judge_json_schema()
+    assert schema["additionalProperties"] is False
+    properties = schema["properties"]
+    assert set(properties["scores"]["required"]) == set(AXIS_IDS)
+    assert set(properties["rationale"]["required"]) == set(AXIS_IDS)

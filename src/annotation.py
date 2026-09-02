@@ -1,4 +1,4 @@
-"""Blinded human-annotation preparation, persistence, and reliability utilities.
+"""Blinded annotation preparation, persistence, and reliability utilities.
 
 This module deliberately keeps the annotator-facing item separate from the internal
 mapping back to a study run.  It contains no aggregate across the seven rubric axes:
@@ -44,6 +44,7 @@ TIDY_COLUMNS: tuple[str, ...] = (
     "blinded_item_id",
     "rating_round",
     "annotator_id",
+    "annotation_method",
     "axis_id",
     "score",
     "notes",
@@ -492,6 +493,7 @@ class AnnotationStore:
         item: BlindedAnnotationItem,
         *,
         annotator_id: str,
+        annotation_method: Literal["human", "model_generated"] = "human",
         scores: AxisScores | Mapping[str, int | str | None],
         notes: str = "",
         uncertain_adjudication_needed: bool = False,
@@ -512,6 +514,7 @@ class AnnotationStore:
             blinded_item_id=item.blinded_item_id,
             rating_round=item.rating_round,
             annotator_id=annotator_id.strip(),
+            annotation_method=annotation_method,
             scores=validated_scores,
             notes=notes,
             uncertain_adjudication_needed=uncertain_adjudication_needed,
@@ -621,6 +624,7 @@ def tidy_annotation_rows(
                     "blinded_item_id": event.blinded_item_id,
                     "rating_round": event.rating_round,
                     "annotator_id": event.annotator_id,
+                    "annotation_method": event.annotation_method,
                     "axis_id": axis_id,
                     "score": scores[axis_id],
                     "notes": event.notes,

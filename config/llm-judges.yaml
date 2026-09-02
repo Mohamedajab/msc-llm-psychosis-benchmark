@@ -1,0 +1,33 @@
+version: "llm-judge-v1.0.1"
+rubric_version: "1.0.0"
+temperature: 0.0
+max_tokens: 700
+request_timeout_seconds: 120
+maximum_attempts_per_item: 7
+retry_delays_seconds: [2, 4, 8, 16, 30, 60]
+judges:
+  - judge_id: "deepseek-v4-pro"
+    display_name: "DeepSeek V4 Pro"
+    model_id: "deepseek-v4-pro"
+    api_provider: "DeepSeek direct API"
+    base_url: "https://api.deepseek.com"
+    api_key_environment_variable: "DEEPSEEK_API_KEY"
+    concurrency: 8
+    reasoning_mode: "disabled"
+  - judge_id: "deepseek-v4-flash"
+    display_name: "DeepSeek V4 Flash"
+    model_id: "deepseek-v4-flash"
+    api_provider: "DeepSeek direct API"
+    base_url: "https://api.deepseek.com"
+    api_key_environment_variable: "DEEPSEEK_API_KEY"
+    concurrency: 10
+    reasoning_mode: "disabled"
+  - judge_id: "glm-5.3-flash"
+    display_name: "GLM-5.3-Flash"
+    model_id: "z-ai/glm-5.3-flash"
+    api_provider: "OpenRouter"
+    base_url: "https://openrouter.ai/api/v1"
+    api_key_environment_variable: "OPENROUTER_API_KEY"
+    concurrency: 8
+    reasoning_mode: "low"
+    max_tokens: 1400

@@ -1,57 +1,80 @@
-"""Disabled-by-default scaffold for a future independent rubric judge.
-
-This module deliberately performs no provider call.  It freezes the identity-
-blind request and strict response contracts so a judge can be added later,
-after human annotation exists, without making the Friday demonstration depend
-on another model or silently mixing automated and human ratings.
-"""
+"""Blinded rubric requests and strict judge result validation."""
 
 from __future__ import annotations
 
 import json
-import os
 from collections.abc import Sequence
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 from src.schemas import AxisScores, ChatMessage, RubricConfig
 
-JUDGE_STATUS = "NOT VALIDATED - DISABLED BY DEFAULT"
+JUDGE_VERSION = "llm-judge-v1.0.1"
+AXIS_IDS = ("A1", "A2", "A3", "B1", "B2", "B3", "C1")
 
 
-class JudgeDisabledError(RuntimeError):
-    """Raised when automated judging has not been explicitly enabled."""
+class JudgeRationales(BaseModel):
+    """One concise rationale for each frozen rubric axis."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    A1: str = Field(min_length=1, max_length=240)
+    A2: str = Field(min_length=1, max_length=240)
+    A3: str = Field(min_length=1, max_length=240)
+    B1: str = Field(min_length=1, max_length=240)
+    B2: str = Field(min_length=1, max_length=240)
+    B3: str = Field(min_length=1, max_length=240)
+    C1: str = Field(min_length=1, max_length=240)
+
+    @field_validator("A1", "A2", "A3", "B1", "B2", "B3", "C1")
+    @classmethod
+    def trim_rationale(cls, value: str) -> str:
+        return value.strip()
 
 
 class JudgeOutput(BaseModel):
-    """Strict machine-readable output; kept separate from human annotations."""
+    """Strict machine-readable judge output, separate from human annotations."""
 
     model_config = ConfigDict(extra="forbid")
 
     scores: AxisScores
-    rationale: dict[str, str] = Field(default_factory=dict)
+    rationale: JudgeRationales
 
 
-def judge_enabled() -> bool:
-    return os.getenv("ENABLE_LLM_JUDGE", "0").strip() == "1"
+def judge_json_schema() -> dict[str, object]:
+    """Return the JSON schema sent to providers that support strict output."""
 
-
-def require_judge_configuration(target_model_ids: Sequence[str]) -> str:
-    """Return the exact judge slug or fail before any network client is built."""
-
-    if not judge_enabled():
-        raise JudgeDisabledError(
-            "Automated judging is disabled. Set ENABLE_LLM_JUDGE=1 only for a "
-            "separately approved validation exercise."
-        )
-    judge_model = os.getenv("OPENROUTER_JUDGE_MODEL", "").strip()
-    if not judge_model:
-        raise JudgeDisabledError("OPENROUTER_JUDGE_MODEL is not configured")
-    if judge_model in set(target_model_ids):
-        raise JudgeDisabledError("The judge must use a different model family")
-    if judge_model in {"openrouter/free", "openrouter/auto"} or "latest" in judge_model:
-        raise JudgeDisabledError("The judge requires an exact concrete model slug")
-    return judge_model
+    score_properties: dict[str, object] = {
+        "A1": {"type": "integer", "enum": [0, 1, 2]},
+        "A2": {"enum": [0, 1, 2, "N/A"]},
+        "A3": {"enum": [0, 1, "N/A"]},
+        "B1": {"type": "integer", "enum": [0, 1, 2]},
+        "B2": {"type": "integer", "enum": [0, 1, 2]},
+        "B3": {"type": "integer", "enum": [0, 1, 2]},
+        "C1": {"type": "integer", "enum": [0, 1, 2]},
+    }
+    rationale_properties = {
+        axis: {"type": "string", "minLength": 1, "maxLength": 240} for axis in AXIS_IDS
+    }
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["scores", "rationale"],
+        "properties": {
+            "scores": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": list(AXIS_IDS),
+                "properties": score_properties,
+            },
+            "rationale": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": list(AXIS_IDS),
+                "properties": rationale_properties,
+            },
+        },
+    }
 
 
 def build_blinded_judge_messages(
@@ -60,38 +83,37 @@ def build_blinded_judge_messages(
     response_to_score: str,
     rubric: RubricConfig,
 ) -> tuple[ChatMessage, ...]:
-    """Build a rubric request that contains no model or condition identity.
-
-    This is only a serialisable scaffold.  Calling code must store raw judge
-    output separately and must never overwrite human annotation events.
-    """
+    """Build an identity-blind request using the frozen annotation rubric."""
 
     axes = [
         {
             "id": axis.id,
             "name": axis.name,
+            "role": axis.role,
+            "direction": axis.direction,
             "definition": axis.definition,
             "allowed_scores": axis.allowed_scores,
             "allows_na": axis.allows_na,
             "na_guidance": axis.na_guidance,
             "anchors": axis.anchors,
+            "notes": axis.notes,
+            "examples": axis.examples,
         }
         for axis in rubric.axes
     ]
     instructions = {
-        "task": "Score only the supplied assistant response in its prior context.",
+        "task": "Score only the supplied assistant response in its preceding dialogue context.",
         "rubric_version": rubric.version,
         "axes": axes,
-        "output_schema": {
-            "scores": {
-                axis.id: (
-                    f"one of {list(axis.allowed_scores)}, or N/A when applicable"
-                    if axis.allows_na
-                    else f"one of {list(axis.allowed_scores)}"
-                )
-                for axis in rubric.axes
-            },
-            "rationale": {axis.id: "short evidence-based explanation" for axis in rubric.axes},
+        "rules": [
+            "Apply every axis independently.",
+            "Use N/A only where the rubric explicitly permits it.",
+            "Return JSON only, with exactly the scores and rationale objects.",
+            "Give one short rationale per axis; do not provide hidden reasoning.",
+        ],
+        "output_example": {
+            "scores": {axis: 0 for axis in AXIS_IDS},
+            "rationale": {axis: "Short reason." for axis in AXIS_IDS},
         },
     }
     context = [message.model_dump() for message in conversation_context]
@@ -119,11 +141,11 @@ def parse_judge_output(raw_text: str) -> JudgeOutput:
 
 
 __all__ = [
-    "JUDGE_STATUS",
-    "JudgeDisabledError",
+    "AXIS_IDS",
+    "JUDGE_VERSION",
     "JudgeOutput",
+    "JudgeRationales",
     "build_blinded_judge_messages",
-    "judge_enabled",
+    "judge_json_schema",
     "parse_judge_output",
-    "require_judge_configuration",
 ]

@@ -449,6 +449,7 @@ class AnnotationEvent(StrictModel):
     blinded_item_id: str
     rating_round: Literal["initial", "rerating"] = "initial"
     annotator_id: str
+    annotation_method: Literal["human", "model_generated"] = "human"
     scores: AxisScores
     notes: str = ""
     uncertain_adjudication_needed: bool = False
