@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import httpx
@@ -239,6 +240,27 @@ def test_worker_reservation_blocks_a_second_launch(tmp_path: Path) -> None:
     execution.release_worker(tmp_path, token)
 
 
+def test_worker_lock_rejects_bad_shape_and_expires_unclaimed_reservation(
+    tmp_path: Path,
+) -> None:
+    lock_path = tmp_path / "worker.lock"
+    lock_path.write_text("[]", encoding="utf-8")
+    with pytest.raises(JudgeExecutionError, match="malformed"):
+        execution.read_worker_lock(tmp_path)
+
+    lock_path.write_text(
+        json.dumps(
+            {
+                "token": "stale",
+                "pid": 0,
+                "created_at": (datetime.now(UTC) - timedelta(minutes=3)).isoformat(),
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert execution.worker_is_active(tmp_path) is False
+
+
 def test_safe_stop_is_not_cleared_by_worker_start(monkeypatch, tmp_path: Path) -> None:
     configuration = load_judge_configuration(CONFIGURATION)
     spec = configuration.judges[0]
@@ -377,6 +399,77 @@ def test_malformed_output_retries_and_permanent_auth_does_not(monkeypatch, tmp_p
         )
     )
     assert attempts == 1
+
+
+def test_resume_counts_saved_attempts_and_stops_a_judge_after_permanent_failure(
+    monkeypatch, tmp_path: Path
+) -> None:
+    configuration = load_judge_configuration(CONFIGURATION).model_copy(
+        update={
+            "retry_delays_seconds": (0, 0, 0, 0, 0, 0),
+            "judges": tuple(
+                spec.model_copy(update={"concurrency": 1})
+                for spec in load_judge_configuration(CONFIGURATION).judges
+            ),
+        }
+    )
+    spec = select_judges(configuration, ["deepseek-v4-pro"])[0]
+    judged_items = [item(1), item(2)]
+    rubric = load_rubric(ROOT / "config" / "rubric.yaml")
+    request_hash, _ = execution.request_hash_for_item(
+        item=judged_items[0],
+        rubric=rubric,
+        configuration=configuration,
+        spec=spec,
+    )
+    save_error(
+        tmp_path,
+        spec,
+        JudgeErrorEvent(
+            event_id="saved",
+            judge_configuration_version=configuration.version,
+            blinded_item_id=judged_items[0].blinded_item_id,
+            source_response_hash=judged_items[0].source_response_hash,
+            request_hash=request_hash,
+            judge_id=spec.judge_id,
+            requested_model_id=spec.model_id,
+            api_provider=spec.api_provider,
+            timestamp="2026-09-02T00:00:00Z",
+            attempt_number=1,
+            retryable=True,
+            error_type="http_429",
+            http_status=429,
+            response_status="RETRYABLE_ERROR",
+        ),
+    )
+    calls = 0
+    monkeypatch.setattr(execution, "load_judge_configuration", lambda path: configuration)
+    monkeypatch.setattr(
+        execution,
+        "load_blinded_judge_items",
+        lambda **kwargs: (judged_items, "bundle-hash"),
+    )
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "test-only")
+
+    async def fail_permanently(**kwargs):  # noqa: ANN003
+        nonlocal calls
+        calls += 1
+        raise RequestFailure("http_401", retryable=False, http_status=401)
+
+    monkeypatch.setattr(execution, "_make_request", fail_permanently)
+    asyncio.run(
+        run_judges(
+            repository_root=ROOT,
+            raw_root=tmp_path / "raw",
+            judge_root=tmp_path,
+            configuration_path=CONFIGURATION,
+            judge_ids=[spec.judge_id],
+        )
+    )
+    assert calls == 1
+    errors = execution.load_errors(tmp_path, spec)
+    assert sorted(event.attempt_number for event in errors) == [1, 2]
+    assert all(event.blinded_item_id == judged_items[0].blinded_item_id for event in errors)
 
 
 def test_saved_success_with_changed_source_fails_closed(tmp_path: Path) -> None:

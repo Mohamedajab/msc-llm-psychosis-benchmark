@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import shutil
 from pathlib import Path
+from types import SimpleNamespace
 
 import dotenv
 import httpx
@@ -323,6 +324,15 @@ def test_collection_page_requires_confirmation_for_upstream_402(monkeypatch, tmp
         ),
     )
 
+    monkeypatch.setattr(
+        "src.main_study.evaluate_main_study_readiness",
+        lambda **_: SimpleNamespace(
+            blockers=(),
+            active_bundle="PASS",
+            governance="PASS",
+            main_study="READY",
+        ),
+    )
     app, network_attempts = _offline_app(monkeypatch, tmp_path)
     monkeypatch.setenv("OPENROUTER_API_KEY", "test-only")
     _navigate(app, "Collection")

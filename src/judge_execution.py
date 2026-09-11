@@ -11,7 +11,7 @@ import sys
 import time
 import uuid
 from collections.abc import Mapping, Sequence
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import Any, Literal
@@ -42,9 +42,7 @@ from src.storage import RawRunStore, atomic_write_json, safe_filename
 
 EXPECTED_ITEMS = 432
 LEGACY_JUDGE_VERSION = "llm-judge-v1.0.0"
-LEGACY_JUDGE_CONFIGURATION_HASH = (
-    "136e5d46abda65b4e65574ab255c347d66ec0d09645c095df8767107f4f6bb8a"
-)
+LEGACY_JUDGE_CONFIGURATION_HASH = "136e5d46abda65b4e65574ab255c347d66ec0d09645c095df8767107f4f6bb8a"
 LEGACY_DEEPSEEK_CONFIGURATIONS = frozenset(
     {
         (LEGACY_JUDGE_VERSION, LEGACY_JUDGE_CONFIGURATION_HASH),
@@ -81,6 +79,10 @@ def utc_now() -> datetime:
 
 class JudgeExecutionError(RuntimeError):
     """Raised when judge collection cannot proceed safely."""
+
+
+class PermanentJudgeFailure(RuntimeError):
+    """Stops one judge queue after a non-retryable item failure."""
 
 
 class JudgeSpec(BaseModel):
@@ -849,28 +851,57 @@ async def _judge_one_item(
         spec=spec,
     )
     config_hash = judge_configuration_hash(configuration)
-    for attempt in range(1, configuration.maximum_attempts_per_item + 1):
+    prior_errors = [
+        event
+        for event in load_errors(judge_root, spec)
+        if event.blinded_item_id == item.blinded_item_id
+    ]
+    for event in prior_errors:
+        if (
+            event.judge_configuration_version != configuration.version
+            or event.source_response_hash != item.source_response_hash
+            or event.request_hash != request_hash
+            or event.requested_model_id != spec.model_id
+            or event.api_provider != spec.api_provider
+        ):
+            raise JudgeExecutionError(f"Saved error evidence does not match {item.blinded_item_id}")
+    if any(not event.retryable for event in prior_errors):
+        raise PermanentJudgeFailure(
+            f"{spec.judge_id} has a saved permanent failure for {item.blinded_item_id}"
+        )
+    attempts_used = len(prior_errors)
+    if attempts_used >= configuration.maximum_attempts_per_item:
+        raise PermanentJudgeFailure(f"{spec.judge_id} exhausted retries for {item.blinded_item_id}")
+
+    for attempt in range(attempts_used + 1, configuration.maximum_attempts_per_item + 1):
         if stop_requested(judge_root):
             return False
         await limiter.acquire()
-        await monitor.update(
-            judge_id=spec.judge_id,
-            in_flight_delta=1,
-            concurrency=limiter.limit,
-        )
+        if stop_requested(judge_root):
+            await limiter.release(rate_limited=False, success=False)
+            return False
         failure: RequestFailure | None = None
         try:
-            output, payload, latency_ms = await _make_request(
-                client=client,
-                spec=spec,
-                configuration=configuration,
-                messages=messages,
-                api_key=api_key,
+            await monitor.update(
+                judge_id=spec.judge_id,
+                in_flight_delta=1,
+                concurrency=limiter.limit,
             )
-        except RequestFailure as error:
-            failure = error
-        finally:
-            await monitor.update(judge_id=spec.judge_id, in_flight_delta=-1)
+            try:
+                output, payload, latency_ms = await _make_request(
+                    client=client,
+                    spec=spec,
+                    configuration=configuration,
+                    messages=messages,
+                    api_key=api_key,
+                )
+            except RequestFailure as error:
+                failure = error
+            finally:
+                await monitor.update(judge_id=spec.judge_id, in_flight_delta=-1)
+        except BaseException:
+            await limiter.release(rate_limited=False, success=False)
+            raise
         if failure is None:
             await limiter.release(rate_limited=False, success=True)
             success = JudgeSuccess(
@@ -926,8 +957,12 @@ async def _judge_one_item(
                 response_status=("RETRYABLE_ERROR" if failure.retryable else "PERMANENT_ERROR"),
             ),
         )
-        if not failure.retryable or attempt >= configuration.maximum_attempts_per_item:
-            return False
+        if not failure.retryable:
+            raise PermanentJudgeFailure(f"{spec.judge_id} stopped after a permanent failure")
+        if attempt >= configuration.maximum_attempts_per_item:
+            raise PermanentJudgeFailure(
+                f"{spec.judge_id} exhausted retries for {item.blinded_item_id}"
+            )
         await monitor.update(
             judge_id=spec.judge_id,
             retry_delta=1,
@@ -966,6 +1001,7 @@ async def _run_judge_queue(
     for item in pending:
         queue.put_nowait(item)
     limiter = AdaptiveLimiter(spec.concurrency)
+    queue_failed = asyncio.Event()
     api_key = os.environ.get(spec.api_key_environment_variable, "").strip()
     if not api_key:
         raise JudgeExecutionError(f"Missing API key for {spec.judge_id}")
@@ -977,23 +1013,28 @@ async def _run_judge_queue(
     ) as client:
 
         async def worker() -> None:
-            while not queue.empty() and not stop_requested(judge_root):
+            while (
+                not queue.empty() and not stop_requested(judge_root) and not queue_failed.is_set()
+            ):
                 try:
                     item = queue.get_nowait()
                 except asyncio.QueueEmpty:
                     return
                 try:
-                    await _judge_one_item(
-                        item=item,
-                        spec=spec,
-                        configuration=configuration,
-                        rubric=rubric,
-                        judge_root=judge_root,
-                        client=client,
-                        api_key=api_key,
-                        limiter=limiter,
-                        monitor=monitor,
-                    )
+                    try:
+                        await _judge_one_item(
+                            item=item,
+                            spec=spec,
+                            configuration=configuration,
+                            rubric=rubric,
+                            judge_root=judge_root,
+                            client=client,
+                            api_key=api_key,
+                            limiter=limiter,
+                            monitor=monitor,
+                        )
+                    except PermanentJudgeFailure:
+                        queue_failed.set()
                 finally:
                     queue.task_done()
 
@@ -1074,7 +1115,14 @@ def read_worker_lock(judge_root: str | Path) -> dict[str, Any] | None:
         return None
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(value, dict):
+            raise ValueError
         if not isinstance(value.get("token"), str) or not isinstance(value.get("pid"), int):
+            raise ValueError
+        if not isinstance(value.get("created_at"), str):
+            raise ValueError
+        datetime.fromisoformat(value["created_at"])
+        if value["pid"] < 0:
             raise ValueError
         return value
     except (OSError, ValueError, json.JSONDecodeError) as error:
@@ -1085,8 +1133,10 @@ def worker_is_active(judge_root: str | Path) -> bool:
     value = read_worker_lock(judge_root)
     if value is None:
         return False
-    # A zero PID is a short-lived reservation while the subprocess starts.
-    return value["pid"] == 0 or _process_running(value["pid"])
+    if value["pid"] > 0:
+        return _process_running(value["pid"])
+    created = datetime.fromisoformat(value["created_at"])
+    return utc_now() - created < timedelta(minutes=2)
 
 
 def reserve_worker(judge_root: str | Path) -> str:

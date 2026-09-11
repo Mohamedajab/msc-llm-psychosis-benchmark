@@ -43,6 +43,7 @@ class ProviderErrorClassification:
     reason_code: str
     upstream_error_code: int | None = None
     upstream_error_message: str | None = None
+    manual_resume_allowed: bool = False
 
 
 def _error_code(value: Any) -> int | None:
@@ -85,6 +86,29 @@ def _embedded_error(result: ProviderResult) -> tuple[int | None, str | None]:
     return _error_code(legacy.get("code")), _safe_message(legacy.get("message"))
 
 
+def _classify_upstream_error(
+    code: int,
+    reason: str,
+    message: str | None,
+) -> ProviderErrorClassification:
+    if code == 402:
+        return ProviderErrorClassification(
+            retryable=False,
+            category="operator_recoverable",
+            reason_code=reason,
+            upstream_error_code=code,
+            upstream_error_message=message,
+            manual_resume_allowed=True,
+        )
+    return ProviderErrorClassification(
+        retryable=code in TRANSIENT_HTTP_CODES,
+        category="upstream_transient" if code in TRANSIENT_HTTP_CODES else "permanent",
+        reason_code=reason,
+        upstream_error_code=code,
+        upstream_error_message=message,
+    )
+
+
 def classify_provider_result(result: ProviderResult) -> ProviderErrorClassification:
     """Classify one result without changing its recorded provenance."""
 
@@ -110,27 +134,17 @@ def classify_provider_result(result: ProviderResult) -> ProviderErrorClassificat
     match = _UPSTREAM_ERROR.fullmatch(error_type)
     if match:
         code = int(match.group(1))
-        return ProviderErrorClassification(
-            code in TRANSIENT_HTTP_CODES,
-            "upstream_transient" if code in TRANSIENT_HTTP_CODES else "permanent",
+        return _classify_upstream_error(
+            code,
             error_type,
-            upstream_error_code=code,
-            upstream_error_message=_safe_message(
-                result.response_metadata.get("upstream_error_message")
-            ),
+            _safe_message(result.response_metadata.get("upstream_error_message")),
         )
 
     if error_type == "provider_body_error":
         code, message = _embedded_error(result)
         if code is not None:
             reason = f"upstream_http_{code}"
-            return ProviderErrorClassification(
-                code in TRANSIENT_HTTP_CODES,
-                "upstream_transient" if code in TRANSIENT_HTTP_CODES else "permanent",
-                reason,
-                upstream_error_code=code,
-                upstream_error_message=message,
-            )
+            return _classify_upstream_error(code, reason, message)
         return ProviderErrorClassification(False, "permanent", error_type)
 
     if error_type in TRANSPORT_ERROR_TYPES or error_type == "catalogue_preflight_error":

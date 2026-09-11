@@ -69,12 +69,6 @@ from src.main_study import (
     worker_is_active,
 )
 from src.manifest import STUDY_VERSION, generate_manifest, manifest_dataframe, validate_manifest
-from src.nlp_features import (
-    conversation_records_to_frame,
-    extract_response_features,
-    project_responses_2d,
-    top_tfidf_terms,
-)
 from src.provider_client import DeterministicFixtureProvider
 from src.schemas import (
     AnnotationEvent,
@@ -106,6 +100,9 @@ ACTIVE_BUNDLE_DIR = BASE_DIR / "protocol" / "study-v2.1.0"
 GOVERNANCE_PATH = CONFIG_DIR / "main-study-governance.yaml"
 JUDGE_CONFIGURATION_PATH = CONFIG_DIR / "llm-judges.yaml"
 JUDGE_ROOT = DATA_DIR / "private" / "judges"
+ANALYSIS_V1_DIR = DATA_DIR / "private" / "analysis-v1"
+ANALYSIS_V2_DIR = DATA_DIR / "private" / "analysis-v2"
+ANALYSIS_V3_DIR = DATA_DIR / "private" / "analysis-v3"
 
 MAIN_STUDY_BLOCKER_MESSAGES = {
     "active_bundle_not_created": "Active study bundle has not been created.",
@@ -782,7 +779,7 @@ def render_main_study() -> None:
                     ("Active bundle", current.active_bundle),
                     ("Governance", current.governance),
                     ("Main study", current.main_study),
-                    ("Network requests during preflight", current.network_requests),
+                    ("Network requests during preflight", str(current.network_requests)),
                 ],
                 columns=["Item", "Status"],
             ),
@@ -805,6 +802,7 @@ def render_main_study() -> None:
     confirmed = st.checkbox(
         confirmation_text,
         disabled=not can_launch,
+        key="main_study_launch_confirmed",
     )
     if not can_launch:
         st.caption(f"{action} is disabled until all preflight requirements are complete.")
@@ -886,6 +884,10 @@ def _metadata_frame(record: ConversationRecord) -> pd.DataFrame:
 def render_provenance(*, show_header: bool = True) -> None:
     if show_header:
         st.header("Runs & provenance")
+    st.caption(
+        "This view covers local fixture and technical-run records. "
+        "Completed main-study evidence is summarised in Study audit."
+    )
     records, load_errors = load_available_records()
     if load_errors:
         st.error("Some raw records could not be loaded.")
@@ -1014,7 +1016,7 @@ def render_annotation(configuration: LocalConfiguration) -> None:
     store = AnnotationStore(ANNOTATION_LOG)
     annotator_id = st.text_input(
         "Pseudonymous annotator ID",
-        value="annotator_01",
+        value="annotator_1",
         help="Use a stable pseudonym; do not enter a name or email address.",
     ).strip()
     try:
@@ -1142,6 +1144,13 @@ def render_nlp(
     *,
     show_header: bool = True,
 ) -> None:
+    from src.nlp_features import (
+        conversation_records_to_frame,
+        extract_response_features,
+        project_responses_2d,
+        top_tfidf_terms,
+    )
+
     if show_header:
         st.header("Exploratory NLP")
     st.write(
@@ -1508,30 +1517,500 @@ def render_primary_outcomes(
     st.caption("A1, A2 and A3 remain separate primary outcomes. No combined score is used.")
 
 
+ANALYSIS_LEVEL_LABELS = {
+    "control": "Control",
+    "ambiguous": "Ambiguous",
+    "fixed_belief": "Fixed belief",
+    "model_minimax": "MiniMax M3",
+    "model_nemotron": "NVIDIA Nemotron 3 Super",
+    "no_preloaded_context": "No preloaded context",
+    "standardised_preloaded_context": "Standardised preloaded context",
+    "ai_relationship": "AI relationship",
+    "monitoring": "Monitoring",
+    "personal_messages": "Personal messages",
+}
+
+
+@st.cache_data(show_spinner=False)
+def load_frozen_analysis_tables() -> dict[str, pd.DataFrame]:
+    """Load the checked analysis outputs without recalculating the statistics."""
+    paths = {
+        "presentation": ANALYSIS_V1_DIR / "primary" / "human_by_presentation.csv",
+        "model": ANALYSIS_V1_DIR / "primary" / "human_by_model.csv",
+        "context": ANALYSIS_V1_DIR / "primary" / "human_by_context.csv",
+        "presentation_turn": (ANALYSIS_V1_DIR / "primary" / "human_by_presentation_and_turn.csv"),
+        "human_turn": ANALYSIS_V1_DIR / "primary" / "human_turn_level.csv",
+        "conversation": (
+            ANALYSIS_V1_DIR / "trajectories" / "human_conversation_trajectory_summary.csv"
+        ),
+        "rq1": ANALYSIS_V2_DIR / "tables" / "rq1_presentation_level_tests.csv",
+        "rq2": ANALYSIS_V2_DIR / "tables" / "rq2_model_tests.csv",
+        "rq3": ANALYSIS_V2_DIR / "tables" / "rq3_context_tests.csv",
+        "rq4_events": ANALYSIS_V2_DIR / "tables" / "rq4_trajectory_events.csv",
+        "rq4_turn_a1": ANALYSIS_V2_DIR / "tables" / "rq4_turn_level_a1_descriptives.csv",
+        "all_axes": ANALYSIS_V3_DIR / "tables" / "conversation_all_axes.csv",
+        "exploratory": ANALYSIS_V3_DIR / "tables" / "exploratory_axes_main_effects.csv",
+        "theme": ANALYSIS_V3_DIR / "tables" / "theme_effects.csv",
+        "model_presentation": (
+            ANALYSIS_V3_DIR / "tables" / "model_by_presentation_interactions.csv"
+        ),
+        "presentation_time": (ANALYSIS_V3_DIR / "tables" / "presentation_by_time_interactions.csv"),
+        "judge_agreement": (ANALYSIS_V3_DIR / "tables" / "human_vs_three_judge_majority.csv"),
+    }
+    missing = [str(path) for path in paths.values() if not path.is_file()]
+    if missing:
+        raise FileNotFoundError("Missing frozen analysis output: " + ", ".join(missing))
+    tables = {name: pd.read_csv(path) for name, path in paths.items()}
+    if len(tables["human_turn"]) != 432 or len(tables["conversation"]) != 72:
+        raise ValueError("Frozen analysis outputs do not contain the complete study")
+    if len(tables["judge_agreement"]) != 7:
+        raise ValueError("Frozen judge-agreement output does not contain all seven axes")
+    return tables
+
+
+def _analysis_label(value: object) -> str:
+    text = str(value)
+    return ANALYSIS_LEVEL_LABELS.get(text, text.replace("_", " ").title())
+
+
+def _significant_rows(frame: pd.DataFrame) -> pd.DataFrame:
+    return frame[frame["significant_0_05"].astype(str).str.lower().eq("true")].copy()
+
+
+def _primary_descriptive_chart(
+    frame: pd.DataFrame,
+    *,
+    x_column: str,
+    title: str,
+    category_order: Sequence[str],
+) -> None:
+    chart_data = frame[frame["axis"].isin(["A1", "A2", "A3"])].copy()
+    chart_data["Group"] = chart_data[x_column].map(_analysis_label)
+    figure = px.bar(
+        chart_data,
+        x="Group",
+        y="mean",
+        color="axis",
+        barmode="group",
+        text_auto=".2f",
+        category_orders={
+            "Group": [_analysis_label(level) for level in category_order],
+            "axis": ["A1", "A2", "A3"],
+        },
+        labels={"mean": "Mean rating", "axis": "Outcome"},
+        title=title,
+    )
+    figure.update_yaxes(range=[0, 2])
+    figure.update_layout(legend_title_text="Outcome")
+    st.plotly_chart(figure, use_container_width=True)
+    st.caption(
+        "A1 and A2 are scored 0–2; A3 is scored 0–1. Structural N/A ratings are excluded from each mean, as specified in the frozen analysis."
+    )
+
+
+def _matched_results_display(frame: pd.DataFrame) -> pd.DataFrame:
+    displayed = frame.copy()
+    displayed["Comparison"] = displayed.apply(
+        lambda row: f"{_analysis_label(row['level_a'])} → {_analysis_label(row['level_b'])}",
+        axis=1,
+    )
+    displayed["Outcome"] = displayed["outcome"].str.replace("mean_", "", regex=False)
+    displayed["95% bootstrap CI"] = displayed.apply(
+        lambda row: f"[{row['bootstrap_95_ci_lower']:.6f}, {row['bootstrap_95_ci_upper']:.6f}]",
+        axis=1,
+    )
+    displayed["Interpretation"] = displayed["significant_0_05"].map(
+        lambda value: (
+            "Supported after Holm correction"
+            if str(value).lower() == "true"
+            else "Not supported after Holm correction"
+        )
+    )
+    return displayed[
+        [
+            "Comparison",
+            "Outcome",
+            "n_pairs",
+            "mean_difference",
+            "95% bootstrap CI",
+            "p_value",
+            "p_holm",
+            "rank_biserial_effect",
+            "Interpretation",
+        ]
+    ].rename(
+        columns={
+            "n_pairs": "n pairs",
+            "mean_difference": "Paired mean difference",
+            "p_value": "Wilcoxon p",
+            "p_holm": "Holm-adjusted p",
+            "rank_biserial_effect": "Rank-biserial effect",
+        }
+    )
+
+
+def _show_matched_results(frame: pd.DataFrame, *, key: str) -> None:
+    displayed = _matched_results_display(frame)
+    numeric = [
+        "Paired mean difference",
+        "Wilcoxon p",
+        "Holm-adjusted p",
+        "Rank-biserial effect",
+    ]
+    displayed[numeric] = displayed[numeric].round(6)
+    st.dataframe(displayed, hide_index=True, use_container_width=True)
+    st.caption("Differences are the second named level minus the first named level.")
+    with st.expander("View matched comparison data"):
+        st.dataframe(frame, hide_index=True, use_container_width=True)
+        st.download_button(
+            "Download matched comparison CSV",
+            data=frame.to_csv(index=False),
+            file_name=f"{key}_matched_comparisons.csv",
+            mime="text/csv",
+            key=f"download_{key}_matched",
+        )
+
+
+def _render_analysis_summary(tables: dict[str, pd.DataFrame]) -> None:
+    metrics = st.columns(4)
+    metrics[0].metric("Conversations", "72")
+    metrics[1].metric("Assistant responses", "432")
+    metrics[2].metric("Human annotation", "100%")
+    metrics[3].metric("Supplementary LLM judges", "3")
+
+    st.subheader("Main findings")
+    left, right = st.columns(2)
+    left.info("Presentation level produced the clearest supported primary differences.")
+    right.info("Ambiguous presentations were particularly challenging.")
+    left.info("No overall model difference on A1, A2 or A3 was supported after correction.")
+    right.info("No overall context effect on A1, A2 or A3 was supported after correction.")
+    st.info("Multi-turn analysis revealed distinct onset, persistence and recovery patterns.")
+
+    st.subheader("Primary-outcome overview")
+    _primary_descriptive_chart(
+        tables["presentation"],
+        x_column="level",
+        title="Mean human rating by presentation level",
+        category_order=("control", "ambiguous", "fixed_belief"),
+    )
+    st.caption("Human annotation is the primary evidence source. No combined score is used.")
+    with st.expander("View underlying conversation data"):
+        st.dataframe(tables["conversation"], hide_index=True, use_container_width=True)
+        st.download_button(
+            "Download conversation summary CSV",
+            data=tables["conversation"].to_csv(index=False),
+            file_name="human_conversation_trajectory_summary.csv",
+            mime="text/csv",
+        )
+
+
+def _render_rq1(tables: dict[str, pd.DataFrame]) -> None:
+    st.subheader("RQ1 — Presentation level")
+    st.write(
+        "How did the chatbot responses differ across control, ambiguous and fixed-belief presentations?"
+    )
+    _primary_descriptive_chart(
+        tables["presentation"],
+        x_column="level",
+        title="A1, A2 and A3 by presentation level",
+        category_order=("control", "ambiguous", "fixed_belief"),
+    )
+    st.markdown("**Matched primary comparisons**")
+    _show_matched_results(tables["rq1"], key="rq1")
+
+    supported = _significant_rows(tables["rq1"])
+    if not supported.empty:
+        st.success(
+            "Supported differences were found for control → ambiguous on A1 and A2, and for ambiguous → fixed belief on A2 and A3."
+        )
+    st.info(
+        "The pattern was non-monotonic: ambiguous presentations were more challenging than control, while explicit fixed-belief presentations sometimes elicited stronger safety behaviour than ambiguous presentations."
+    )
+
+
+def _render_rq2(tables: dict[str, pd.DataFrame]) -> None:
+    st.subheader("RQ2 — Model comparison")
+    st.write("How did MiniMax M3 and NVIDIA Nemotron 3 Super compare on the primary outcomes?")
+    _primary_descriptive_chart(
+        tables["model"],
+        x_column="level",
+        title="A1, A2 and A3 by model",
+        category_order=("model_minimax", "model_nemotron"),
+    )
+    _show_matched_results(tables["rq2"], key="rq2")
+    if _significant_rows(tables["rq2"]).empty:
+        st.info(
+            "No primary A1/A2/A3 MiniMax-versus-Nemotron comparison was statistically supported after Holm correction."
+        )
+
+
+def _render_rq3(tables: dict[str, pd.DataFrame]) -> None:
+    st.subheader("RQ3 — Preloaded context")
+    st.write("How did standardised preloaded context affect the primary outcomes?")
+    _primary_descriptive_chart(
+        tables["context"],
+        x_column="level",
+        title="A1, A2 and A3 by context condition",
+        category_order=("no_preloaded_context", "standardised_preloaded_context"),
+    )
+    _show_matched_results(tables["rq3"], key="rq3")
+    if _significant_rows(tables["rq3"]).empty:
+        st.info(
+            "No primary A1/A2/A3 overall context comparison was statistically supported after Holm correction."
+        )
+
+
+def _render_rq4(tables: dict[str, pd.DataFrame]) -> None:
+    st.subheader("RQ4 — Multi-turn trajectories")
+    st.write("How did the annotated outcomes develop across the six conversation turns?")
+    turn_data = tables["presentation_turn"].copy()
+    turn_data["Presentation"] = turn_data["presentation_level"].map(_analysis_label)
+    chart_columns = st.columns(2)
+    for column, axis in zip(chart_columns, ("A1", "A3"), strict=True):
+        axis_data = turn_data[turn_data["axis"].eq(axis)]
+        figure = px.line(
+            axis_data,
+            x="turn_number",
+            y="mean",
+            color="Presentation",
+            markers=True,
+            category_orders={"Presentation": ["Control", "Ambiguous", "Fixed belief"]},
+            labels={"turn_number": "Turn", "mean": f"Mean {axis}"},
+            title=f"Mean {axis} by turn",
+        )
+        figure.update_xaxes(dtick=1)
+        figure.update_yaxes(range=[0, 2 if axis == "A1" else 1])
+        column.plotly_chart(figure, use_container_width=True)
+    st.caption(
+        "Lines are presentation-level means, not 72 individual conversation traces. Structural N/A handling follows the frozen analysis."
+    )
+
+    st.markdown("**Onset, intervention, persistence and recovery**")
+    events = tables["rq4_events"].copy()
+    events["Group"] = events["level"].map(_analysis_label)
+    events["Factor"] = events["factor"].map(
+        {
+            "model_slot": "Model",
+            "presentation_level": "Presentation",
+            "context_condition": "Context",
+            "theme": "Theme",
+        }
+    )
+    event_display = events[
+        [
+            "Factor",
+            "Group",
+            "n_conversations",
+            "conversations_with_A1_2",
+            "median_first_A1_2_turn",
+            "conversations_with_A3_intervention",
+            "median_first_A3_intervention_turn",
+            "recovery_rate_after_A1_2",
+            "mean_persistence_after_A1_2",
+        ]
+    ].rename(
+        columns={
+            "n_conversations": "Conversations",
+            "conversations_with_A1_2": "Ever A1=2",
+            "median_first_A1_2_turn": "Median A1=2 onset turn",
+            "conversations_with_A3_intervention": "A3 intervention",
+            "median_first_A3_intervention_turn": "Median first A3 turn",
+            "recovery_rate_after_A1_2": "Recovery rate",
+            "mean_persistence_after_A1_2": "Mean persistence",
+        }
+    )
+    st.dataframe(event_display, hide_index=True, use_container_width=True)
+
+    interaction = tables["presentation_time"]
+    interaction = interaction[
+        interaction["outcome"].eq("late_minus_early_A1")
+        & interaction["level_a"].eq("ambiguous")
+        & interaction["level_b"].eq("fixed_belief")
+    ]
+    if not interaction.empty and not _significant_rows(interaction).empty:
+        row = interaction.iloc[0]
+        st.success(
+            "Supported presentation × time interaction for A1 (fixed belief minus ambiguous): "
+            f"difference {row['mean_difference']:.6f}, 95% CI "
+            f"[{row['ci_lower']:.6f}, {row['ci_upper']:.6f}], "
+            f"Holm-adjusted p={row['p_holm']:.6f}, rank-biserial={row['rank_biserial']:.6f}."
+        )
+        st.write(
+            "A1 increased from early to late turns more in ambiguous conversations, whereas fixed-belief conversations moved in the opposite direction."
+        )
+    with st.expander("View turn-level data"):
+        st.dataframe(tables["human_turn"], hide_index=True, use_container_width=True)
+        st.download_button(
+            "Download turn-level CSV",
+            data=tables["human_turn"].to_csv(index=False),
+            file_name="human_turn_level.csv",
+            mime="text/csv",
+        )
+
+
+def _render_judge_agreement(tables: dict[str, pd.DataFrame]) -> None:
+    st.subheader("Human and LLM-judge agreement")
+    st.write("Three-judge majority ratings are compared with the frozen human annotations.")
+    agreement = tables["judge_agreement"].copy()
+    displayed = agreement[
+        [
+            "axis",
+            "numeric_pairs_for_kappa",
+            "numeric_exact_agreement",
+            "human_vs_majority_kappa",
+        ]
+    ].rename(
+        columns={
+            "axis": "Axis",
+            "numeric_pairs_for_kappa": "Items compared",
+            "numeric_exact_agreement": "Exact agreement",
+            "human_vs_majority_kappa": "Kappa",
+        }
+    )
+    displayed[["Exact agreement", "Kappa"]] = displayed[["Exact agreement", "Kappa"]].round(3)
+    st.dataframe(displayed, hide_index=True, use_container_width=True)
+    chart = displayed.melt(
+        id_vars="Axis",
+        value_vars=["Exact agreement", "Kappa"],
+        var_name="Measure",
+        value_name="Value",
+    )
+    figure = px.bar(
+        chart,
+        x="Axis",
+        y="Value",
+        color="Measure",
+        barmode="group",
+        text_auto=".3f",
+        title="Three-judge majority agreement with human ratings",
+    )
+    figure.update_yaxes(range=[0, 1])
+    st.plotly_chart(figure, use_container_width=True)
+    st.info(
+        "A1 and C1 had comparatively stronger agreement. A2, A3 and B3 were weaker. B2 had high exact agreement but much lower kappa, consistent with a prevalence effect."
+    )
+    st.caption(
+        "Human ratings remain the primary evidence source. These figures do not represent human inter-rater reliability; the study used one primary human annotator."
+    )
+    with st.expander("View judge agreement data"):
+        st.dataframe(agreement, hide_index=True, use_container_width=True)
+        st.download_button(
+            "Download judge agreement CSV",
+            data=agreement.to_csv(index=False),
+            file_name="human_vs_three_judge_majority.csv",
+            mime="text/csv",
+        )
+
+
+def _render_exploratory(
+    tables: dict[str, pd.DataFrame],
+    records: Sequence[ConversationRecord],
+) -> None:
+    st.subheader("Exploratory findings")
+    st.warning("These analyses are secondary and should be interpreted cautiously.")
+    exploratory = _significant_rows(tables["exploratory"])
+    themes = _significant_rows(tables["theme"])
+    interactions = _significant_rows(tables["model_presentation"])
+
+    st.markdown(
+        "- Ambiguous presentations had lower C1 than control.\n"
+        "- Nemotron had higher B1, B2 and B3, alongside higher C1, than MiniMax.\n"
+        "- Standardised preloaded context had lower C1 than no preloaded context.\n"
+        "- Monitoring had higher A1, A2 and B3 and lower C1 than AI relationship.\n"
+        "- Personal messages had higher A1 and lower B2 than AI relationship.\n"
+        "- Personal messages had lower A2 and B3 than monitoring.\n"
+        "- No model × presentation interaction was supported after Holm correction."
+    )
+    st.caption(
+        "Higher C1 indicates better challenge quality; higher A1/A2/B1/B2/B3 indicates more problematic behaviour."
+    )
+
+    supported = pd.concat([exploratory, themes], ignore_index=True, sort=False)
+    columns = [
+        "factor",
+        "level_a",
+        "level_b",
+        "outcome",
+        "n_pairs",
+        "mean_difference",
+        "ci_lower",
+        "ci_upper",
+        "p_holm",
+        "rank_biserial",
+    ]
+    st.dataframe(
+        supported[[column for column in columns if column in supported]],
+        hide_index=True,
+        use_container_width=True,
+    )
+    if interactions.empty:
+        st.info("No model × presentation interaction was supported after Holm correction.")
+
+    with st.expander("View all exploratory comparison data"):
+        st.markdown("**Exploratory main effects**")
+        st.dataframe(tables["exploratory"], hide_index=True, use_container_width=True)
+        st.markdown("**Theme effects**")
+        st.dataframe(tables["theme"], hide_index=True, use_container_width=True)
+        st.markdown("**Model × presentation interactions**")
+        st.dataframe(tables["model_presentation"], hide_index=True, use_container_width=True)
+        st.download_button(
+            "Download exploratory main-effects CSV",
+            data=tables["exploratory"].to_csv(index=False),
+            file_name="exploratory_axes_main_effects.csv",
+            mime="text/csv",
+        )
+
+    with st.expander("Exploratory lexical diagnostics"):
+        st.caption(
+            "Lexical drift, TF-IDF terms and the SVD map are descriptive diagnostics, not primary dissertation results."
+        )
+        if st.checkbox("Load exploratory lexical diagnostics", value=False):
+            render_nlp(records, show_header=False)
+
+
 def render_analysis(configuration: LocalConfiguration) -> None:
     render_page_header(
         "Analysis",
-        "Rubric ratings are shown by annotation set; lexical analysis remains exploratory.",
+        "Frozen human-annotation results, organised around the dissertation research questions.",
     )
     records, load_errors = load_available_records(RawRunStore(MAIN_STUDY_RAW_DIR))
     records = [record for record in records if record.header.data_status == "main_study"]
+    if not records:
+        render_empty_state("Results will appear after collection and blinded annotation.")
+        return
     if load_errors:
-        st.warning("Some main-study records could not be read and analysis is unavailable.")
-    primary_tab, trajectory_tab, nlp_tab = st.tabs(
-        ["Primary outcomes", "Trajectories", "Exploratory NLP"]
+        st.warning("Some raw records could not be read. The frozen result files are shown below.")
+    try:
+        tables = load_frozen_analysis_tables()
+    except (FileNotFoundError, OSError, ValueError, pd.errors.ParserError) as error:
+        st.error(f"Frozen analysis outputs could not be loaded: {error}")
+        return
+
+    summary, rq1, rq2, rq3, rq4, agreement, exploratory = st.tabs(
+        [
+            "Summary",
+            "RQ1 — Presentation",
+            "RQ2 — Models",
+            "RQ3 — Context",
+            "RQ4 — Multi-turn",
+            "Judge Agreement",
+            "Exploratory",
+        ]
     )
-    with primary_tab:
-        render_primary_outcomes(configuration, records)
-    with trajectory_tab:
-        if records:
-            render_trajectory(configuration, records, show_header=False)
-        else:
-            render_empty_state("Trajectories will appear after collection and annotation.")
-    with nlp_tab:
-        if records:
-            render_nlp(records, show_header=False)
-        else:
-            render_empty_state("Exploratory NLP will appear after main-study collection.")
+    with summary:
+        _render_analysis_summary(tables)
+    with rq1:
+        _render_rq1(tables)
+    with rq2:
+        _render_rq2(tables)
+    with rq3:
+        _render_rq3(tables)
+    with rq4:
+        _render_rq4(tables)
+    with agreement:
+        _render_judge_agreement(tables)
+    with exploratory:
+        _render_exploratory(tables, records)
 
 
 def render_qa(configuration: LocalConfiguration, *, show_header: bool = True) -> None:
@@ -1593,8 +2072,9 @@ def render_qa(configuration: LocalConfiguration, *, show_header: bool = True) ->
             mime="text/csv",
         )
 
-    records, raw_errors = load_available_records()
-    st.subheader("Local data completeness")
+    records, raw_errors = load_available_records(RawRunStore(MAIN_STUDY_RAW_DIR))
+    records = [record for record in records if record.header.data_status == "main_study"]
+    st.subheader("Main-study data completeness")
     data_metrics = st.columns(4)
     data_metrics[0].metric("Readable raw runs", len(records))
     data_metrics[1].metric(

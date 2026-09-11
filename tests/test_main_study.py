@@ -128,6 +128,18 @@ class EmbeddedUpstreamErrorAfterTwo(TargetProvider):
         )
 
 
+class OperatorRecoverable402(TargetProvider):
+    provider_name = "fixture"
+
+    def generate(self, *, model_id, messages, generation):  # noqa: ANN001
+        del messages, generation
+        return _technical_error(
+            "provider_body_error",
+            message=repr({"message": "Payment required", "code": 402}),
+            http_status=200,
+        ).model_copy(update={"requested_model_id": model_id})
+
+
 class HardStopProvider(FixtureProvider):
     def __init__(self, error_type: str) -> None:
         super().__init__()
@@ -455,6 +467,81 @@ def test_embedded_upstream_error_makes_blocked_study_safely_resumable(tmp_path: 
         store.append_success(resumed.turns[0])
 
 
+def test_upstream_402_requires_confirmation_and_resumes_exact_missing_request(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    scripts, histories, models, rows = planned_study(ROOT)
+    row = rows[0]
+    script = next(value for value in scripts if value.script_id == row.script_id)
+    prefix = next(value for value in histories if value.history_id == script.history_id)
+    store = RawRunStore(tmp_path / "raw")
+    failed = ConversationRunner(OperatorRecoverable402(), store).run_or_resume(
+        header=_header(row, scripts, histories, models),
+        script=script,
+        prefix=prefix,
+    )
+    error_path = next(store.run_directory(row.run_id).glob("turn-01-error-*.json"))
+    error_bytes = error_path.read_bytes()
+    state_path = tmp_path / "job" / "state.json"
+    save_job_state(
+        state_path,
+        StudyJobState(
+            status=JobStatus.BLOCKED,
+            message="Collection stopped after non-retryable error: upstream_http_402.",
+        ),
+    )
+
+    progress = load_study_progress(
+        repository_root=ROOT,
+        raw_root=store.root,
+        state_path=state_path,
+    )
+    request = next_study_request(repository_root=ROOT, raw_root=store.root)
+    assert progress.status == JobStatus.RESUMABLE
+    assert progress.operator_resume_required is True
+    assert progress.resume_reason == "upstream_http_402"
+    assert request is not None
+    assert request.turn_number == 1
+    assert request.request_payload_hash == failed.errors[0].request_payload_hash
+
+    monkeypatch.setattr(
+        main_study.subprocess,
+        "Popen",
+        lambda *_, **__: pytest.fail("worker must not start without confirmation"),
+    )
+    with pytest.raises(MainStudyError, match="explicit operator confirmation"):
+        main_study.launch_study_worker(
+            repository_root=ROOT,
+            job_root=state_path.parent,
+            raw_root=store.root,
+            pilot_v6_root=tmp_path / "pilot",
+            active_bundle_root=tmp_path / "bundle",
+            governance_path=tmp_path / "governance.yaml",
+            environ={},
+        )
+    assert main_study.read_worker_lock(state_path.parent) is None
+
+    provider = DeterministicFixtureProvider()
+    resumed = ConversationRunner(provider, store).run_or_resume(
+        header=failed.header,
+        script=script,
+        prefix=prefix,
+    )
+    assert len(resumed.turns) == 6
+    assert len(resumed.errors) == 1
+    assert resumed.turns[0].request_payload_hash == failed.errors[0].request_payload_hash
+    assert error_path.read_bytes() == error_bytes
+
+    complete_provider = DeterministicFixtureProvider()
+    ConversationRunner(complete_provider, store).run_or_resume(
+        header=failed.header,
+        script=script,
+        prefix=prefix,
+    )
+    assert complete_provider.calls == []
+
+
 def test_main_study_attempt_ceiling_remains_576() -> None:
     assert MAXIMUM_HTTP_ATTEMPTS == 576
 
@@ -573,7 +660,7 @@ def test_safe_stop_is_persisted_and_worker_stops_before_a_request(
 
 
 def test_retry_wait_is_simple_and_bounded() -> None:
-    assert [retry_wait_seconds(value) for value in (1, 2, 3, 4, 5)] == [30, 60, 120, 120, 120]
+    assert [retry_wait_seconds(value) for value in range(1, 8)] == [3, 6, 12, 24, 48, 60, 60]
 
 
 def test_worker_recovers_from_multiple_transient_errors(
@@ -618,7 +705,7 @@ def test_worker_recovers_from_multiple_transient_errors(
     )
     assert result == 0
     assert batches == 3
-    assert sleeps == [30, 60]
+    assert sleeps == [3, 6]
     state = load_job_state(tmp_path / "job" / "state.json")
     assert state.status == JobStatus.COMPLETE
     assert state.automatic_resumes == 2
@@ -673,7 +760,7 @@ def test_worker_recovers_from_embedded_upstream_502(
     )
     assert result == 0
     assert batches == 2
-    assert sleeps == [30]
+    assert sleeps == [3]
     state = load_job_state(tmp_path / "job" / "state.json")
     assert state.status == JobStatus.COMPLETE
     assert state.automatic_resumes == 1
@@ -746,7 +833,7 @@ def test_worker_blocks_an_unproductive_internal_cycle(
     assert "without saving a response" in state.message
 
 
-def test_worker_blocks_when_recovery_limit_is_exhausted(
+def test_worker_pauses_when_recovery_limit_is_exhausted(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     batches = 0
@@ -788,8 +875,11 @@ def test_worker_blocks_when_recovery_limit_is_exhausted(
     assert result == 1
     assert batches == 3
     state = load_job_state(tmp_path / "job" / "state.json")
-    assert state.status == JobStatus.BLOCKED
-    assert "automatic-resume limit" in state.message
+    assert state.status == JobStatus.RESUMABLE
+    assert state.message == (
+        "Collection paused after repeated provider errors. All completed responses are "
+        "preserved. Resume later from the first missing response."
+    )
 
 
 def test_pilot_v6_pass_is_recomputed_without_changing_evidence() -> None:

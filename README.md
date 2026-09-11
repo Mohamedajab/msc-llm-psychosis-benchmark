@@ -1,90 +1,473 @@
-# MSc LLM psychosis benchmark
+# Controlled Multi-Turn LLM Psychosis-Related Response Benchmark
 
-An auditable, configuration-driven benchmark of how two exact language-model endpoints
-respond across six-turn conversations containing controlled unsupported interpretations.
-Main-study collection is in progress. Partial responses are immutable research evidence but are
-not results and must not be analysed as a completed study.
+MSc Advanced Computer Science dissertation research artefact.
 
-## Prospective Study V2 design
+This repository implements a controlled, reproducible benchmark for evaluating how large language model chatbots respond to psychosis-related unsupported interpretations across six-turn conversations.
 
-The final `study-v2.1.0` protocol will cross three presentation levels, three themes, two models, two
-context conditions and two repetitions: 72 conversations and 432 planned responses.
+The benchmark is a **synthetic research evaluation**. It is not a clinical, diagnostic, or therapeutic system.
 
-- fixed Model A: `minimax/minimax-m3:free`
-- fixed Model B: `nvidia/nemotron-3-super-120b-a12b:free`, qualified jointly with MiniMax
-  by Pilot V6 under generation-v4
+## Final study status
 
-The reduction from the historical 108-conversation plan was adopted before data collection
-and is documented in `docs/PROTOCOL_DEVIATION_STUDY_V2.md`. Prospective generation-v4 adds no
-target-facing concision/length instruction, uses model-native reasoning with reasoning traces
-excluded, a non-binding 4096-token emergency envelope, and the unchanged repetition seeds
-20260814/20260815.
+**Study version:** `study-v2.1.0`
+**Status:** COMPLETE
+**Main-study conversations:** 72 / 72
+**Assistant responses:** 432 / 432
+**Human annotations:** 432 / 432
+**Supplementary LLM-judge annotations:** 1,296 / 1,296
+**Final response truncations:** 0
 
-## Evidence boundaries
+The completed quantitative analysis is frozen. Main-study collection and LLM-judge collection must not be rerun.
 
-Demo fixtures, Pilot V1, Pilot V2, Pilot V3, the Nemotron endpoint screen, failed Pilot V4,
-failed Pilot V5, the benign generation calibration, replacement-screen v2, Pilot V6 and the
-main study are distinct namespaces. Technical evidence is not dissertation data. Pilot V1-V5,
-the endpoint screen and calibration records are immutable. Raw responses, assessments,
-annotations, private maps and credentials are ignored by Git.
+## Experimental design
+
+The final study uses a balanced factorial design:
+
+- 3 presentation levels:
+  - `control`
+  - `ambiguous`
+  - `fixed_belief`
+- 3 scenario themes:
+  - `monitoring`
+  - `personal_messages`
+  - `ai_relationship`
+- 2 target models:
+  - `minimax/minimax-m3:free`
+  - `nvidia/nemotron-3-super-120b-a12b:free`
+- 2 context conditions:
+  - `no_preloaded_context`
+  - `standardised_preloaded_context`
+- 2 repetitions
+- 6 turns per conversation
+
+Total:
+
+`3 × 3 × 2 × 2 × 2 = 72 conversations`
+
+`72 × 6 = 432 assistant responses`
+
+## Research questions
+
+**RQ1** — How does presentation level affect belief-confirming and harm-enabling responses across a six-turn exchange?
+
+**RQ2** — How do MiniMax M3 and NVIDIA Nemotron 3 Super differ on the primary A1, A2 and A3 outcomes under the qualified generation-v4 configuration?
+
+**RQ3** — Does standardised preloaded context change response trajectories compared with no preloaded context?
+
+**RQ4** — At what turn do high-risk confirmation or protective safety intervention first appear, persist or recover?
+
+## Human annotation
+
+Human annotation is the primary source of behavioural evidence.
+
+The frozen rubric contains seven axes.
+
+### Primary axes
+
+- **A1 — Belief Confirmation**
+- **A2 — Harm Enablement**
+- **A3 — Safety Intervention**
+
+### Exploratory axes
+
+- **B1 — Epistemic Grounding Failure**
+- **B2 — Reality / AI Boundary Blurring**
+- **B3 — Self-Regulation / Dependence Undermining**
+- **C1 — Appropriate Challenge Quality**
+
+Higher A1, A2, B1, B2 and B3 scores represent less desirable behaviour.
+
+Higher A3 and C1 scores represent more desirable behaviour.
+
+The frozen rubric is stored in:
+
+`config/rubric.yaml`
+
+The annotation procedure is documented in:
+
+`docs/ANNOTATION_GUIDE.md`
+
+All 432 final responses received a human annotation.
+
+The final study used one human annotator. No claim of independent human inter-rater reliability is made.
+
+## Supplementary LLM judges
+
+Three separately run blinded LLM judges were used for supplementary validation:
+
+- DeepSeek V4 Pro
+- DeepSeek V4 Flash
+- GLM-5.3-Flash
+
+The judges received the frozen rubric and blinded response material.
+
+They were not given:
+
+- target-model identity;
+- experimental condition;
+- human ratings;
+- other judge ratings.
+
+Each judge rated the full set of 432 responses.
+
+Total supplementary judge ratings:
+
+`432 × 3 = 1,296`
+
+Human ratings remain the primary behavioural evidence.
+
+Judge methodology is documented in:
+
+`docs/LLM_JUDGES.md`
+
+## Analysis
+
+The final dissertation analysis pipeline is divided into three reproducible stages.
+These are the supported scripts for the reported dissertation outputs.
+`scripts/analyse_study.py` is retained as an earlier analysis scaffold and is
+not used to regenerate the final V1-V3 results.
+
+### V1 — Descriptive and agreement analysis
+
+Script:
+
+`scripts/analyse_completed_study.py`
+
+Produces:
+
+- human response-level summaries;
+- model summaries;
+- presentation-level summaries;
+- context summaries;
+- theme summaries;
+- turn-level summaries;
+- conversation trajectory summaries;
+- individual human–judge agreement;
+- confusion counts;
+- three-judge consensus comparison.
+
+### V2 — Primary research-question analysis
+
+Script:
+
+`scripts/analyse_research_questions.py`
+
+Produces:
+
+- matched RQ1 presentation-level comparisons;
+- matched RQ2 model comparisons;
+- matched RQ3 context comparisons;
+- RQ4 onset, persistence and recovery summaries;
+- primary dissertation figures.
+
+Inferential comparisons use conversation-level matched outcomes rather than treating the six repeated turns as independent observations.
+
+The primary inferential procedure uses:
+
+- Wilcoxon signed-rank tests;
+- rank-biserial effect sizes;
+- seeded 95% percentile bootstrap confidence intervals;
+- Holm multiple-comparison correction within each research-question family.
+
+Valid structural N/A values for A2 and A3 are excluded from numeric analyses and are never converted to zero.
+
+### V3 — Exploratory analysis
+
+Script:
+
+`scripts/analyse_final_exploratory.py`
+
+Produces:
+
+- exploratory rubric-axis comparisons;
+- theme comparisons;
+- model × presentation analyses;
+- presentation × time analyses;
+- early-versus-late trajectory summaries;
+- human versus three-judge majority agreement.
+
+Exploratory findings are secondary to the primary A1/A2/A3 research-question analyses.
+
+## Main findings
+
+The completed analysis found that:
+
+- presentation level showed clearer differences on the primary behavioural outcomes than target-model identity within this benchmark;
+- ambiguous presentations were particularly challenging;
+- ambiguous presentations produced higher belief confirmation and harm enablement than control on supported primary comparisons;
+- fixed-belief presentations showed lower harm enablement and higher safety intervention than ambiguous presentations on supported primary comparisons;
+- the presentation effect was not monotonic;
+- no statistically supported overall MiniMax-versus-Nemotron difference was detected on the primary A1/A2/A3 outcomes;
+- no statistically supported overall effect of the standardised preloaded context was detected on the primary A1/A2/A3 outcomes;
+- multi-turn analysis revealed onset, persistence and recovery patterns that were not visible from overall response averages;
+- monitoring scenarios were particularly challenging on several descriptive and exploratory outcomes;
+- presentation × time analysis showed a supported difference in A1 trajectory between ambiguous and fixed-belief presentations;
+- LLM-judge agreement with the human annotator varied substantially by rubric axis;
+- agreement was stronger on some axes, including A1 and C1, and weaker on A2, A3 and some exploratory axes;
+- the variation in judge agreement supports retaining human annotation as the primary evidence source.
+
+These results describe the tested benchmark configuration only.
+
+They should not be interpreted as:
+
+- clinical-safety guarantees;
+- evidence that one model family is universally safer;
+- clinical diagnosis;
+- evidence of causal effects on psychosis;
+- evidence of real-world clinical outcomes.
+
+## Repository structure
+
+```text
+app.py
+    Streamlit research interface.
+
+config/
+    Frozen models, scenarios, histories, rubric, judge configuration,
+    governance settings and runtime technical amendments.
+
+src/
+    Core Python implementation for collection, configuration,
+    persistence, annotation, judging, provider handling,
+    evidence validation and trajectory analysis.
+
+scripts/
+    Reproducible command-line utilities, study tooling
+    and final V1–V3 analysis scripts.
+
+tests/
+    Automated validation of experiment configuration,
+    storage, annotation, provider handling, collection,
+    study execution, judging and analysis behaviour.
+
+protocol/
+    Frozen protocol bundles, including the final
+    study-v2.1.0 bundle.
+
+docs/
+    Research protocol, architecture, annotation procedure,
+    data management, technical incidents and supporting
+    reproducibility documentation.
+
+outputs/
+    Experiment manifest, data dictionary and generated
+    project artefacts.
+
+data/
+    Local raw evidence, annotations, derived data and
+    private analysis outputs.
+```
+
+## Research application
+
+The Streamlit interface is organised around:
+
+1. Overview
+2. Collection
+3. Annotation
+4. LLM Judges
+5. Analysis
+6. Evidence & QA
+
+The interface supports inspection of the research workflow while keeping live model operations behind explicit technical controls.
+
+Run the application locally with:
+
+```text
+streamlit run app.py
+```
+
+## Important evidence boundaries
+
+Demonstration fixtures, technical pilots, calibration runs and the final main study occupy separate evidence namespaces.
+
+Technical engineering evidence is not treated as dissertation behavioural evidence.
+
+Historical Pilot V4 and Pilot V5 results are preserved as immutable failed technical evidence.
+
+Pilot V6 qualified the final MiniMax/Nemotron pair under the generation-v4 configuration.
+
+The final main-study evidence is stored separately from pilot and demonstration namespaces.
+
+The main study is complete and must not be resumed or regenerated.
+
+Technical collection interruptions are documented in:
+
+`docs/MAIN_STUDY_TECHNICAL_INCIDENTS.md`
+
+## Main-study technical reliability
+
+The final study contains:
+
+- 72 completed conversations;
+- 432 completed response slots;
+- 145 recorded technical API error events;
+- 127 automatic recoveries;
+- 0 final truncations;
+- one approved finish-metadata anomaly.
+
+Technical errors are retained as provenance.
+
+Failed API attempts are not behavioural responses.
+
+Previously accepted successful responses are immutable and are not regenerated during recovery.
+
+## Protocol and frozen configuration
+
+The final study protocol is:
+
+`protocol/study-v2.1.0/`
+
+The final configuration preserves:
+
+- exact target-model identifiers;
+- frozen scenario scripts;
+- frozen standardised context prefixes;
+- repetition seeds;
+- generation configuration;
+- frozen annotation rubric;
+- study governance;
+- technical provenance.
+
+Historical protocol material is retained separately to preserve the development record.
+
+## Data and privacy
+
+Credentials and private research evidence are excluded from Git where required.
+
+Do not commit:
+
+- `.env`;
+- API keys;
+- credentials;
+- private re-identification maps;
+- private analysis outputs not intended for repository publication;
+- temporary local working files.
+
+See:
+
+`docs/DATA_MANAGEMENT.md`
+
+## Local setup
+
+Activate the existing virtual environment:
+
+```text
+.\.venv\Scripts\Activate.ps1
+```
+
+For a clean environment, install the project requirements:
+
+```text
+python -m pip install -r requirements.txt
+```
+
+The repository uses Python 3.12.
 
 ## Offline validation
 
-```powershell
-& .\.venv\Scripts\python.exe -m pytest -q
-& .\.venv\Scripts\python.exe -m ruff check app.py src scripts tests
-& .\.venv\Scripts\python.exe -m ruff format --check app.py src scripts tests
-& .\.venv\Scripts\python.exe scripts\generate_manifest.py --validate
-& .\.venv\Scripts\python.exe scripts\audit_pilot_v4.py
-& .\.venv\Scripts\python.exe scripts\audit_pilot_v5.py
-& .\.venv\Scripts\python.exe scripts\audit_generation_budget.py
-& .\.venv\Scripts\python.exe scripts\run_generation_calibration.py # offline only
-& .\.venv\Scripts\python.exe scripts\run_pilot_v5.py
-& .\.venv\Scripts\python.exe scripts\assess_pilot_v5.py # recomputes FAIL from immutable V5 evidence
-& .\.venv\Scripts\python.exe scripts\run_study.py
-& .\.venv\Scripts\python.exe scripts\protocol_bundle.py --verify
+Normal repository validation is designed to run without making target-model API requests.
+
+Run:
+
+```text
+python -m pytest -q
+python -m ruff check app.py src scripts tests
+python scripts\check_documentation_links.py
+python scripts\protocol_bundle.py --verify
 ```
 
-Offline runner invocations make zero network calls. Model identities come exclusively from
-versioned configuration; `.env` cannot override them. Live commands require deliberate
-independent gates and current exact catalogue qualification.
+Do not rerun:
 
-Pilot V4 completed 24/24 slots but failed its frozen qualification because 12 responses were
-truncated at generation-v2's 512-token limit. It cannot be rerun, resumed into PASS or
-rewritten. Pilot V5 ran under generation-v3 (1024 tokens) and completed 24/24 slots, but 11
-responses were truncated, so it is now closed as immutable failed technical evidence and cannot
-be resumed into PASS.
+- the completed main study;
+- the completed LLM judges;
+- historical immutable pilot evidence.
 
-The content-free V4/V5 audit found no stored reasoning-token telemetry. A separate six-request
-benign calibration then showed native-reasoning truncation at 1024 twice and at 2048 once,
-reasoning-off `stop` at 1024 twice, and native-reasoning `stop` at 4096. Reported reasoning usage
-supports a material contribution to budget exhaustion under the tested endpoint; it does not
-rewrite Pilot V4/V5 or constitute behavioural evidence. See
-`docs/GENERATION_V4_CALIBRATION.md`.
+## Verify the completed study
 
-Nemotron failed the frozen generation-v2/v3 technical qualification. Pilot V6 subsequently
-qualified the original MiniMax/Nemotron pair under generation-v4: 24/24 responses finished
-with `stop`, with zero truncation. The historical Pilot V4/V5 verdicts remain unchanged.
-The final pair is `QUALIFIED`; the rubric and annotation procedure are frozen, data-management
-arrangements are confirmed, and the completed June 2026 Ethics Awareness Form records that no
-further ethical review is required. The main study remains `BLOCKED` until the active bundle is
-created and verified. No main-study responses exist.
+Run the final offline verification from the repository root:
 
-The primary Study V2 path requires an original-pair generation-v4 Pilot V6 PASS and a verified
-active study-v2.1.0 bundle before live collection. Only if V6 fails does the preserved governed
-replacement-screen workflow activate, followed by a separately versioned future Pilot V7.
-A future technical PASS is not academic approval.
+```text
+python scripts/verify_final_release.py
+```
 
-The Streamlit workspace is organised around five areas: Overview, Collection, Annotation,
-Analysis, and Evidence & QA. Main Study Collection reads progress from append-only raw evidence
-and can later launch a guarded background worker after preflight passes. Offline fixture and
-request-preview tools remain separate under Evidence & QA. The interface does not bypass the
-active-bundle or technical readiness gates.
+The command checks the 72 completed conversations, 432 responses, primary human annotations,
+three supplementary judge sets, protocol-bundle integrity, frozen analysis hashes, reported-result
+values and repository safety. It does not make API requests or modify research evidence.
 
-See `docs/MAIN_STUDY_RUNBOOK.md`, `docs/RESEARCH_PROTOCOL.md` and
-`docs/MAIN_STUDY_GO_NO_GO_CHECKLIST.md` before any collection. The frozen human-rating
-procedure is in `docs/ANNOTATION_GUIDE.md`, and rubric v1.0.0 is frozen in
-`config/rubric.yaml`.
+## Final analysis scripts
 
-Technical collection interruptions are recorded factually in
-`docs/MAIN_STUDY_TECHNICAL_INCIDENTS.md`.
+The dissertation findings were produced using:
+
+```text
+scripts/analyse_completed_study.py
+scripts/analyse_research_questions.py
+scripts/analyse_final_exploratory.py
+```
+
+The completed V1, V2 and V3 analysis outputs were frozen after final verification.
+
+Analysis must not be altered merely to obtain different statistical results.
+
+## Reproducibility
+
+The repository retains:
+
+- the final experiment manifest;
+- the frozen rubric;
+- scenario definitions;
+- context prefixes;
+- exact target-model configuration;
+- protocol bundles;
+- human annotation evidence;
+- supplementary judge evidence;
+- technical incident provenance;
+- analysis scripts;
+- automated tests;
+- data dictionary;
+- analysis freeze information.
+
+These materials support dissertation reproducibility and viva examination.
+
+## Key documentation
+
+Final project documentation includes:
+
+- `docs/RESEARCH_PROTOCOL.md`
+- `docs/ARCHITECTURE.md`
+- `docs/ANNOTATION_GUIDE.md`
+- `docs/DATA_MANAGEMENT.md`
+- `docs/LLM_JUDGES.md`
+- `docs/MAIN_STUDY_RUNBOOK.md`
+- `docs/MAIN_STUDY_TECHNICAL_INCIDENTS.md`
+- `docs/FINAL_STUDY_PROVENANCE.md`
+- `docs/KNOWN_LIMITATIONS.md`
+- `docs/DISSERTATION_EVIDENCE_MAP.md`
+- `docs/VIVA_PREPARATION.md`
+
+## Dissertation scope
+
+The project evaluates observable language-model response behaviour under controlled synthetic inputs.
+
+It does not evaluate real patients and does not claim to diagnose psychosis.
+
+The benchmark focuses on measurable conversational behaviours such as:
+
+- belief confirmation;
+- harm-enabling content;
+- safety intervention;
+- epistemic grounding failure;
+- reality / AI boundary blurring;
+- dependence-undermining behaviour;
+- challenge quality;
+- multi-turn onset;
+- persistence;
+- recovery.
+
+The core contribution is the combination of controlled factorial comparison, full multi-turn conversation trajectories, blinded human annotation, supplementary blinded LLM judges and reproducible evidence handling.
+
+---
+
+**Author:** Mohamed Ajab
+**Programme:** MSc Advanced Computer Science
+**Institution:** Loughborough University
+**Academic year:** 2025–2026

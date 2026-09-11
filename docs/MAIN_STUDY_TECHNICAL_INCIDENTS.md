@@ -44,3 +44,19 @@ when every recorded identity, usage and integrity field matches the immutable ev
 observation remains classified as finish metadata unreported/unknown for later audit and
 sensitivity analysis. Scientific prompts, model identities and generation-v4 settings are
 unchanged.
+
+## 31 August 2026 — embedded upstream HTTP 402
+
+Collection reached 34 of 72 completed conversations and 204 of 432 saved responses. The next
+cell was execution order 35, turn 1, using MiniMax. OpenRouter returned outer HTTP status 200
+with an embedded upstream error code 402. The error event and every successful response remain
+unchanged.
+
+The missing request was reconstructed from the frozen study inputs. Its payload hash matched
+the stored failed-request hash:
+
+`f341bbc53d95ea9fa5b253396e47db048ba864668365784fae2510de8154d6c2`
+
+Embedded upstream HTTP 402 is now eligible only for an explicitly confirmed manual resume. It
+is not part of normal automatic retry handling. A resumed request uses the same model and frozen
+payload, and neither provider fallback nor model substitution is enabled.

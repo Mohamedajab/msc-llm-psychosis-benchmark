@@ -49,9 +49,9 @@ from src.study_execution import build_execution_summary, resume_or_new_header
 PLANNED_CONVERSATIONS = 72
 PLANNED_RESPONSES = 432
 MAXIMUM_HTTP_ATTEMPTS = 576
-DEFAULT_INITIAL_RETRY_WAIT_SECONDS = 30
-DEFAULT_MAXIMUM_RETRY_WAIT_SECONDS = 120
-DEFAULT_MAXIMUM_AUTO_RESUMES = 5
+DEFAULT_INITIAL_RETRY_WAIT_SECONDS = 3
+DEFAULT_MAXIMUM_RETRY_WAIT_SECONDS = 60
+DEFAULT_MAXIMUM_AUTO_RESUMES = 10
 REQUEST_INTERVAL_SECONDS = 5.0
 
 
@@ -119,6 +119,7 @@ class StudyProgress(StrictModel):
     resume_reason: str | None = None
     upstream_error_code: int | None = None
     upstream_error_message: str | None = None
+    operator_resume_required: bool = False
     response_counts_by_model: dict[str, int] = Field(default_factory=dict)
     message: str = ""
 
@@ -402,7 +403,7 @@ def load_study_progress(
     elif (
         status in {JobStatus.BLOCKED, JobStatus.STOPPED}
         and classification is not None
-        and classification.retryable
+        and (classification.retryable or classification.manual_resume_allowed)
         and summary["http_attempts_used"] < MAXIMUM_HTTP_ATTEMPTS
     ):
         status = JobStatus.RESUMABLE
@@ -487,6 +488,11 @@ def load_study_progress(
         ),
         upstream_error_message=(
             classification.upstream_error_message if classification is not None else None
+        ),
+        operator_resume_required=(
+            status == JobStatus.RESUMABLE
+            and classification is not None
+            and classification.manual_resume_allowed
         ),
         response_counts_by_model=_model_response_counts(rows, store),
         message=(
@@ -683,6 +689,7 @@ def run_study_worker(
                 "updated_at": now(),
                 "finished_at": None,
                 "worker_pid": os.getpid(),
+                "consecutive_failures": 0,
                 "next_retry_at": None,
                 "recoverable": False,
                 "resume_reason": None,
@@ -867,8 +874,12 @@ def run_study_worker(
                 _finish_state(
                     state_path,
                     state,
-                    status=JobStatus.BLOCKED,
-                    message="The automatic-resume limit was reached.",
+                    status=JobStatus.RESUMABLE,
+                    message=(
+                        "Collection paused after repeated provider errors. "
+                        "All completed responses are preserved. Resume later from the first "
+                        "missing response."
+                    ),
                     now=now,
                 )
                 return 1
@@ -1042,8 +1053,18 @@ def launch_study_worker(
     active_bundle_root: str | Path,
     governance_path: str | Path,
     environ: dict[str, str] | None = None,
+    operator_resume_confirmed: bool = False,
 ) -> int:
     root = Path(repository_root)
+    progress = load_study_progress(
+        repository_root=root,
+        raw_root=raw_root,
+        state_path=Path(job_root) / "state.json",
+    )
+    if progress.operator_resume_required and not operator_resume_confirmed:
+        raise MainStudyError(
+            "The upstream HTTP 402 recovery requires explicit operator confirmation"
+        )
     token = reserve_worker(job_root)
     values = dict(os.environ if environ is None else environ)
     values["RUN_LIVE_STUDY"] = "1"

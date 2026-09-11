@@ -54,7 +54,7 @@ def test_embedded_transient_codes_are_retryable(code: int, stored_code: str) -> 
     assert result.http_status == 200
 
 
-@pytest.mark.parametrize("code", [400, 401, 402, 403])
+@pytest.mark.parametrize("code", [400, 401, 403])
 def test_embedded_permanent_codes_are_not_retryable(code: int) -> None:
     classification = classify_provider_result(
         _error("provider_body_error", message=repr({"message": "Rejected", "code": code}))
@@ -62,6 +62,23 @@ def test_embedded_permanent_codes_are_not_retryable(code: int) -> None:
     assert classification.retryable is False
     assert classification.category == "permanent"
     assert classification.reason_code == f"upstream_http_{code}"
+
+
+def test_embedded_upstream_402_requires_manual_resume() -> None:
+    classification = classify_provider_result(
+        _error("provider_body_error", message=repr({"message": "Payment required", "code": 402}))
+    )
+    assert classification.retryable is False
+    assert classification.manual_resume_allowed is True
+    assert classification.category == "operator_recoverable"
+    assert classification.reason_code == "upstream_http_402"
+
+
+def test_outer_http_402_remains_permanent() -> None:
+    classification = classify_provider_result(_error("http_402", http_status=402))
+    assert classification.retryable is False
+    assert classification.manual_resume_allowed is False
+    assert classification.category == "permanent"
 
 
 @pytest.mark.parametrize(

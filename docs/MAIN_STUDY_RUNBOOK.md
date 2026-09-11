@@ -33,6 +33,17 @@ refreshing the browser does not stop or restart the worker. **Stop safely** writ
 request that is checked between response requests; an in-progress request is allowed to finish
 and save first.
 
+Successful responses are written after every turn and are never regenerated. A timeout,
+connection failure or HTTP 408, 429, 500, 502, 503 or 504 pauses the current request and retries
+the first missing turn with waits of 3, 6, 12, 24, 48 and then at most 60 seconds. After ten
+automatic resume cycles, collection pauses cleanly and can be resumed later from disk. Existing
+error events remain alongside the eventual successful response.
+
+An embedded upstream HTTP 402 is not retried automatically. If it is the only collection block,
+the app reconstructs and verifies the first missing request and requires explicit confirmation
+before a manual resume. Outer/account HTTP 402 remains a hard stop. Neither path changes the
+model, request parameters or provider fallback policy.
+
 Offline commands:
 
 ```powershell

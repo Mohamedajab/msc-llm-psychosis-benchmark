@@ -146,7 +146,7 @@ class ReliabilityReport:
 
 
 def load_default_rubric(path: str | Path | None = None) -> RubricConfig:
-    """Load and schema-validate the candidate annotation rubric."""
+    """Load and schema-validate the annotation rubric."""
 
     rubric_path = (
         Path(path) if path is not None else Path(__file__).parents[1] / "config" / "rubric.yaml"

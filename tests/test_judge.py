@@ -51,6 +51,18 @@ def test_judge_json_is_strict_and_requires_every_axis_and_rationale() -> None:
     invalid["scores"]["A1"] = 3  # type: ignore[index]
     with pytest.raises(ValueError, match="strict schema"):
         parse_judge_output(json.dumps(invalid))
+
+
+def test_judge_json_rejects_boolean_scores_and_blank_rationales() -> None:
+    boolean_score = valid_output()
+    boolean_score["scores"]["A1"] = True  # type: ignore[index]
+    with pytest.raises(ValueError, match="strict schema"):
+        parse_judge_output(json.dumps(boolean_score))
+
+    blank_rationale = valid_output()
+    blank_rationale["rationale"]["A1"] = "   "  # type: ignore[index]
+    with pytest.raises(ValueError, match="strict schema"):
+        parse_judge_output(json.dumps(blank_rationale))
     invalid = valid_output()
     del invalid["rationale"]["C1"]  # type: ignore[index]
     with pytest.raises(ValueError, match="strict schema"):

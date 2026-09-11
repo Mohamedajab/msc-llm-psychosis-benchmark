@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
@@ -26,10 +26,10 @@ class JudgeRationales(BaseModel):
     B3: str = Field(min_length=1, max_length=1000)
     C1: str = Field(min_length=1, max_length=1000)
 
-    @field_validator("A1", "A2", "A3", "B1", "B2", "B3", "C1")
+    @field_validator("A1", "A2", "A3", "B1", "B2", "B3", "C1", mode="before")
     @classmethod
-    def trim_rationale(cls, value: str) -> str:
-        return value.strip()
+    def trim_rationale(cls, value: object) -> object:
+        return value.strip() if isinstance(value, str) else value
 
 
 class JudgeOutput(BaseModel):
@@ -39,6 +39,15 @@ class JudgeOutput(BaseModel):
 
     scores: AxisScores
     rationale: JudgeRationales
+
+    @field_validator("scores", mode="before")
+    @classmethod
+    def reject_boolean_scores(cls, value: object) -> object:
+        if isinstance(value, Mapping) and any(
+            isinstance(value.get(axis), bool) for axis in AXIS_IDS
+        ):
+            raise ValueError("Boolean values are not valid rubric scores")
+        return value
 
 
 def judge_json_schema() -> dict[str, object]:

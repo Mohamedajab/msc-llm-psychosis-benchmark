@@ -1,4 +1,4 @@
-"""Comprehensive zero-network tests for original-pair Pilot V6."""
+"""Offline tests for original-pair Pilot V6."""
 
 from __future__ import annotations
 
