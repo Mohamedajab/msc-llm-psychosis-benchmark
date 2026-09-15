@@ -18,6 +18,22 @@ The benchmark is a **synthetic research evaluation**. It is not a clinical, diag
 
 The completed quantitative analysis is frozen. Main-study collection and LLM-judge collection must not be rerun.
 
+## What is included
+
+The repository contains the application, experiment configuration, nine frozen scenario scripts,
+three standardised context histories, the 72-row study manifest, protocol bundles, tests and a
+small demonstration dataset.
+
+The completed raw conversations, human annotations, judge records and private analysis outputs
+are preserved locally but excluded from Git. They contain full dialogue and detailed research
+provenance. A clean clone can run the application with the demonstration fixtures and inspect the
+complete method, but reproducing the reported numerical results also requires the separately
+controlled research evidence.
+
+The study inputs are synthetic and were written as controlled six-turn scripts. No patient or
+participant dataset was used. Files under `config/personas/` are retired prototype metadata and
+are not loaded by the final experiment.
+
 ## Experimental design
 
 The final study uses a balanced factorial design:
@@ -244,17 +260,16 @@ protocol/
     study-v2.1.0 bundle.
 
 docs/
-    Research protocol, architecture, annotation procedure,
-    data management, technical incidents and supporting
-    reproducibility documentation.
+    Architecture, protocol, annotation, data-management,
+    provider and technical-incident documentation.
 
 outputs/
     Experiment manifest, data dictionary and generated
     project artefacts.
 
 data/
-    Local raw evidence, annotations, derived data and
-    private analysis outputs.
+    Public demonstration fixtures and local research-evidence
+    locations. Private completed evidence is ignored by Git.
 ```
 
 ## Research application
@@ -355,13 +370,17 @@ Activate the existing virtual environment:
 .\.venv\Scripts\Activate.ps1
 ```
 
-For a clean environment, install the project requirements:
+For a clean Python 3.12 environment, create the virtual environment and install the tested
+dependency set:
 
 ```text
-python -m pip install -r requirements.txt
+py -3.12 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements-lock.txt
 ```
 
-The repository uses Python 3.12.
+`requirements.txt` provides the supported dependency ranges; `requirements-lock.txt` records the
+exact environment used for final validation.
 
 ## Offline validation
 
@@ -371,10 +390,14 @@ Run:
 
 ```text
 python -m pytest -q
-python -m ruff check app.py src scripts tests
+python -m ruff check app.py src scripts tests --exclude scripts/analyse_completed_study.py,scripts/analyse_research_questions.py,scripts/analyse_final_exploratory.py
 python scripts\check_documentation_links.py
 python scripts\protocol_bundle.py --verify
 ```
+
+The three final analysis scripts are excluded from formatting checks because their verified file
+hashes form part of the frozen result record. Their behaviour is covered by the test and release
+verification suites.
 
 Do not rerun:
 
@@ -410,7 +433,7 @@ Analysis must not be altered merely to obtain different statistical results.
 
 ## Reproducibility
 
-The repository retains:
+The complete local research record retains:
 
 - the final experiment manifest;
 - the frozen rubric;
@@ -426,7 +449,8 @@ The repository retains:
 - data dictionary;
 - analysis freeze information.
 
-These materials support dissertation reproducibility and viva examination.
+The tracked repository preserves the software, planned-study material and verification logic.
+Private evidence remains outside Git in accordance with the documented data-management boundary.
 
 ## Key documentation
 
@@ -436,13 +460,16 @@ Final project documentation includes:
 - `docs/ARCHITECTURE.md`
 - `docs/ANNOTATION_GUIDE.md`
 - `docs/DATA_MANAGEMENT.md`
+- `docs/EXECUTION_POLICY.md`
+- `docs/PROVIDER_POLICY.md`
 - `docs/LLM_JUDGES.md`
 - `docs/MAIN_STUDY_RUNBOOK.md`
 - `docs/MAIN_STUDY_TECHNICAL_INCIDENTS.md`
 - `docs/FINAL_STUDY_PROVENANCE.md`
-- `docs/KNOWN_LIMITATIONS.md`
-- `docs/DISSERTATION_EVIDENCE_MAP.md`
-- `docs/VIVA_PREPARATION.md`
+
+Some protocol documents intentionally preserve the pre-collection state used to freeze Study
+V2.1. They are historical provenance; the status at the top of this README describes the
+completed project.
 
 ## Dissertation scope
 
